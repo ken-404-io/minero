@@ -11,7 +11,7 @@ import {
 import {
   getOAuthProvider,
   generateState,
-  listAvailableOAuthProviders,
+  listOAuthProviders,
 } from "../lib/oauth.js";
 import { getClientIp, getDeviceHash } from "../lib/request.js";
 
@@ -34,9 +34,10 @@ function frontendOrigin(): string {
   return (process.env.FRONTEND_ORIGIN ?? "http://localhost:3000").split(",")[0].trim();
 }
 
-// Expose which providers are configured — frontend hides buttons for the rest.
+// List every supported provider with its configuration state. The frontend
+// renders all of them, disabling the ones that aren't configured.
 oauthRoutes.get("/providers", (c) => {
-  return c.json({ providers: listAvailableOAuthProviders() });
+  return c.json({ providers: listOAuthProviders() });
 });
 
 // Kick off the OAuth flow — redirects to the provider.

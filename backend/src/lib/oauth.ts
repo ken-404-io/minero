@@ -5,13 +5,16 @@ import crypto from "node:crypto";
 // To enable a provider, set its env vars in backend/.env:
 //   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 //   FACEBOOK_APP_ID, FACEBOOK_APP_SECRET
+//   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
 //   OAUTH_REDIRECT_BASE (e.g. "http://localhost:4000" in dev)
 //
-// Providers that aren't configured are simply not exposed — the frontend
-// can still render the button but clicking it returns a 501.
+// Providers that aren't configured are still listed by /providers but
+// marked unavailable — the frontend renders them as disabled buttons.
+
+export type OAuthProviderName = "google" | "facebook" | "github";
 
 export type OAuthUser = {
-  provider: "google" | "facebook";
+  provider: OAuthProviderName;
   providerId: string;
   email: string;
   name: string;
@@ -20,7 +23,7 @@ export type OAuthUser = {
 };
 
 export interface OAuthProvider {
-  readonly name: "google" | "facebook";
+  readonly name: OAuthProviderName;
   readonly available: boolean;
   /** Build the authorize URL the user is redirected to. */
   authorizeUrl(state: string): string;
@@ -32,7 +35,7 @@ function base() {
   return process.env.OAUTH_REDIRECT_BASE ?? `http://localhost:${process.env.PORT ?? 4000}`;
 }
 
-function redirectUriFor(name: "google" | "facebook"): string {
+function redirectUriFor(name: OAuthProviderName): string {
   return `${base()}/auth/oauth/${name}/callback`;
 }
 
@@ -161,21 +164,107 @@ class FacebookProvider implements OAuthProvider {
   }
 }
 
-const providers: Record<"google" | "facebook", OAuthProvider> = {
+class GitHubProvider implements OAuthProvider {
+  readonly name = "github" as const;
+
+  get available() {
+    return !!process.env.GITHUB_CLIENT_ID && !!process.env.GITHUB_CLIENT_SECRET;
+  }
+
+  authorizeUrl(state: string): string {
+    const p = new URLSearchParams({
+      client_id: process.env.GITHUB_CLIENT_ID!,
+      redirect_uri: redirectUriFor("github"),
+      scope: "read:user user:email",
+      state,
+      allow_signup: "true",
+    });
+    return `https://github.com/login/oauth/authorize?${p.toString()}`;
+  }
+
+  async exchange({ code }: { code: string }): Promise<OAuthUser> {
+    const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        client_id: process.env.GITHUB_CLIENT_ID,
+        client_secret: process.env.GITHUB_CLIENT_SECRET,
+        redirect_uri: redirectUriFor("github"),
+        code,
+      }),
+    });
+    if (!tokenRes.ok) throw new Error(`github_token_exchange_failed:${tokenRes.status}`);
+    const tokens = (await tokenRes.json()) as { access_token?: string };
+    if (!tokens.access_token) throw new Error("github_no_access_token");
+
+    const auth = `Bearer ${tokens.access_token}`;
+    const headers = {
+      Authorization: auth,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "minero-app",
+    };
+
+    const profileRes = await fetch("https://api.github.com/user", { headers });
+    if (!profileRes.ok) throw new Error(`github_userinfo_failed:${profileRes.status}`);
+    const p = (await profileRes.json()) as {
+      id?: number;
+      login?: string;
+      name?: string | null;
+      email?: string | null;
+      avatar_url?: string;
+    };
+    if (typeof p.id !== "number") throw new Error("github_missing_profile_fields");
+
+    let email = p.email ?? null;
+    let emailVerified = !!email;
+    if (!email) {
+      const emailsRes = await fetch("https://api.github.com/user/emails", { headers });
+      if (emailsRes.ok) {
+        const emails = (await emailsRes.json()) as Array<{
+          email: string;
+          primary: boolean;
+          verified: boolean;
+        }>;
+        const primary = emails.find((e) => e.primary && e.verified)
+          ?? emails.find((e) => e.verified)
+          ?? emails[0];
+        if (primary) {
+          email = primary.email;
+          emailVerified = primary.verified;
+        }
+      }
+    }
+    if (!email) throw new Error("github_missing_email");
+
+    return {
+      provider: "github",
+      providerId: String(p.id),
+      email: email.toLowerCase(),
+      name: p.name?.trim() || p.login || email.split("@")[0],
+      avatarUrl: p.avatar_url ?? null,
+      emailVerified,
+    };
+  }
+}
+
+const providers: Record<OAuthProviderName, OAuthProvider> = {
   google: new GoogleProvider(),
   facebook: new FacebookProvider(),
+  github: new GitHubProvider(),
 };
 
 export function getOAuthProvider(name: string): OAuthProvider | null {
-  if (name !== "google" && name !== "facebook") return null;
+  if (name !== "google" && name !== "facebook" && name !== "github") return null;
   return providers[name];
 }
 
-/** Available providers, used by the frontend to show/hide buttons. */
-export function listAvailableOAuthProviders(): string[] {
-  return Object.values(providers)
-    .filter((p) => p.available)
-    .map((p) => p.name);
+/** All supported providers with their availability, used by the frontend
+ *  to render buttons (disabled when unconfigured). */
+export function listOAuthProviders(): Array<{ name: string; available: boolean }> {
+  return Object.values(providers).map((p) => ({ name: p.name, available: p.available }));
 }
 
 export function generateState(): string {
