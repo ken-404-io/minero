@@ -9,13 +9,20 @@ type Props = {
   referralCode?: string;
 };
 
+type ProviderInfo = { name: string; available: boolean };
+
 const LABELS: Record<string, { name: string; Icon: typeof IconGoogle }> = {
   google: { name: "Google", Icon: IconGoogle },
   facebook: { name: "Facebook", Icon: IconFacebook },
 };
 
+const FALLBACK: ProviderInfo[] = [
+  { name: "google", available: false },
+  { name: "facebook", available: false },
+];
+
 export default function OAuthButtons({ referralCode }: Props) {
-  const [providers, setProviders] = useState<string[] | null>(null);
+  const [providers, setProviders] = useState<ProviderInfo[]>(FALLBACK);
 
   useEffect(() => {
     let cancelled = false;
@@ -25,17 +32,22 @@ export default function OAuthButtons({ referralCode }: Props) {
           credentials: "include",
         });
         if (!res.ok) throw new Error("not_ok");
-        const data = (await res.json()) as { providers: string[] };
-        if (!cancelled) setProviders(data.providers);
+        const data = (await res.json()) as { providers: ProviderInfo[] | string[] };
+        // Back-compat: older deploys returned a plain string[].
+        const list: ProviderInfo[] = Array.isArray(data.providers)
+          ? data.providers.map((p) =>
+              typeof p === "string" ? { name: p, available: true } : p,
+            )
+          : FALLBACK;
+        if (!cancelled && list.length > 0) setProviders(list);
       } catch {
-        if (!cancelled) setProviders([]);
+        /* keep fallback */
       }
     })();
     return () => { cancelled = true; };
   }, []);
 
-  // Hide entirely if backend hasn't responded or no providers are configured
-  if (providers === null || providers.length === 0) return null;
+  if (providers.length === 0) return null;
 
   return (
     <div className="space-y-3">
@@ -44,16 +56,34 @@ export default function OAuthButtons({ referralCode }: Props) {
         <span>or continue with</span>
         <span className="h-px flex-1" style={{ background: "var(--border)" }} />
       </div>
-      <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${providers.length}, minmax(0, 1fr))` }}>
+      <div
+        className="grid gap-2"
+        style={{ gridTemplateColumns: `repeat(${providers.length}, minmax(0, 1fr))` }}
+      >
         {providers.map((p) => {
-          const meta = LABELS[p];
+          const meta = LABELS[p.name];
           if (!meta) return null;
+          if (!p.available) {
+            return (
+              <button
+                key={p.name}
+                type="button"
+                className="btn btn-secondary"
+                disabled
+                aria-disabled="true"
+                title={`${meta.name} sign-in is not configured on this server`}
+              >
+                <meta.Icon size={18} style={{ opacity: 0.5 }} />
+                <span>{meta.name}</span>
+              </button>
+            );
+          }
           const href =
-            `${API_URL}/auth/oauth/${p}` +
+            `${API_URL}/auth/oauth/${p.name}` +
             (referralCode ? `?ref=${encodeURIComponent(referralCode)}` : "");
           return (
             <a
-              key={p}
+              key={p.name}
               href={href}
               className="btn btn-secondary"
               aria-label={`Continue with ${meta.name}`}

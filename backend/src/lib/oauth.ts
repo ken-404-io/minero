@@ -171,11 +171,10 @@ export function getOAuthProvider(name: string): OAuthProvider | null {
   return providers[name];
 }
 
-/** Available providers, used by the frontend to show/hide buttons. */
-export function listAvailableOAuthProviders(): string[] {
-  return Object.values(providers)
-    .filter((p) => p.available)
-    .map((p) => p.name);
+/** All supported providers with their availability, used by the frontend
+ *  to render buttons (disabled when unconfigured). */
+export function listOAuthProviders(): Array<{ name: string; available: boolean }> {
+  return Object.values(providers).map((p) => ({ name: p.name, available: p.available }));
 }
 
 export function generateState(): string {
