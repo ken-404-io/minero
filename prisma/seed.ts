@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
-import { PrismaClient } from "../app/generated/prisma/client.ts";
+import { PrismaClient } from "../src/backend/generated/prisma/client.ts";
 import path from "path";
 import { fileURLToPath } from "url";
 
