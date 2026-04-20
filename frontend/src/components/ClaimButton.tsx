@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { CLAIM_INTERVAL_MS } from "@/lib/mining";
 import { API_URL } from "@/lib/api-url";
 import { deviceHeaders } from "@/lib/device";
-import AdViewer from "@/components/AdViewer";
 import { IconPickaxe, IconClock, IconCheck, IconError, IconBoltSmall } from "@/components/icons";
 
 type Props = {
@@ -38,7 +37,6 @@ export default function ClaimButton({
   const [now, setNow] = useState<number>(() => Date.now());
   const [claiming, setClaiming] = useState(false);
   const [flash, setFlash] = useState<{ kind: "success" | "error"; text: string } | null>(null);
-  const [adSession, setAdSession] = useState<number | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -57,20 +55,15 @@ export default function ClaimButton({
     : 1;
   const ringOffset = RING_CIRC * (1 - cooldownProgress);
 
-  function openAd() {
+  async function handleClaim() {
     if (!canClaim || claiming) return;
-    setFlash(null);
-    setAdSession(Date.now());
-  }
-
-  async function submitClaim(adToken: string) {
     setClaiming(true);
+    setFlash(null);
     try {
       const res = await fetch(`${API_URL}/claim`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", ...(await deviceHeaders()) },
-        body: JSON.stringify({ adToken }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -85,7 +78,6 @@ export default function ClaimButton({
       setFlash({ kind: "error", text: "Network error" });
     } finally {
       setClaiming(false);
-      setAdSession(null);
     }
   }
 
@@ -134,7 +126,7 @@ export default function ClaimButton({
         </svg>
 
         <button
-          onClick={openAd}
+          onClick={handleClaim}
           disabled={!canClaim || claiming}
           aria-label={
             capReached
@@ -216,13 +208,6 @@ export default function ClaimButton({
         </div>
       </div>
 
-      {adSession !== null && (
-        <AdViewer
-          key={adSession}
-          onClose={() => setAdSession(null)}
-          onVerified={(token) => void submitClaim(token)}
-        />
-      )}
     </div>
   );
 }
