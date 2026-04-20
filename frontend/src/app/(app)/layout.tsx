@@ -11,7 +11,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex min-h-screen">
       <DashNav name={me.user.name} role={me.user.role} />
-      <main className="flex-1 flex flex-col overflow-auto">{children}</main>
+      <main
+        id="main"
+        className="flex-1 flex flex-col min-w-0 has-mobile-nav"
+        role="main"
+      >
+        {children}
+      </main>
     </div>
   );
 }

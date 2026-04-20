@@ -3,21 +3,47 @@
 import { useState } from "react";
 import Link from "next/link";
 import ClaimButton from "@/components/ClaimButton";
+import {
+  IconArrowRight,
+  IconCopy,
+  IconCheck,
+  IconUsers,
+  IconSparkles,
+  IconWallet,
+  IconShare,
+  IconTrend,
+} from "@/components/icons";
 
 type PlanConfig = { label: string; ratePerClaim: number; dailyCap: number; price: number };
 
 type Props = {
-  user: { id: string; name: string; balance: number; pendingBalance: number; plan: string; referralCode: string };
+  user: {
+    id: string;
+    name: string;
+    balance: number;
+    pendingBalance: number;
+    plan: string;
+    referralCode: string;
+  };
   plan: PlanConfig;
   lastClaimAt: string | Date | null;
   dailyEarned: number;
   referralCount: number;
 };
 
-export default function DashboardClient({ user, plan, lastClaimAt, dailyEarned, referralCount }: Props) {
+export default function DashboardClient({
+  user,
+  plan,
+  lastClaimAt,
+  dailyEarned,
+  referralCount,
+}: Props) {
   const [balance, setBalance] = useState(user.balance);
   const [todayEarned, setTodayEarned] = useState(dailyEarned);
-  const [lastClaim, setLastClaim] = useState<Date | null>(lastClaimAt ? new Date(lastClaimAt) : null);
+  const [lastClaim, setLastClaim] = useState<Date | null>(
+    lastClaimAt ? new Date(lastClaimAt) : null
+  );
+  const [copied, setCopied] = useState(false);
 
   function handleClaim(amount: number, nextClaimAt: Date) {
     setBalance((b) => parseFloat((b + amount).toFixed(4)));
@@ -26,90 +52,283 @@ export default function DashboardClient({ user, plan, lastClaimAt, dailyEarned, 
     setLastClaim(prev);
   }
 
-  const referralLink = `${typeof window !== "undefined" ? window.location.origin : ""}/register?ref=${user.referralCode}`;
+  const referralLink = `${
+    typeof window !== "undefined" ? window.location.origin : ""
+  }/register?ref=${user.referralCode}`;
+
+  function copy() {
+    navigator.clipboard.writeText(referralLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  const firstName = user.name.split(" ")[0];
+  const balanceReady = balance >= 300;
 
   return (
-    <div className="p-6 max-w-3xl mx-auto w-full">
-      <h1 className="text-2xl font-bold mb-1">Welcome back, {user.name.split(" ")[0]}</h1>
-      <p className="text-sm mb-8" style={{ color: "var(--muted)" }}>
-        Plan: <span className="font-semibold" style={{ color: "var(--gold)" }}>{plan.label}</span>
-        {" · "}Rate: ₱{plan.ratePerClaim}/claim
-        {" · "}Daily cap: ₱{plan.dailyCap}
-      </p>
+    <div className="w-full">
+      {/* =============================================================
+         DESKTOP LAYOUT (≥1024px) — split view: claim + inspector rail
+         ============================================================= */}
+      <div className="hidden lg:block">
+        <div className="mx-auto max-w-[1280px] px-8 py-8">
+          <header className="mb-8 flex items-end justify-between gap-4">
+            <div>
+              <span className="section-title">Dashboard</span>
+              <h1 className="text-3xl font-bold tracking-tight mt-1">
+                Welcome back, {firstName}
+              </h1>
+              <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
+                {plan.label} · ₱{plan.ratePerClaim}/claim · ₱{plan.dailyCap} daily cap
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Link href="/earnings" className="btn btn-secondary btn-sm">
+                <IconTrend size={16} /> View earnings
+              </Link>
+              {balanceReady ? (
+                <Link href="/withdraw" className="btn btn-primary btn-sm">
+                  <IconWallet size={16} /> Withdraw
+                </Link>
+              ) : (
+                <Link href="/plans" className="btn btn-primary btn-sm">
+                  <IconSparkles size={16} /> Upgrade plan
+                </Link>
+              )}
+            </div>
+          </header>
 
-      {/* Balance cards */}
-      <div className="grid grid-cols-2 gap-4 mb-8">
-        <div className="card">
-          <div className="text-xs mb-1" style={{ color: "var(--muted)" }}>Available Balance</div>
-          <div className="text-3xl font-extrabold" style={{ color: "var(--gold)" }}>
-            ₱{balance.toFixed(2)}
+          <div className="grid grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] gap-6">
+            {/* LEFT: claim + KPIs */}
+            <div className="flex flex-col gap-6 min-w-0">
+              <section className="card" style={{ background: "var(--bg-elevated)" }}>
+                <div className="flex flex-col items-center gap-6 py-6">
+                  <div className="text-center">
+                    <span className="section-title">Claim reward</span>
+                    <h2 className="text-xl font-semibold mt-1">Every 10 minutes</h2>
+                  </div>
+                  <ClaimButton
+                    lastClaimAt={lastClaim}
+                    dailyEarned={todayEarned}
+                    dailyCap={plan.dailyCap}
+                    ratePerClaim={plan.ratePerClaim}
+                    onClaim={handleClaim}
+                  />
+                </div>
+              </section>
+
+              <section className="grid grid-cols-3 gap-4">
+                <div className="kpi">
+                  <span className="kpi-label">Available balance</span>
+                  <span className="kpi-value kpi-value-brand">₱{balance.toFixed(2)}</span>
+                  {balanceReady && (
+                    <Link
+                      href="/withdraw"
+                      className="kpi-delta link-brand inline-flex items-center gap-1"
+                    >
+                      Withdraw <IconArrowRight size={12} />
+                    </Link>
+                  )}
+                </div>
+                <div className="kpi">
+                  <span className="kpi-label">Pending commissions</span>
+                  <span className="kpi-value" style={{ color: "var(--text-muted)" }}>
+                    ₱{user.pendingBalance.toFixed(2)}
+                  </span>
+                  <span className="kpi-delta">Clears in 24–72h</span>
+                </div>
+                <div className="kpi">
+                  <span className="kpi-label">Earned today</span>
+                  <span className="kpi-value">₱{todayEarned.toFixed(4)}</span>
+                  <span className="kpi-delta">
+                    ₱{plan.dailyCap.toFixed(2)} daily cap
+                  </span>
+                </div>
+              </section>
+            </div>
+
+            {/* RIGHT: inspector — referral + upgrade */}
+            <aside className="flex flex-col gap-6">
+              <section className="card" style={{ background: "var(--bg-elevated)" }}>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="section-title">Your referral</span>
+                  <span className="badge badge-approved">
+                    <IconUsers size={12} /> {referralCount}
+                  </span>
+                </div>
+                <div className="surface-2 p-3 flex items-center justify-between">
+                  <span className="font-mono font-semibold" style={{ color: "var(--brand)" }}>
+                    {user.referralCode}
+                  </span>
+                  <button
+                    onClick={copy}
+                    className="btn btn-sm btn-ghost"
+                    aria-label="Copy referral link"
+                  >
+                    {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+                    {copied ? "Copied" : "Copy link"}
+                  </button>
+                </div>
+                <p className="text-xs mt-3" style={{ color: "var(--text-muted)" }}>
+                  Earn 10% of every reward your referrals claim — automatically, forever.
+                </p>
+                <Link
+                  href="/referral"
+                  className="mt-4 btn btn-secondary w-full btn-sm"
+                >
+                  <IconShare size={16} /> Manage referrals
+                </Link>
+              </section>
+
+              {user.plan === "free" && (
+                <section
+                  className="card"
+                  style={{
+                    borderColor: "color-mix(in oklab, var(--brand) 35%, var(--border))",
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <span
+                      aria-hidden
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-md"
+                      style={{ background: "var(--brand-weak)", color: "var(--brand)" }}
+                    >
+                      <IconSparkles size={16} />
+                    </span>
+                    <span className="section-title">Upgrade</span>
+                  </div>
+                  <div className="text-lg font-semibold">Earn up to 9× more</div>
+                  <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
+                    Jump to the ₱799 plan: ₱0.045/claim and ₱8 daily cap.
+                  </p>
+                  <Link href="/plans" className="mt-4 btn btn-primary w-full btn-sm">
+                    View plans <IconArrowRight size={14} />
+                  </Link>
+                </section>
+              )}
+            </aside>
           </div>
-          {balance >= 300 && (
-            <Link href="/withdraw" className="text-xs font-semibold mt-2 inline-block hover:underline" style={{ color: "#34d399" }}>
-              Withdraw now →
+        </div>
+      </div>
+
+      {/* =============================================================
+         MOBILE LAYOUT (<1024px) — thumb-first, claim dominates
+         ============================================================= */}
+      <div className="lg:hidden">
+        <div className="px-4 pt-4 pb-6">
+          {/* Greeting + balance hero */}
+          <section className="mb-6">
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+              Hi, {firstName}
+            </p>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-4xl font-bold tabular-nums" style={{ color: "var(--brand)" }}>
+                ₱{balance.toFixed(2)}
+              </span>
+              <span className="text-xs" style={{ color: "var(--text-subtle)" }}>
+                available
+              </span>
+            </div>
+            <div className="mt-1 flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
+              <span>Pending ₱{user.pendingBalance.toFixed(2)}</span>
+              <span aria-hidden>·</span>
+              <span>{plan.label}</span>
+            </div>
+          </section>
+
+          {/* Claim section — hero */}
+          <section
+            className="card mb-6"
+            style={{ background: "var(--bg-elevated)", padding: "1.25rem 1rem 1.5rem" }}
+          >
+            <div className="text-center mb-4">
+              <span className="section-title">Claim reward</span>
+            </div>
+            <ClaimButton
+              lastClaimAt={lastClaim}
+              dailyEarned={todayEarned}
+              dailyCap={plan.dailyCap}
+              ratePerClaim={plan.ratePerClaim}
+              onClaim={handleClaim}
+            />
+          </section>
+
+          {/* Quick stats */}
+          <section className="grid grid-cols-2 gap-3 mb-6">
+            <div className="kpi" style={{ padding: "0.875rem" }}>
+              <span className="kpi-label">Today</span>
+              <span className="kpi-value" style={{ fontSize: "var(--fs-18)" }}>
+                ₱{todayEarned.toFixed(4)}
+              </span>
+            </div>
+            <div className="kpi" style={{ padding: "0.875rem" }}>
+              <span className="kpi-label">Referrals</span>
+              <span className="kpi-value" style={{ fontSize: "var(--fs-18)" }}>
+                {referralCount}
+              </span>
+            </div>
+          </section>
+
+          {/* Referral card */}
+          <section className="card mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span
+                  aria-hidden
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md"
+                  style={{ background: "var(--brand-weak)", color: "var(--brand)" }}
+                >
+                  <IconShare size={16} />
+                </span>
+                <span className="font-semibold">Invite friends</span>
+              </div>
+              <Link href="/referral" className="link-brand text-sm inline-flex items-center gap-1">
+                Manage <IconArrowRight size={12} />
+              </Link>
+            </div>
+            <div className="surface-2 p-3 flex items-center justify-between">
+              <span className="font-mono text-sm font-semibold" style={{ color: "var(--brand)" }}>
+                {user.referralCode}
+              </span>
+              <button
+                onClick={copy}
+                className="btn btn-sm btn-primary"
+                aria-label="Copy referral link"
+              >
+                {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+          </section>
+
+          {/* Upgrade banner */}
+          {user.plan === "free" && (
+            <Link
+              href="/plans"
+              className="card flex items-center gap-3"
+              style={{
+                borderColor: "color-mix(in oklab, var(--brand) 35%, var(--border))",
+                padding: "1rem",
+              }}
+            >
+              <span
+                aria-hidden
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+                style={{ background: "var(--brand-weak)", color: "var(--brand)" }}
+              >
+                <IconSparkles size={20} />
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold">Earn up to 9× more</div>
+                <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  Upgrade to ₱799 plan → ₱0.045/claim
+                </div>
+              </div>
+              <IconArrowRight size={18} style={{ color: "var(--brand)" }} />
             </Link>
           )}
         </div>
-        <div className="card">
-          <div className="text-xs mb-1" style={{ color: "var(--muted)" }}>Pending Balance</div>
-          <div className="text-3xl font-extrabold" style={{ color: "var(--muted)" }}>
-            ₱{user.pendingBalance.toFixed(2)}
-          </div>
-          <div className="text-xs mt-2" style={{ color: "var(--muted)" }}>Referral commissions (24–72h)</div>
-        </div>
       </div>
-
-      {/* Claim section */}
-      <div className="card flex flex-col items-center py-10 mb-8">
-        <h2 className="text-lg font-bold mb-6">Claim Your Reward</h2>
-        <ClaimButton
-          lastClaimAt={lastClaim}
-          dailyEarned={todayEarned}
-          dailyCap={plan.dailyCap}
-          ratePerClaim={plan.ratePerClaim}
-          onClaim={handleClaim}
-        />
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-        <div className="card text-center">
-          <div className="text-2xl font-bold" style={{ color: "var(--gold)" }}>₱{todayEarned.toFixed(4)}</div>
-          <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>Earned Today</div>
-        </div>
-        <div className="card text-center">
-          <div className="text-2xl font-bold">{referralCount}</div>
-          <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>Referrals</div>
-        </div>
-        <div className="card text-center col-span-2 md:col-span-1">
-          <div className="text-sm font-mono font-bold truncate" style={{ color: "var(--gold)" }}>
-            {user.referralCode}
-          </div>
-          <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>Referral Code</div>
-          <button
-            onClick={() => navigator.clipboard.writeText(referralLink)}
-            className="text-xs mt-2 hover:underline"
-            style={{ color: "var(--gold)", background: "none", border: "none", cursor: "pointer" }}
-          >
-            Copy link
-          </button>
-        </div>
-      </div>
-
-      {/* Upgrade CTA */}
-      {user.plan === "free" && (
-        <div className="card flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <div className="font-bold">Earn up to 9× more</div>
-            <div className="text-sm mt-1" style={{ color: "var(--muted)" }}>
-              Upgrade to ₱799 plan for ₱0.045/claim and ₱8 daily cap
-            </div>
-          </div>
-          <Link href="/plans" className="btn-primary text-sm px-4 py-2 shrink-0">
-            View Plans
-          </Link>
-        </div>
-      )}
     </div>
   );
 }

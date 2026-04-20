@@ -2,6 +2,16 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { apiJson } from "@/lib/api";
 import { PLANS } from "@/lib/mining";
+import {
+  IconPickaxe,
+  IconCheck,
+  IconArrowRight,
+  IconBoltSmall,
+  IconUsers,
+  IconWallet,
+  IconClock,
+  IconShield,
+} from "@/components/icons";
 
 type Me = { user: { id: string; name: string; role: string } };
 
@@ -9,122 +19,326 @@ export default async function LandingPage() {
   const me = await apiJson<Me>("/auth/me");
   if (me) redirect("/dashboard");
 
+  const plans = Object.entries(PLANS);
+
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Nav */}
-      <nav className="border-b" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <span className="text-xl font-bold" style={{ color: "var(--gold)" }}>⛏ Minero</span>
-          <div className="flex gap-3">
-            <Link href="/login" className="btn-secondary text-sm px-4 py-2">Login</Link>
-            <Link href="/register" className="btn-primary text-sm px-4 py-2">Get Started</Link>
-          </div>
-        </div>
-      </nav>
-
-      {/* Hero */}
-      <section className="flex flex-col items-center justify-center text-center px-4 py-24">
-        <div
-          className="inline-block text-xs font-semibold px-3 py-1 rounded-full mb-6"
-          style={{ background: "#2d2000", color: "var(--gold)" }}
-        >
-          Powered by Ads · Sustainable by Design
-        </div>
-        <h1 className="text-5xl font-extrabold mb-4 max-w-2xl leading-tight">
-          Earn Real Pesos.<br />
-          <span style={{ color: "var(--gold)" }}>Every 10 Minutes.</span>
-        </h1>
-        <p className="text-lg mb-8 max-w-xl" style={{ color: "var(--muted)" }}>
-          Minero is an ad-funded reward platform. Claim every 10 minutes, invite friends for
-          10% commission, and cash out directly to GCash or Maya.
-        </p>
-        <div className="flex gap-4 flex-wrap justify-center">
-          <Link href="/register" className="btn-primary text-base px-8 py-4">Start Mining Free</Link>
-          <Link href="/login" className="btn-secondary text-base px-8 py-4">Sign In</Link>
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section className="py-16 px-4" style={{ background: "var(--surface)" }}>
-        <div className="max-w-5xl mx-auto">
-          <h2 className="text-3xl font-bold text-center mb-12">How It Works</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              { n: "1", title: "Register Free", desc: "Create your account in 30 seconds. Get your unique referral code instantly." },
-              { n: "2", title: "Claim Every 10 Min", desc: "Hit the claim button, watch a short ad, and earn ₱0.005–₱0.045 per claim." },
-              { n: "3", title: "Cash Out to GCash", desc: "Reach ₱300 minimum and withdraw directly to GCash or Maya within 3–7 days." },
-            ].map((step) => (
-              <div key={step.n} className="card text-center">
-                <div
-                  className="w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4"
-                  style={{ background: "var(--gold)", color: "#000" }}
-                >
-                  {step.n}
-                </div>
-                <h3 className="font-bold text-lg mb-2">{step.title}</h3>
-                <p className="text-sm leading-relaxed" style={{ color: "var(--muted)" }}>{step.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Plans */}
-      <section className="py-16 px-4">
-        <div className="max-w-5xl mx-auto">
-          <h2 className="text-3xl font-bold text-center mb-4">Earning Plans</h2>
-          <p className="text-center mb-12 text-sm" style={{ color: "var(--muted)" }}>
-            Free to start. Upgrade anytime to earn more.
-          </p>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {Object.entries(PLANS).map(([key, plan]) => (
-              <div
-                key={key}
-                className="card flex flex-col gap-3"
-                style={key === "plan799" ? { border: "2px solid var(--gold)" } : {}}
-              >
-                {key === "plan799" && (
-                  <div className="text-xs font-bold text-center py-1 rounded-full" style={{ background: "var(--gold)", color: "#000" }}>
-                    BEST VALUE
-                  </div>
-                )}
-                <div className="font-bold">{plan.label}</div>
-                <div className="text-3xl font-extrabold" style={{ color: "var(--gold)" }}>
-                  {plan.price === 0 ? "Free" : `₱${plan.price}`}
-                </div>
-                <ul className="text-sm space-y-1" style={{ color: "var(--muted)" }}>
-                  <li>₱{plan.ratePerClaim}/claim</li>
-                  <li>₱{plan.dailyCap} daily cap</li>
-                </ul>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Referral */}
-      <section className="py-16 px-4" style={{ background: "var(--surface)" }}>
-        <div className="max-w-3xl mx-auto text-center">
-          <div className="text-5xl mb-4">🤝</div>
-          <h2 className="text-3xl font-bold mb-4">10% Referral Commission</h2>
-          <p className="text-lg mb-6" style={{ color: "var(--muted)" }}>
-            Every time someone you invite earns, you earn 10% of their mining reward —
-            automatically, forever.
-          </p>
-          <Link href="/register" className="btn-primary px-8 py-4 text-base">
-            Get Your Referral Code
+      {/* ======================== Top nav (both breakpoints) ======================== */}
+      <header
+        className="sticky top-0 z-30 border-b"
+        style={{
+          borderColor: "var(--border)",
+          background: "color-mix(in oklab, var(--bg) 85%, transparent)",
+          backdropFilter: "saturate(1.2) blur(10px)",
+        }}
+      >
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+          <Link href="/" className="flex items-center gap-2" aria-label="Minero home">
+            <span
+              aria-hidden
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg"
+              style={{ background: "var(--brand-weak)", color: "var(--brand)" }}
+            >
+              <IconPickaxe size={20} />
+            </span>
+            <span className="text-lg font-semibold tracking-tight">Minero</span>
           </Link>
+
+          <nav className="hidden md:flex items-center gap-1" aria-label="Marketing">
+            <a href="#how" className="btn btn-ghost btn-sm">How it works</a>
+            <a href="#plans" className="btn btn-ghost btn-sm">Plans</a>
+            <a href="#referral" className="btn btn-ghost btn-sm">Referral</a>
+          </nav>
+
+          <div className="flex items-center gap-2">
+            <Link href="/login" className="btn btn-ghost btn-sm hidden sm:inline-flex">
+              Sign in
+            </Link>
+            <Link href="/register" className="btn btn-primary btn-sm">
+              Get started
+              <IconArrowRight size={16} />
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      {/* ======================== Hero ======================== */}
+      <section className="px-4 sm:px-6 pt-10 sm:pt-16 lg:pt-24 pb-16 lg:pb-24">
+        <div className="mx-auto max-w-6xl grid gap-10 lg:grid-cols-[1.1fr_1fr] items-center">
+          <div>
+            <span
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium mb-5"
+              style={{
+                background: "var(--brand-weak)",
+                color: "var(--brand-weak-fg)",
+                border: "1px solid color-mix(in oklab, var(--brand) 25%, transparent)",
+              }}
+            >
+              <IconBoltSmall size={12} />
+              Ad-funded · Sustainable by design
+            </span>
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05]">
+              Earn real pesos,
+              <br />
+              <span style={{ color: "var(--brand)" }}>every 10 minutes.</span>
+            </h1>
+            <p className="mt-5 text-base sm:text-lg max-w-xl" style={{ color: "var(--text-muted)" }}>
+              Minero pays small, steady rewards for watching short ads — and a 10% forever commission on
+              everyone you invite. Cash out to GCash or Maya once you hit ₱300.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Link href="/register" className="btn btn-primary btn-lg">
+                Start mining free
+                <IconArrowRight size={18} />
+              </Link>
+              <Link href="/login" className="btn btn-secondary btn-lg">
+                Sign in
+              </Link>
+            </div>
+            <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm" style={{ color: "var(--text-muted)" }}>
+              {[
+                "No credit card",
+                "₱300 minimum payout",
+                "GCash & Maya supported",
+              ].map((t) => (
+                <li key={t} className="flex items-center gap-1.5">
+                  <IconCheck size={14} style={{ color: "var(--success-fg)" }} />
+                  <span>{t}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Visual preview — functional, not decorative orbs */}
+          <div className="relative hidden lg:block">
+            <div
+              className="card"
+              style={{
+                padding: "1.25rem",
+                background: "var(--bg-elevated)",
+                boxShadow: "var(--shadow-lg)",
+              }}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <span className="section-title">Today</span>
+                <span className="badge badge-approved">Live</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="kpi">
+                  <span className="kpi-label">Available</span>
+                  <span className="kpi-value kpi-value-brand">₱348.22</span>
+                </div>
+                <div className="kpi">
+                  <span className="kpi-label">Today</span>
+                  <span className="kpi-value">₱6.48</span>
+                </div>
+              </div>
+              <div className="mt-4 surface-2 p-4 flex items-center gap-4">
+                <div
+                  className="inline-flex h-14 w-14 items-center justify-center rounded-full"
+                  style={{ background: "var(--brand)", color: "var(--brand-fg)" }}
+                >
+                  <IconPickaxe size={24} />
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-semibold">Claim ready</div>
+                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>₱0.045 per claim</div>
+                </div>
+                <button className="btn btn-primary btn-sm" disabled>Claim</button>
+              </div>
+              <div className="mt-3 text-xs text-center" style={{ color: "var(--text-subtle)" }}>
+                Preview · not interactive
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-8 px-4 text-center text-xs" style={{ color: "var(--muted)", borderTop: "1px solid var(--border)" }}>
-        <div className="flex flex-wrap gap-4 justify-center mb-3">
-          <Link href="/terms" className="hover:underline">Terms of Service</Link>
-          <Link href="/privacy" className="hover:underline">Privacy Policy</Link>
-          <Link href="/disclaimer" className="hover:underline">Earnings Disclaimer</Link>
+      {/* ======================== How it works ======================== */}
+      <section id="how" className="px-4 sm:px-6 py-16 border-t" style={{ borderColor: "var(--border)" }}>
+        <div className="mx-auto max-w-6xl">
+          <div className="max-w-2xl mb-10">
+            <span className="section-title">Getting started</span>
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mt-2">
+              Three steps. No surprises.
+            </h2>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            {[
+              {
+                Icon: IconUsers,
+                title: "Register free",
+                body: "Create your account in 30 seconds. Get a unique referral code the moment you join.",
+              },
+              {
+                Icon: IconClock,
+                title: "Claim every 10 min",
+                body: "Tap claim, watch a short ad, and earn between ₱0.005 and ₱0.045 per claim.",
+              },
+              {
+                Icon: IconWallet,
+                title: "Cash out to GCash",
+                body: "Hit the ₱300 minimum and withdraw directly to GCash or Maya within 3–7 days.",
+              },
+            ].map(({ Icon, title, body }, i) => (
+              <div key={title} className="card card-hover">
+                <div className="flex items-center gap-3 mb-3">
+                  <span
+                    aria-hidden
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg"
+                    style={{ background: "var(--surface-2)", color: "var(--brand)" }}
+                  >
+                    <Icon size={20} />
+                  </span>
+                  <span className="text-xs font-mono" style={{ color: "var(--text-subtle)" }}>
+                    0{i + 1}
+                  </span>
+                </div>
+                <h3 className="font-semibold text-lg mb-1.5">{title}</h3>
+                <p className="text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                  {body}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
-        <p>© 2026 Halvex Inc. · Minero · Earnings are not guaranteed and depend on ad availability and user activity.</p>
+      </section>
+
+      {/* ======================== Plans ======================== */}
+      <section id="plans" className="px-4 sm:px-6 py-16 border-t" style={{ borderColor: "var(--border)" }}>
+        <div className="mx-auto max-w-6xl">
+          <div className="flex flex-wrap items-end justify-between gap-4 mb-10">
+            <div className="max-w-xl">
+              <span className="section-title">Plans</span>
+              <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mt-2">
+                Start free. Upgrade when it pays back.
+              </h2>
+              <p className="mt-2 text-sm" style={{ color: "var(--text-muted)" }}>
+                One-time payment, lifetime access. No subscriptions. No hidden fees.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+            {plans.map(([key, plan]) => {
+              const best = key === "plan799";
+              return (
+                <div
+                  key={key}
+                  className="card card-hover flex flex-col gap-4"
+                  style={best ? { borderColor: "var(--brand)" } : {}}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold">{plan.label}</span>
+                    {best && <span className="badge badge-plan799">Best value</span>}
+                  </div>
+                  <div>
+                    <div className="text-3xl font-bold" style={{ color: "var(--brand)" }}>
+                      {plan.price === 0 ? "Free" : `₱${plan.price}`}
+                    </div>
+                    <div className="text-xs mt-1" style={{ color: "var(--text-subtle)" }}>
+                      {plan.price === 0 ? "Forever" : "One-time · lifetime"}
+                    </div>
+                  </div>
+                  <ul className="space-y-2 text-sm">
+                    <li className="flex items-start gap-2">
+                      <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
+                      <span>₱{plan.ratePerClaim} per 10-min claim</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
+                      <span>₱{plan.dailyCap} daily cap</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
+                      <span>10% referral commission</span>
+                    </li>
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* ======================== Referral ======================== */}
+      <section id="referral" className="px-4 sm:px-6 py-16 border-t" style={{ borderColor: "var(--border)" }}>
+        <div className="mx-auto max-w-6xl grid gap-10 lg:grid-cols-[1fr_1fr] items-center">
+          <div>
+            <span className="section-title">Referral program</span>
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mt-2">
+              10% commission, forever.
+            </h2>
+            <p className="mt-3 text-base" style={{ color: "var(--text-muted)" }}>
+              Every time someone you invite earns, you earn 10% of their mining reward — automatically.
+              No caps, no expiry, no re-enrollment.
+            </p>
+            <Link href="/register" className="mt-6 btn btn-primary btn-lg inline-flex">
+              Get your referral code
+              <IconArrowRight size={18} />
+            </Link>
+          </div>
+          <div className="card" style={{ background: "var(--bg-elevated)" }}>
+            <div className="section-title mb-3">How it works</div>
+            <ol className="space-y-3 text-sm">
+              {[
+                "Share your referral link with friends.",
+                "They register and start mining.",
+                "You earn 10% of each approved claim they make.",
+                "Commissions clear after a 24–72h fraud review.",
+              ].map((step, i) => (
+                <li key={i} className="flex gap-3">
+                  <span
+                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-mono text-xs font-bold"
+                    style={{ background: "var(--brand-weak)", color: "var(--brand-weak-fg)" }}
+                  >
+                    {i + 1}
+                  </span>
+                  <span style={{ color: "var(--text-muted)" }}>{step}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      {/* ======================== Trust / disclaimer ======================== */}
+      <section className="px-4 sm:px-6 py-10 border-t" style={{ borderColor: "var(--border)" }}>
+        <div className="mx-auto max-w-4xl">
+          <div className="alert alert-warning">
+            <IconShield size={18} />
+            <div>
+              <div className="font-semibold mb-1">Earnings are not guaranteed</div>
+              <div className="text-sm" style={{ color: "var(--warning-fg)", opacity: 0.9 }}>
+                Rewards depend on ad availability and your activity. Plans are one-time and non-refundable.
+                Read our{" "}
+                <Link href="/disclaimer" className="underline underline-offset-2">earnings disclaimer</Link>{" "}
+                for full terms.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ======================== Footer ======================== */}
+      <footer className="mt-auto px-4 sm:px-6 py-8 border-t" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
+        <div className="mx-auto max-w-6xl flex flex-wrap items-center justify-between gap-4 text-xs">
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden
+              className="inline-flex h-6 w-6 items-center justify-center rounded"
+              style={{ background: "var(--brand-weak)", color: "var(--brand)" }}
+            >
+              <IconPickaxe size={14} />
+            </span>
+            <span>© 2026 Halvex Inc. · Minero</span>
+          </div>
+          <div className="flex flex-wrap gap-4">
+            <Link href="/terms" className="hover:underline underline-offset-2">Terms</Link>
+            <Link href="/privacy" className="hover:underline underline-offset-2">Privacy</Link>
+            <Link href="/disclaimer" className="hover:underline underline-offset-2">Disclaimer</Link>
+          </div>
+        </div>
       </footer>
     </div>
   );
