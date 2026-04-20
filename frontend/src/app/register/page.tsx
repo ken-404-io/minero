@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { API_URL } from "@/lib/api-url";
 import { deviceHeaders } from "@/lib/device";
 import OAuthButtons from "@/components/OAuthButtons";
+import MiningAnimation from "@/components/MiningAnimation";
 import {
   IconPickaxe,
   IconMail,
@@ -19,6 +20,8 @@ import {
   IconCheck,
 } from "@/components/icons";
 
+type RegisterFields = "name" | "email" | "password" | "referralCode";
+
 function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -28,18 +31,38 @@ function RegisterForm() {
     password: "",
     referralCode: searchParams.get("ref") ?? "",
   });
-  const [error, setError] = useState<string | Record<string, string[]>>("");
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<RegisterFields, string>>>({});
+  const [submitError, setSubmitError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw] = useState(false);
 
-  function set(field: string, val: string) {
+  function set(field: RegisterFields, val: string) {
     setForm((f) => ({ ...f, [field]: val }));
+    if (fieldErrors[field]) {
+      setFieldErrors((fe) => ({ ...fe, [field]: undefined }));
+    }
+  }
+
+  function validate() {
+    const next: Partial<Record<RegisterFields, string>> = {};
+    if (!form.name.trim()) next.name = "Full name is required";
+    else if (form.name.trim().length < 2) next.name = "Name is too short";
+
+    if (!form.email.trim()) next.email = "Email is required";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) next.email = "Enter a valid email";
+
+    if (!form.password) next.password = "Password is required";
+    else if (form.password.length < 8) next.password = "Must be at least 8 characters";
+
+    setFieldErrors(next);
+    return Object.keys(next).length === 0;
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!validate()) return;
     setLoading(true);
-    setError("");
+    setSubmitError("");
     try {
       const res = await fetch(`${API_URL}/auth/register`, {
         method: "POST",
@@ -49,19 +72,29 @@ function RegisterForm() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Registration failed");
+        if (data.error && typeof data.error === "object") {
+          // backend returned zod field errors — map them to fieldErrors
+          const mapped: Partial<Record<RegisterFields, string>> = {};
+          for (const [k, v] of Object.entries(data.error)) {
+            if (Array.isArray(v) && v.length > 0) {
+              mapped[k as RegisterFields] = String(v[0]);
+            }
+          }
+          setFieldErrors(mapped);
+        } else {
+          setSubmitError(typeof data.error === "string" ? data.error : "Registration failed");
+        }
       } else {
         router.push("/dashboard");
         router.refresh();
       }
     } catch {
-      setError("Network error. Try again.");
+      setSubmitError("Network error. Try again.");
     } finally {
       setLoading(false);
     }
   }
 
-  const errorStr = typeof error === "string" ? error : Object.values(error).flat().join(", ");
   const pwStrong = form.password.length >= 8;
 
   return (
@@ -83,7 +116,8 @@ function RegisterForm() {
         </Link>
 
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Earn real pesos.</h2>
+          <MiningAnimation />
+          <h2 className="text-3xl font-bold tracking-tight mt-6">Earn real pesos.</h2>
           <p className="mt-3 text-base max-w-md" style={{ color: "var(--text-muted)" }}>
             Register in 30 seconds. Claim every 10 minutes. Cash out to GCash or Maya.
           </p>
@@ -125,14 +159,14 @@ function RegisterForm() {
             Start mining in under a minute.
           </p>
 
-          {errorStr && (
+          {submitError && (
             <div className="alert alert-danger mb-4" role="alert">
               <IconError size={16} />
-              <span>{errorStr}</span>
+              <span>{submitError}</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} noValidate className="space-y-4">
             <div>
               <label htmlFor="name" className="input-label">Full name</label>
               <div className="relative">
@@ -145,14 +179,17 @@ function RegisterForm() {
                   className="input"
                   style={{ paddingLeft: 36 }}
                   type="text"
-                  required
-                  minLength={2}
                   value={form.name}
                   onChange={(e) => set("name", e.target.value)}
                   placeholder="Juan dela Cruz"
                   autoComplete="name"
+                  aria-invalid={!!fieldErrors.name}
+                  aria-describedby={fieldErrors.name ? "name-error" : undefined}
                 />
               </div>
+              {fieldErrors.name && (
+                <p id="name-error" className="input-error" role="alert">{fieldErrors.name}</p>
+              )}
             </div>
             <div>
               <label htmlFor="email" className="input-label">Email</label>
@@ -166,13 +203,17 @@ function RegisterForm() {
                   className="input"
                   style={{ paddingLeft: 36 }}
                   type="email"
-                  required
                   value={form.email}
                   onChange={(e) => set("email", e.target.value)}
                   placeholder="you@example.com"
                   autoComplete="email"
+                  aria-invalid={!!fieldErrors.email}
+                  aria-describedby={fieldErrors.email ? "email-error" : undefined}
                 />
               </div>
+              {fieldErrors.email && (
+                <p id="email-error" className="input-error" role="alert">{fieldErrors.email}</p>
+              )}
             </div>
             <div>
               <label htmlFor="password" className="input-label">Password</label>
@@ -186,13 +227,12 @@ function RegisterForm() {
                   className="input"
                   style={{ paddingLeft: 36, paddingRight: 44 }}
                   type={showPw ? "text" : "password"}
-                  required
-                  minLength={8}
                   value={form.password}
                   onChange={(e) => set("password", e.target.value)}
                   placeholder="At least 8 characters"
                   autoComplete="new-password"
-                  aria-describedby="pw-help"
+                  aria-invalid={!!fieldErrors.password}
+                  aria-describedby={fieldErrors.password ? "password-error" : "pw-help"}
                 />
                 <button
                   type="button"
@@ -204,7 +244,9 @@ function RegisterForm() {
                   {showPw ? <IconEyeOff size={16} /> : <IconEye size={16} />}
                 </button>
               </div>
-              {form.password.length > 0 && (
+              {fieldErrors.password ? (
+                <p id="password-error" className="input-error" role="alert">{fieldErrors.password}</p>
+              ) : form.password.length > 0 ? (
                 <div
                   id="pw-help"
                   className="flex items-center gap-1.5 mt-1.5 text-xs"
@@ -213,7 +255,7 @@ function RegisterForm() {
                   {pwStrong ? <IconCheck size={12} /> : <span aria-hidden>·</span>}
                   {pwStrong ? "Looks good" : "Minimum 8 characters"}
                 </div>
-              )}
+              ) : null}
             </div>
             <div>
               <label htmlFor="referralCode" className="input-label">

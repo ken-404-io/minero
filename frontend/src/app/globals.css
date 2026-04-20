@@ -324,6 +324,26 @@ textarea:focus-visible,
 }
 .input:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.input.is-invalid,
+.input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.input.is-invalid:focus,
+.input[aria-invalid="true"]:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--danger) 30%, transparent);
+}
+
+.input-error {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: var(--fs-12);
+  color: var(--danger-fg);
+  margin-top: 0.375rem;
+  font-weight: 500;
+}
+
 .input-label {
   display: block;
   font-size: var(--fs-14);
@@ -627,3 +647,187 @@ kbd {
   100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--brand) 0%, transparent); }
 }
 .claim-pulse { animation: claimPulse 2s var(--ease-out) infinite; }
+
+/* ============================================================
+   Mining animation (login / register brand panel)
+   Cycle:  0s start  → 0.7s pickaxe impact → 1.2s coins drop → 2.4s reset
+   ============================================================ */
+.mine-anim {
+  position: relative;
+  width: 280px;
+  height: 280px;
+  margin: 0 auto;
+  user-select: none;
+}
+
+/* Ground line under the ore */
+.mine-anim__ground {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 34px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--border-strong) 25%,
+    var(--border-strong) 75%,
+    transparent
+  );
+}
+
+/* Ore block — isometric-ish rectangle */
+.mine-anim__ore {
+  position: absolute;
+  left: 50%;
+  bottom: 36px;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 72px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+.mine-anim__ore-top {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 14px;
+  background: color-mix(in oklab, var(--brand) 16%, var(--surface-3));
+  border-bottom: 1px solid var(--border-strong);
+}
+.mine-anim__ore-face {
+  position: absolute;
+  inset: 14px 0 0 0;
+  background:
+    radial-gradient(circle at 20% 30%, color-mix(in oklab, var(--brand) 30%, transparent) 0 2px, transparent 3px),
+    radial-gradient(circle at 70% 55%, color-mix(in oklab, var(--brand) 30%, transparent) 0 2px, transparent 3px),
+    radial-gradient(circle at 40% 72%, color-mix(in oklab, var(--brand) 25%, transparent) 0 1.5px, transparent 2.5px),
+    radial-gradient(circle at 85% 20%, color-mix(in oklab, var(--brand) 25%, transparent) 0 1.5px, transparent 2.5px);
+}
+.mine-anim__ore-crack {
+  position: absolute;
+  width: 2px;
+  height: 0;
+  background: var(--brand);
+  opacity: 0;
+  animation: mineCrack 2.4s var(--ease-out) infinite;
+}
+.mine-anim__ore-crack--1 {
+  top: 18px;
+  left: 38%;
+  transform: rotate(18deg);
+  animation-delay: 0s;
+}
+.mine-anim__ore-crack--2 {
+  top: 20px;
+  left: 56%;
+  transform: rotate(-12deg);
+  animation-delay: 0.15s;
+}
+@keyframes mineCrack {
+  0%, 28% { height: 0; opacity: 0; }
+  32%     { height: 22px; opacity: 0.9; }
+  70%     { height: 22px; opacity: 0.6; }
+  100%    { height: 0; opacity: 0; }
+}
+
+/* Pickaxe — pivot at handle end, swing in an arc */
+.mine-anim__pickaxe {
+  position: absolute;
+  top: 40px;
+  left: 50%;
+  width: 56px;
+  height: 56px;
+  margin-left: -28px;
+  color: var(--brand);
+  transform-origin: 90% 90%;
+  animation: mineSwing 2.4s var(--ease-out) infinite;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+}
+@keyframes mineSwing {
+  0%   { transform: rotate(-55deg); }
+  30%  { transform: rotate(-55deg); }
+  45%  { transform: rotate(18deg); }
+  52%  { transform: rotate(12deg); }
+  60%  { transform: rotate(14deg); }
+  100% { transform: rotate(-55deg); }
+}
+
+/* Spark rays at impact — tiny bars radiating outward */
+.mine-anim__spark {
+  position: absolute;
+  top: 128px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.mine-anim__spark span {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 16px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--brand);
+  transform-origin: 0 50%;
+  opacity: 0;
+  animation: mineSpark 2.4s var(--ease-out) infinite;
+}
+.mine-anim__spark span:nth-child(1) { transform: rotate(-70deg); }
+.mine-anim__spark span:nth-child(2) { transform: rotate(-30deg); }
+.mine-anim__spark span:nth-child(3) { transform: rotate(30deg); }
+.mine-anim__spark span:nth-child(4) { transform: rotate(70deg); }
+@keyframes mineSpark {
+  0%, 42% { opacity: 0; width: 0; }
+  45%     { opacity: 1; width: 18px; }
+  55%     { opacity: 0; width: 22px; }
+  100%    { opacity: 0; width: 22px; }
+}
+
+/* Coins that drop after each strike */
+.mine-anim__coins {
+  position: absolute;
+  top: 130px;
+  left: 50%;
+  width: 0;
+  height: 0;
+}
+.mine-anim__coin {
+  position: absolute;
+  top: 0; left: 0;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: var(--brand-fg);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    inset 0 -2px 0 color-mix(in oklab, var(--brand) 70%, #000),
+    0 2px 4px rgba(0,0,0,0.25);
+  opacity: 0;
+  animation: mineCoin 2.4s var(--ease-out) infinite;
+}
+.mine-anim__coin--a { animation-delay: 0s;    --cx: -30px; --cr: -20deg; }
+.mine-anim__coin--b { animation-delay: 0.08s; --cx:   0px; --cr:   0deg; }
+.mine-anim__coin--c { animation-delay: 0.15s; --cx:  30px; --cr:  18deg; }
+@keyframes mineCoin {
+  0%, 48% { opacity: 0; transform: translate(0, 0) scale(0.6) rotate(0deg); }
+  52%     { opacity: 1; transform: translate(0, 4px) scale(1) rotate(0deg); }
+  85%     { opacity: 1; transform: translate(var(--cx), 80px) scale(1) rotate(var(--cr)); }
+  100%    { opacity: 0; transform: translate(var(--cx), 100px) scale(0.9) rotate(var(--cr)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mine-anim__pickaxe,
+  .mine-anim__spark span,
+  .mine-anim__coin,
+  .mine-anim__ore-crack { animation: none !important; }
+}
