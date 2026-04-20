@@ -9,7 +9,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!me) redirect("/login");
 
   return (
-    <div className="flex min-h-screen">
+    <div className="min-h-screen lg:flex">
       <DashNav name={me.user.name} role={me.user.role} />
       <main
         id="main"
