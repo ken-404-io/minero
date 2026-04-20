@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { CLAIM_INTERVAL_MS } from "@/lib/mining";
 import { API_URL } from "@/lib/api-url";
 import { deviceHeaders } from "@/lib/device";
@@ -34,14 +34,21 @@ export default function ClaimButton({
   ratePerClaim,
   onClaim,
 }: Props) {
-  const [now, setNow] = useState<number>(() => Date.now());
   const [claiming, setClaiming] = useState(false);
   const [flash, setFlash] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  // Use useSyncExternalStore so the server renders a deterministic snapshot
+  // (0 = "just clicked, full cooldown") and the client subscribes to a real
+  // clock after hydration. Prevents the SSR/client hydration mismatch that
+  // `useState(() => Date.now())` caused.
+  const now = useSyncExternalStore(
+    (onChange) => {
+      const id = setInterval(onChange, 1000);
+      return () => clearInterval(id);
+    },
+    () => Date.now(),
+    () => (lastClaimAt ? new Date(lastClaimAt).getTime() : 0),
+  );
 
   const countdown = lastClaimAt
     ? Math.max(0, CLAIM_INTERVAL_MS - (now - new Date(lastClaimAt).getTime()))

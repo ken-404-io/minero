@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { API_URL } from "@/lib/api-url";
 import { deviceHeaders } from "@/lib/device";
+import OAuthButtons from "@/components/OAuthButtons";
 import {
   IconPickaxe,
   IconMail,
@@ -243,6 +244,10 @@ function RegisterForm() {
               )}
             </button>
           </form>
+
+          <div className="mt-5">
+            <OAuthButtons referralCode={form.referralCode || undefined} />
+          </div>
 
           <p className="text-xs text-center mt-4" style={{ color: "var(--text-subtle)" }}>
             By registering you agree to our{" "}

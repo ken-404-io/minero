@@ -10,7 +10,7 @@ datasource db {
 model User {
   id             String   @id @default(cuid())
   email          String   @unique
-  passwordHash   String
+  passwordHash   String?  // nullable — OAuth-only accounts never set one
   name           String
   balance        Float    @default(0)
   pendingBalance Float    @default(0)
@@ -22,8 +22,13 @@ model User {
   signupIp       String?
   signupDevice   String?
   lastDeviceHash String?
+  authProvider   String?  // "google" | "facebook" | null (email/password)
+  authProviderId String?  // provider's stable user id (sub / id)
+  avatarUrl      String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  @@unique([authProvider, authProviderId])
 
   claims           Claim[]
   earnings         Earning[]

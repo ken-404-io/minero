@@ -46,6 +46,13 @@ authRoutes.post("/login", async (c) => {
   }
   if (user.frozen) return c.json({ error: "Account suspended" }, 403);
 
+  if (!user.passwordHash) {
+    // OAuth-only account — no password set.
+    return c.json(
+      { error: `This account uses ${user.authProvider ?? "another provider"} sign-in` },
+      400,
+    );
+  }
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) return c.json({ error: "Invalid credentials" }, 401);
 
