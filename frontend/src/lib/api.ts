@@ -34,9 +34,14 @@ export async function apiFetch(
 }
 
 export async function apiJson<T>(path: string, init?: RequestInit): Promise<T | null> {
-  const res = await apiFetch(path, init);
-  if (!res.ok) return null;
-  return (await res.json()) as T;
+  try {
+    const res = await apiFetch(path, init);
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch (err) {
+    console.warn(`[apiJson] ${path} failed:`, err instanceof Error ? err.message : err);
+    return null;
+  }
 }
 
 /**
