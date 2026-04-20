@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { API_URL } from "@/lib/api-url";
-import { IconGoogle, IconFacebook } from "@/components/brand-icons";
+import { IconGoogle, IconFacebook, IconGithub } from "@/components/brand-icons";
 
 type Props = {
   /** Optional referral code to carry through OAuth state. */
@@ -12,13 +12,15 @@ type Props = {
 type ProviderInfo = { name: string; available: boolean };
 
 const LABELS: Record<string, { name: string; Icon: typeof IconGoogle }> = {
-  google: { name: "Google", Icon: IconGoogle },
+  google:   { name: "Google",   Icon: IconGoogle },
   facebook: { name: "Facebook", Icon: IconFacebook },
+  github:   { name: "GitHub",   Icon: IconGithub },
 };
 
 const FALLBACK: ProviderInfo[] = [
-  { name: "google", available: false },
+  { name: "google",   available: false },
   { name: "facebook", available: false },
+  { name: "github",   available: false },
 ];
 
 export default function OAuthButtons({ referralCode }: Props) {
@@ -56,10 +58,7 @@ export default function OAuthButtons({ referralCode }: Props) {
         <span>or continue with</span>
         <span className="h-px flex-1" style={{ background: "var(--border)" }} />
       </div>
-      <div
-        className="grid gap-2"
-        style={{ gridTemplateColumns: `repeat(${providers.length}, minmax(0, 1fr))` }}
-      >
+      <div className="flex flex-col gap-2">
         {providers.map((p) => {
           const meta = LABELS[p.name];
           if (!meta) return null;
