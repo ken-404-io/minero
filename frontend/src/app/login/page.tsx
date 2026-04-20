@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { API_URL } from "@/lib/api-url";
 import { deviceHeaders } from "@/lib/device";
 import OAuthButtons from "@/components/OAuthButtons";
+import MiningAnimation from "@/components/MiningAnimation";
 import {
   IconPickaxe,
   IconMail,
@@ -36,17 +37,31 @@ function LoginInner() {
   const searchParams = useSearchParams();
   const oauthError = humanizeOAuthError(searchParams.get("error"));
   const [form, setForm] = useState({ email: "", password: "" });
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [submitError, setSubmitError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw] = useState(false);
-  const error = submitError || oauthError || "";
+  const bannerError = submitError || oauthError || "";
 
-  function set(field: string, val: string) {
+  function set(field: "email" | "password", val: string) {
     setForm((f) => ({ ...f, [field]: val }));
+    if (fieldErrors[field]) {
+      setFieldErrors((fe) => ({ ...fe, [field]: undefined }));
+    }
+  }
+
+  function validate() {
+    const next: { email?: string; password?: string } = {};
+    if (!form.email.trim()) next.email = "Email is required";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) next.email = "Enter a valid email";
+    if (!form.password) next.password = "Password is required";
+    setFieldErrors(next);
+    return Object.keys(next).length === 0;
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!validate()) return;
     setLoading(true);
     setSubmitError("");
     try {
@@ -89,7 +104,8 @@ function LoginInner() {
         </Link>
 
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Welcome back.</h2>
+          <MiningAnimation />
+          <h2 className="text-3xl font-bold tracking-tight mt-6">Welcome back.</h2>
           <p className="mt-3 text-base max-w-md" style={{ color: "var(--text-muted)" }}>
             Sign in to continue mining. Your balance and referrals are waiting for you.
           </p>
@@ -136,14 +152,14 @@ function LoginInner() {
             Enter your credentials to continue.
           </p>
 
-          {error && (
+          {bannerError && (
             <div className="alert alert-danger mb-4" role="alert">
               <IconError size={16} />
-              <span>{error}</span>
+              <span>{bannerError}</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} noValidate className="space-y-4">
             <div>
               <label htmlFor="email" className="input-label">Email</label>
               <div className="relative">
@@ -156,13 +172,19 @@ function LoginInner() {
                   className="input"
                   style={{ paddingLeft: 36 }}
                   type="email"
-                  required
                   value={form.email}
                   onChange={(e) => set("email", e.target.value)}
                   placeholder="you@example.com"
                   autoComplete="email"
+                  aria-invalid={!!fieldErrors.email}
+                  aria-describedby={fieldErrors.email ? "email-error" : undefined}
                 />
               </div>
+              {fieldErrors.email && (
+                <p id="email-error" className="input-error" role="alert">
+                  {fieldErrors.email}
+                </p>
+              )}
             </div>
             <div>
               <label htmlFor="password" className="input-label">Password</label>
@@ -176,11 +198,12 @@ function LoginInner() {
                   className="input"
                   style={{ paddingLeft: 36, paddingRight: 44 }}
                   type={showPw ? "text" : "password"}
-                  required
                   value={form.password}
                   onChange={(e) => set("password", e.target.value)}
                   placeholder="••••••••"
                   autoComplete="current-password"
+                  aria-invalid={!!fieldErrors.password}
+                  aria-describedby={fieldErrors.password ? "password-error" : undefined}
                 />
                 <button
                   type="button"
@@ -192,6 +215,11 @@ function LoginInner() {
                   {showPw ? <IconEyeOff size={16} /> : <IconEye size={16} />}
                 </button>
               </div>
+              {fieldErrors.password && (
+                <p id="password-error" className="input-error" role="alert">
+                  {fieldErrors.password}
+                </p>
+              )}
             </div>
             <button className="btn btn-primary w-full btn-lg" type="submit" disabled={loading}>
               {loading ? "Signing in…" : (
