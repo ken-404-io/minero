@@ -8,6 +8,17 @@ import {
   requireAuth,
   setSessionCookie,
 } from "../lib/session.js";
+import {
+  issueRefreshToken,
+  revokeRefreshToken,
+  rotateRefreshToken,
+  clearRefreshCookie,
+  setRefreshCookie,
+  readRefreshCookie,
+} from "../lib/refresh.js";
+import { getConfig } from "../lib/config.js";
+import { getClientIp, getDeviceHash } from "../lib/request.js";
+import { raiseAlert } from "../lib/fraud.js";
 
 export const authRoutes = new Hono();
 
@@ -41,6 +52,21 @@ authRoutes.post("/login", async (c) => {
   const token = await createSession({ userId: user.id, role: user.role });
   setSessionCookie(c, token);
 
+  const refresh = await issueRefreshToken({
+    userId: user.id,
+    ip: getClientIp(c),
+    userAgent: c.req.header("user-agent") ?? null,
+  });
+  setRefreshCookie(c, refresh.token);
+
+  const deviceHash = getDeviceHash(c);
+  if (deviceHash) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastDeviceHash: deviceHash },
+    });
+  }
+
   return c.json({
     user: { id: user.id, name: user.name, email: user.email, role: user.role },
   });
@@ -67,14 +93,65 @@ authRoutes.post("/register", async (c) => {
   }
 
   const { name, email, password, referralCode } = parsed.data;
+  const ip = getClientIp(c);
+  const deviceHash = getDeviceHash(c);
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) return c.json({ error: "Email already registered" }, 409);
 
   let referrerId: string | undefined;
+  let referralIgnoredReason: string | null = null;
+
   if (referralCode) {
-    const referrer = await prisma.user.findUnique({ where: { referralCode } });
-    if (referrer && !referrer.frozen) referrerId = referrer.id;
+    const referrer = await prisma.user.findUnique({
+      where: { referralCode },
+      select: { id: true, frozen: true },
+    });
+
+    if (!referrer || referrer.frozen) {
+      referralIgnoredReason = "referrer_unavailable";
+    } else {
+      const cfg = await getConfig();
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const todayReferrals = await prisma.referral.count({
+        where: { referrerId: referrer.id, createdAt: { gte: startOfDay } },
+      });
+      if (todayReferrals >= cfg.maxReferralsPerDay) {
+        referralIgnoredReason = "daily_cap";
+        await raiseAlert({
+          userId: referrer.id,
+          type: "referral_cap_hit",
+          severity: "low",
+          details: { attemptedBy: email, todayReferrals },
+        });
+      } else {
+        const dupeConditions: object[] = [];
+        if (deviceHash) dupeConditions.push({ signupDevice: deviceHash });
+        if (ip && ip !== "unknown") dupeConditions.push({ signupIp: ip });
+
+        const dupe =
+          dupeConditions.length > 0
+            ? await prisma.user.findFirst({
+                where: { OR: dupeConditions },
+                select: { id: true },
+              })
+            : null;
+
+        if (dupe) {
+          referralIgnoredReason = "duplicate_account";
+          await raiseAlert({
+            userId: referrer.id,
+            type: "multi_account_signup",
+            severity: "high",
+            details: { attemptedBy: email, existingUserId: dupe.id, ip, deviceHash },
+          });
+        } else {
+          referrerId = referrer.id;
+        }
+      }
+    }
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
@@ -84,7 +161,16 @@ authRoutes.post("/register", async (c) => {
   }
 
   const user = await prisma.user.create({
-    data: { name, email, passwordHash, referralCode: code, referredBy: referrerId },
+    data: {
+      name,
+      email,
+      passwordHash,
+      referralCode: code,
+      referredBy: referrerId,
+      signupIp: ip === "unknown" ? null : ip,
+      signupDevice: deviceHash,
+      lastDeviceHash: deviceHash,
+    },
   });
 
   if (referrerId) {
@@ -93,14 +179,46 @@ authRoutes.post("/register", async (c) => {
 
   const token = await createSession({ userId: user.id, role: user.role });
   setSessionCookie(c, token);
+  const refresh = await issueRefreshToken({
+    userId: user.id,
+    ip,
+    userAgent: c.req.header("user-agent") ?? null,
+  });
+  setRefreshCookie(c, refresh.token);
 
   return c.json({
     user: { id: user.id, name: user.name, email: user.email, role: user.role },
+    referralApplied: !!referrerId,
+    referralIgnoredReason,
   });
 });
 
 authRoutes.post("/logout", async (c) => {
+  const rt = readRefreshCookie(c);
+  if (rt) await revokeRefreshToken(rt);
   clearSessionCookie(c);
+  clearRefreshCookie(c);
+  return c.json({ ok: true });
+});
+
+authRoutes.post("/refresh", async (c) => {
+  const rt = readRefreshCookie(c);
+  if (!rt) return c.json({ error: "Missing refresh token" }, 401);
+
+  const rotated = await rotateRefreshToken({
+    token: rt,
+    ip: getClientIp(c),
+    userAgent: c.req.header("user-agent") ?? null,
+  });
+  if (!rotated.ok) {
+    clearSessionCookie(c);
+    clearRefreshCookie(c);
+    return c.json({ error: rotated.reason }, 401);
+  }
+
+  const access = await createSession({ userId: rotated.userId, role: rotated.role });
+  setSessionCookie(c, access);
+  setRefreshCookie(c, rotated.token);
   return c.json({ ok: true });
 });
 

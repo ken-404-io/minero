@@ -52,7 +52,9 @@ export default function PlansClient({ currentPlan, plans }: Props) {
       });
       const data = await res.json();
       if (res.ok) {
-        setSuccess(`Successfully upgraded to ${data.label}.`);
+        setSuccess(
+          `Upgrade to ${data.label} submitted. Your plan will activate once our team verifies your payment (usually within 24 hours).`,
+        );
         setSelectedPlan(null);
         setPaymentRef("");
         router.refresh();

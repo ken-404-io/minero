@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { API_URL } from "@/lib/api-url";
+import { deviceHeaders } from "@/lib/device";
 import {
   IconPickaxe,
   IconMail,
@@ -33,7 +34,7 @@ export default function LoginPage() {
       const res = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await deviceHeaders()) },
         body: JSON.stringify(form),
       });
       const data = await res.json();

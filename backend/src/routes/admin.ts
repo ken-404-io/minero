@@ -2,9 +2,18 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { prisma } from "../lib/db.js";
 import { requireAdmin } from "../lib/session.js";
-import { REFERRAL_APPROVAL_WINDOW_MS } from "../lib/mining.js";
+import {
+  getConfig,
+  setConfigValue,
+  DEFAULTS,
+  type PlanConfigMap,
+} from "../lib/config.js";
 
 export const adminRoutes = new Hono();
+
+// ============================================================
+//  Stats / revenue dashboard
+// ============================================================
 
 adminRoutes.get("/stats", async (c) => {
   const guard = requireAdmin(c);
@@ -17,13 +26,21 @@ adminRoutes.get("/stats", async (c) => {
 
   const [
     totalUsers,
+    frozenUsers,
     totalPaidOut,
     pendingWithdrawals,
     pendingWithdrawalAmount,
     todayPayouts,
     monthPayouts,
+    openAlerts,
+    pendingPlans,
+    todayImpressions,
+    monthImpressions,
+    todayRevenue,
+    monthRevenue,
   ] = await Promise.all([
     prisma.user.count(),
+    prisma.user.count({ where: { frozen: true } }),
     prisma.withdrawal.aggregate({ where: { status: "approved" }, _sum: { amount: true } }),
     prisma.withdrawal.count({ where: { status: "pending" } }),
     prisma.withdrawal.aggregate({ where: { status: "pending" }, _sum: { amount: true } }),
@@ -34,6 +51,18 @@ adminRoutes.get("/stats", async (c) => {
     prisma.earning.aggregate({
       where: { createdAt: { gte: startOfMonth }, status: "approved" },
       _sum: { amount: true },
+    }),
+    prisma.fraudAlert.count({ where: { status: "open" } }),
+    prisma.planLog.count({ where: { status: "pending" } }),
+    prisma.adImpression.count({ where: { createdAt: { gte: startOfDay } } }),
+    prisma.adImpression.count({ where: { createdAt: { gte: startOfMonth } } }),
+    prisma.adImpression.aggregate({
+      where: { createdAt: { gte: startOfDay } },
+      _sum: { estimatedRevenue: true },
+    }),
+    prisma.adImpression.aggregate({
+      where: { createdAt: { gte: startOfMonth } },
+      _sum: { estimatedRevenue: true },
     }),
   ]);
 
@@ -49,17 +78,36 @@ adminRoutes.get("/stats", async (c) => {
     orderBy: { plan: "asc" },
   });
 
+  const todayPayoutTotal = todayPayouts._sum.amount ?? 0;
+  const todayRevenueTotal = todayRevenue._sum.estimatedRevenue ?? 0;
+  const monthPayoutTotal = monthPayouts._sum.amount ?? 0;
+  const monthRevenueTotal = monthRevenue._sum.estimatedRevenue ?? 0;
+
   return c.json({
     totalUsers,
+    frozenUsers,
     activeToday: activeTodayGroups.length,
     totalPaidOut: totalPaidOut._sum.amount ?? 0,
     pendingWithdrawals,
     pendingWithdrawalAmount: pendingWithdrawalAmount._sum.amount ?? 0,
-    todayPayouts: todayPayouts._sum.amount ?? 0,
-    monthPayouts: monthPayouts._sum.amount ?? 0,
+    pendingPlans,
+    openAlerts,
+    todayPayouts: todayPayoutTotal,
+    monthPayouts: monthPayoutTotal,
+    todayImpressions,
+    monthImpressions,
+    todayRevenue: todayRevenueTotal,
+    monthRevenue: monthRevenueTotal,
+    todayMargin: todayRevenueTotal - todayPayoutTotal,
+    todayRevenueToPayoutRatio:
+      todayPayoutTotal > 0 ? todayRevenueTotal / todayPayoutTotal : null,
     planDistribution,
   });
 });
+
+// ============================================================
+//  Users
+// ============================================================
 
 adminRoutes.get("/users", async (c) => {
   const guard = requireAdmin(c);
@@ -136,6 +184,10 @@ adminRoutes.patch("/users/:id", async (c) => {
 
   return c.json({ user });
 });
+
+// ============================================================
+//  Withdrawals
+// ============================================================
 
 adminRoutes.get("/withdrawals", async (c) => {
   const guard = requireAdmin(c);
@@ -217,7 +269,8 @@ adminRoutes.post("/referrals/approve", async (c) => {
   const guard = requireAdmin(c);
   if (guard instanceof Response) return guard;
 
-  const cutoff = new Date(Date.now() - REFERRAL_APPROVAL_WINDOW_MS);
+  const cfg = await getConfig();
+  const cutoff = new Date(Date.now() - cfg.referralApprovalWindowMs);
 
   const pendingCommissions = await prisma.earning.findMany({
     where: { type: "referral", status: "pending", createdAt: { lte: cutoff } },
@@ -241,4 +294,239 @@ adminRoutes.post("/referrals/approve", async (c) => {
   );
 
   return c.json({ approved: pendingCommissions.length });
+});
+
+// ============================================================
+//  Fraud alerts
+// ============================================================
+
+adminRoutes.get("/fraud-alerts", async (c) => {
+  const guard = requireAdmin(c);
+  if (guard instanceof Response) return guard;
+
+  const status = c.req.query("status") ?? "open";
+  const page = Math.max(1, parseInt(c.req.query("page") ?? "1"));
+  const limit = 20;
+  const where = status === "all" ? {} : { status };
+
+  const [alerts, total] = await prisma.$transaction([
+    prisma.fraudAlert.findMany({
+      where,
+      include: { user: { select: { id: true, name: true, email: true, frozen: true } } },
+      orderBy: [{ severity: "desc" }, { createdAt: "desc" }],
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.fraudAlert.count({ where }),
+  ]);
+
+  return c.json({ alerts, total, page, pages: Math.ceil(total / limit) });
+});
+
+const alertResolveSchema = z.object({
+  action: z.enum(["resolve", "dismiss", "freeze_user"]),
+  adminNote: z.string().max(500).optional(),
+});
+
+adminRoutes.patch("/fraud-alerts/:id", async (c) => {
+  const guard = requireAdmin(c);
+  if (guard instanceof Response) return guard;
+
+  const id = c.req.param("id");
+
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON" }, 400); }
+
+  const parsed = alertResolveSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.flatten().fieldErrors }, 400);
+
+  const { action, adminNote } = parsed.data;
+  const alert = await prisma.fraudAlert.findUnique({ where: { id } });
+  if (!alert) return c.json({ error: "Not found" }, 404);
+
+  const nextStatus = action === "dismiss" ? "dismissed" : "resolved";
+
+  if (action === "freeze_user" && alert.userId) {
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: alert.userId }, data: { frozen: true } }),
+      prisma.withdrawal.updateMany({
+        where: { userId: alert.userId, status: "pending" },
+        data: { status: "rejected", adminNote: "Account frozen (fraud alert)" },
+      }),
+      prisma.fraudAlert.update({
+        where: { id },
+        data: {
+          status: nextStatus,
+          resolvedAt: new Date(),
+          resolvedBy: guard.userId,
+          adminNote: adminNote ?? "User frozen",
+        },
+      }),
+    ]);
+    return c.json({ ok: true, frozen: true });
+  }
+
+  await prisma.fraudAlert.update({
+    where: { id },
+    data: {
+      status: nextStatus,
+      resolvedAt: new Date(),
+      resolvedBy: guard.userId,
+      adminNote,
+    },
+  });
+  return c.json({ ok: true });
+});
+
+// ============================================================
+//  Plan upgrade queue (pending plan purchases)
+// ============================================================
+
+adminRoutes.get("/plans", async (c) => {
+  const guard = requireAdmin(c);
+  if (guard instanceof Response) return guard;
+
+  const status = c.req.query("status") ?? "pending";
+  const page = Math.max(1, parseInt(c.req.query("page") ?? "1"));
+  const limit = 20;
+  const where = status === "all" ? {} : { status };
+
+  const [plans, total] = await prisma.$transaction([
+    prisma.planLog.findMany({
+      where,
+      include: { user: { select: { name: true, email: true, plan: true } } },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.planLog.count({ where }),
+  ]);
+
+  return c.json({ plans, total, page, pages: Math.ceil(total / limit) });
+});
+
+const planActionSchema = z.object({
+  action: z.enum(["approve", "reject"]),
+  adminNote: z.string().max(500).optional(),
+});
+
+adminRoutes.patch("/plans/:id", async (c) => {
+  const guard = requireAdmin(c);
+  if (guard instanceof Response) return guard;
+
+  const id = c.req.param("id");
+
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON" }, 400); }
+
+  const parsed = planActionSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.flatten().fieldErrors }, 400);
+
+  const { action, adminNote } = parsed.data;
+  const log = await prisma.planLog.findUnique({
+    where: { id },
+    include: { user: { select: { id: true, plan: true, frozen: true } } },
+  });
+  if (!log) return c.json({ error: "Not found" }, 404);
+  if (log.status !== "pending") {
+    return c.json({ error: "Already processed" }, 409);
+  }
+
+  if (action === "approve") {
+    if (log.user.frozen) {
+      return c.json({ error: "User is frozen; cannot upgrade" }, 400);
+    }
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: log.user.id }, data: { plan: log.plan } }),
+      prisma.planLog.update({
+        where: { id: log.id },
+        data: {
+          status: "approved",
+          reviewedAt: new Date(),
+          reviewedBy: guard.userId,
+          adminNote,
+        },
+      }),
+    ]);
+  } else {
+    await prisma.planLog.update({
+      where: { id: log.id },
+      data: {
+        status: "rejected",
+        reviewedAt: new Date(),
+        reviewedBy: guard.userId,
+        adminNote,
+      },
+    });
+  }
+
+  return c.json({ ok: true });
+});
+
+// ============================================================
+//  Platform configuration (live rates, caps)
+// ============================================================
+
+adminRoutes.get("/config", async (c) => {
+  const guard = requireAdmin(c);
+  if (guard instanceof Response) return guard;
+
+  const cfg = await getConfig();
+  return c.json({ config: cfg, defaults: DEFAULTS });
+});
+
+const planSchema = z.object({
+  label: z.string().min(1).max(50),
+  ratePerClaim: z.number().min(0).max(1),
+  dailyCap: z.number().min(0).max(10_000),
+  price: z.number().min(0).max(100_000),
+});
+
+const configUpdateSchema = z.object({
+  plans: z
+    .object({
+      free: planSchema,
+      plan499: planSchema,
+      plan699: planSchema,
+      plan799: planSchema,
+    })
+    .optional(),
+  claimIntervalMs: z.number().int().min(60_000).max(6 * 60 * 60 * 1000).optional(),
+  referralCommissionRate: z.number().min(0).max(1).optional(),
+  referralApprovalWindowMs: z.number().int().min(0).max(14 * 24 * 60 * 60 * 1000).optional(),
+  maxReferralsPerDay: z.number().int().min(1).max(1000).optional(),
+  withdrawalMinimum: z.number().min(0).max(100_000).optional(),
+  estimatedAdRevenuePerClaim: z.number().min(0).max(10).optional(),
+});
+
+adminRoutes.put("/config", async (c) => {
+  const guard = requireAdmin(c);
+  if (guard instanceof Response) return guard;
+
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON" }, 400); }
+
+  const parsed = configUpdateSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.flatten().fieldErrors }, 400);
+
+  const updates = parsed.data;
+
+  if (updates.plans) {
+    await setConfigValue("plans", updates.plans as PlanConfigMap, guard.userId);
+  }
+  if (updates.claimIntervalMs !== undefined)
+    await setConfigValue("claimIntervalMs", updates.claimIntervalMs, guard.userId);
+  if (updates.referralCommissionRate !== undefined)
+    await setConfigValue("referralCommissionRate", updates.referralCommissionRate, guard.userId);
+  if (updates.referralApprovalWindowMs !== undefined)
+    await setConfigValue("referralApprovalWindowMs", updates.referralApprovalWindowMs, guard.userId);
+  if (updates.maxReferralsPerDay !== undefined)
+    await setConfigValue("maxReferralsPerDay", updates.maxReferralsPerDay, guard.userId);
+  if (updates.withdrawalMinimum !== undefined)
+    await setConfigValue("withdrawalMinimum", updates.withdrawalMinimum, guard.userId);
+  if (updates.estimatedAdRevenuePerClaim !== undefined)
+    await setConfigValue("estimatedAdRevenuePerClaim", updates.estimatedAdRevenuePerClaim, guard.userId);
+
+  const cfg = await getConfig();
+  return c.json({ ok: true, config: cfg });
 });
