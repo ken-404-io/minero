@@ -1,17 +1,11 @@
 import { Hono } from "hono";
-import { z } from "zod";
 import { prisma } from "../lib/db.js";
 import { requireAuth } from "../lib/session.js";
 import { getConfig, getPlanConfig } from "../lib/config.js";
-import { consumeAdToken } from "../lib/ads.js";
 import { raiseAlert } from "../lib/fraud.js";
 import { getClientIp, getDeviceHash } from "../lib/request.js";
 
 export const claimRoutes = new Hono();
-
-const claimSchema = z.object({
-  adToken: z.string().min(16).max(128),
-});
 
 claimRoutes.post("/", async (c) => {
   const session = requireAuth(c);
@@ -28,15 +22,6 @@ claimRoutes.post("/", async (c) => {
     });
     return c.json({ error: "Account suspended" }, 403);
   }
-
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return c.json({ error: "Ad verification required" }, 400); }
-
-  const parsed = claimSchema.safeParse(body);
-  if (!parsed.success) {
-    return c.json({ error: "Ad verification required. Watch an ad to claim." }, 400);
-  }
-  const { adToken } = parsed.data;
 
   const cfg = await getConfig();
   const plan = await getPlanConfig(user.plan);
@@ -111,75 +96,51 @@ claimRoutes.post("/", async (c) => {
     }
   }
 
-  // Everything checks out — consume the ad token + credit in one transaction.
-  try {
-    const result = await prisma.$transaction(async (tx) => {
-      const consumed = await consumeAdToken({ userId: user.id, token: adToken, tx });
-      if (!consumed.ok) throw new Error(`ad_token:${consumed.reason}`);
+  const result = await prisma.$transaction(async (tx) => {
+    const claim = await tx.claim.create({
+      data: { userId: user.id, amount, ip, deviceHash },
+    });
+    const earning = await tx.earning.create({
+      data: { userId: user.id, amount, type: "mining", status: "approved" },
+    });
+    await tx.user.update({
+      where: { id: user.id },
+      data: {
+        balance: { increment: amount },
+        lastDeviceHash: deviceHash ?? undefined,
+      },
+    });
 
-      const claim = await tx.claim.create({
-        data: {
-          userId: user.id,
-          amount,
-          ip,
-          deviceHash,
-          adToken: consumed.record.id,
-        },
-      });
-      const earning = await tx.earning.create({
-        data: { userId: user.id, amount, type: "mining", status: "approved" },
-      });
-      await tx.user.update({
-        where: { id: user.id },
-        data: {
-          balance: { increment: amount },
-          lastDeviceHash: deviceHash ?? undefined,
-        },
-      });
-
-      if (user.referredBy) {
-        const referrer = await tx.user.findUnique({ where: { id: user.referredBy } });
-        if (referrer && !referrer.frozen) {
-          const commission = parseFloat((amount * cfg.referralCommissionRate).toFixed(4));
-          await tx.earning.create({
-            data: {
-              userId: user.referredBy,
-              amount: commission,
-              type: "referral",
-              status: "pending",
-            },
-          });
-          await tx.user.update({
-            where: { id: user.referredBy },
-            data: { pendingBalance: { increment: commission } },
-          });
-          await tx.referral.updateMany({
-            where: { referrerId: user.referredBy, referralId: user.id },
-            data: { commissionTotal: { increment: commission } },
-          });
-        }
+    if (user.referredBy) {
+      const referrer = await tx.user.findUnique({ where: { id: user.referredBy } });
+      if (referrer && !referrer.frozen) {
+        const commission = parseFloat((amount * cfg.referralCommissionRate).toFixed(4));
+        await tx.earning.create({
+          data: {
+            userId: user.referredBy,
+            amount: commission,
+            type: "referral",
+            status: "pending",
+          },
+        });
+        await tx.user.update({
+          where: { id: user.referredBy },
+          data: { pendingBalance: { increment: commission } },
+        });
+        await tx.referral.updateMany({
+          where: { referrerId: user.referredBy, referralId: user.id },
+          data: { commissionTotal: { increment: commission } },
+        });
       }
-
-      return { claim, earning };
-    });
-
-    return c.json({
-      amount: result.earning.amount,
-      newBalance: user.balance + amount,
-      claimedAt: result.claim.claimedAt,
-      nextClaimAt: new Date(result.claim.claimedAt.getTime() + cfg.claimIntervalMs),
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "unknown";
-    if (msg.startsWith("ad_token:")) {
-      await raiseAlert({
-        userId: user.id,
-        type: "invalid_ad_token",
-        severity: "medium",
-        details: { reason: msg.slice("ad_token:".length) },
-      });
-      return c.json({ error: "Ad verification invalid. Watch a new ad." }, 400);
     }
-    throw err;
-  }
+
+    return { claim, earning };
+  });
+
+  return c.json({
+    amount: result.earning.amount,
+    newBalance: user.balance + amount,
+    claimedAt: result.claim.claimedAt,
+    nextClaimAt: new Date(result.claim.claimedAt.getTime() + cfg.claimIntervalMs),
+  });
 });
