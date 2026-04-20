@@ -36,6 +36,12 @@ type ReferralsResp = {
   referrals: Referral[];
 };
 
+type LastClaimResp = {
+  lastClaimAt: string | null;
+  nextClaimAt: string | null;
+  claimIntervalMs?: number;
+};
+
 export default async function DashboardPage() {
   const me = await apiJson<Me>("/auth/me");
   if (!me) redirect("/login");
@@ -43,10 +49,10 @@ export default async function DashboardPage() {
   const user = me.user;
   const plan = getPlanConfig(user.plan);
 
-  // TODO(dashboard): add /dashboard aggregate endpoint for lastClaimAt
-  const [earningsData, referralsData] = await Promise.all([
+  const [earningsData, referralsData, lastClaimData] = await Promise.all([
     apiJson<EarningsResp>("/earnings?page=1"),
     apiJson<ReferralsResp>("/referrals"),
+    apiJson<LastClaimResp>("/claim/last"),
   ]);
 
   const startOfDay = new Date();
@@ -63,7 +69,7 @@ export default async function DashboardPage() {
       .reduce((sum, e) => sum + e.amount, 0) ?? 0;
 
   const referralCount = referralsData?.referrals.length ?? 0;
-  const lastClaimAt: string | null = null;
+  const lastClaimAt: string | null = lastClaimData?.lastClaimAt ?? null;
 
   return (
     <DashboardClient

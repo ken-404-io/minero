@@ -7,6 +7,29 @@ import { getClientIp, getDeviceHash } from "../lib/request.js";
 
 export const claimRoutes = new Hono();
 
+/** Latest claim for the authenticated user. Used by the dashboard to
+ *  hydrate the cooldown timer on page load / refresh. */
+claimRoutes.get("/last", async (c) => {
+  const session = requireAuth(c);
+  if (session instanceof Response) return session;
+
+  const cfg = await getConfig();
+  const last = await prisma.claim.findFirst({
+    where: { userId: session.userId },
+    orderBy: { claimedAt: "desc" },
+    select: { claimedAt: true },
+  });
+
+  if (!last) return c.json({ lastClaimAt: null, nextClaimAt: null });
+
+  const nextClaimAt = new Date(last.claimedAt.getTime() + cfg.claimIntervalMs);
+  return c.json({
+    lastClaimAt: last.claimedAt,
+    nextClaimAt,
+    claimIntervalMs: cfg.claimIntervalMs,
+  });
+});
+
 claimRoutes.post("/", async (c) => {
   const session = requireAuth(c);
   if (session instanceof Response) return session;
