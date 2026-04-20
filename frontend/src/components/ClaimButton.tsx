@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { CLAIM_INTERVAL_MS } from "@/lib/mining";
 import { API_URL } from "@/lib/api-url";
+import { IconPickaxe, IconClock, IconCheck, IconError, IconBoltSmall } from "@/components/icons";
 
 type Props = {
   lastClaimAt: Date | null;
@@ -20,27 +21,38 @@ function formatCountdown(ms: number): string {
   return `${m}:${s}`;
 }
 
-export default function ClaimButton({ lastClaimAt, dailyEarned, dailyCap, ratePerClaim, onClaim }: Props) {
-  const [countdown, setCountdown] = useState(0);
-  const [claiming, setClaiming] = useState(false);
-  const [flash, setFlash] = useState<string | null>(null);
+const RING_SIZE = 232;
+const RING_STROKE = 8;
+const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
+const RING_CIRC = 2 * Math.PI * RING_RADIUS;
 
-  const getRemaining = useCallback(() => {
-    if (!lastClaimAt) return 0;
-    const elapsed = Date.now() - new Date(lastClaimAt).getTime();
-    return Math.max(0, CLAIM_INTERVAL_MS - elapsed);
-  }, [lastClaimAt]);
+export default function ClaimButton({
+  lastClaimAt,
+  dailyEarned,
+  dailyCap,
+  ratePerClaim,
+  onClaim,
+}: Props) {
+  const [now, setNow] = useState<number>(() => Date.now());
+  const [claiming, setClaiming] = useState(false);
+  const [flash, setFlash] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
-    setCountdown(getRemaining());
-    const id = setInterval(() => {
-      setCountdown(getRemaining());
-    }, 1000);
+    const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [getRemaining]);
+  }, []);
 
-  const canClaim = countdown === 0 && dailyEarned < dailyCap;
-  const progress = Math.min(100, (dailyEarned / dailyCap) * 100);
+  const countdown = lastClaimAt
+    ? Math.max(0, CLAIM_INTERVAL_MS - (now - new Date(lastClaimAt).getTime()))
+    : 0;
+
+  const capReached = dailyEarned >= dailyCap;
+  const canClaim = countdown === 0 && !capReached;
+  const dailyProgress = Math.min(100, (dailyEarned / dailyCap) * 100);
+  const cooldownProgress = lastClaimAt
+    ? Math.max(0, Math.min(1, (CLAIM_INTERVAL_MS - countdown) / CLAIM_INTERVAL_MS))
+    : 1;
+  const ringOffset = RING_CIRC * (1 - cooldownProgress);
 
   async function handleClaim() {
     if (!canClaim || claiming) return;
@@ -53,72 +65,142 @@ export default function ClaimButton({ lastClaimAt, dailyEarned, dailyCap, ratePe
       });
       const data = await res.json();
       if (res.ok) {
-        setFlash(`+₱${data.amount.toFixed(4)} claimed!`);
+        setFlash({ kind: "success", text: `+₱${data.amount.toFixed(4)} claimed` });
         onClaim(data.amount, new Date(data.nextClaimAt));
         setTimeout(() => setFlash(null), 3000);
       } else {
-        setFlash(data.error || "Claim failed");
+        setFlash({ kind: "error", text: data.error || "Claim failed" });
       }
     } catch {
-      setFlash("Network error");
+      setFlash({ kind: "error", text: "Network error" });
     } finally {
       setClaiming(false);
     }
   }
 
+  const liveMessage = canClaim
+    ? `Ready to claim ₱${ratePerClaim}`
+    : capReached
+    ? "Daily cap reached"
+    : `Next claim in ${formatCountdown(countdown)}`;
+
   return (
-    <div className="flex flex-col items-center gap-6">
-      {/* Big claim button */}
-      <div className="relative">
+    <div className="flex flex-col items-center gap-5 w-full">
+      {/* Live region for screen readers */}
+      <div className="sr-only" role="status" aria-live="polite">
+        {liveMessage}
+      </div>
+
+      {/* Claim ring + button */}
+      <div className="relative" style={{ width: RING_SIZE, height: RING_SIZE }}>
+        <svg
+          width={RING_SIZE}
+          height={RING_SIZE}
+          className="absolute inset-0"
+          aria-hidden
+        >
+          <circle
+            cx={RING_SIZE / 2}
+            cy={RING_SIZE / 2}
+            r={RING_RADIUS}
+            stroke="var(--surface-2)"
+            strokeWidth={RING_STROKE}
+            fill="none"
+          />
+          <circle
+            cx={RING_SIZE / 2}
+            cy={RING_SIZE / 2}
+            r={RING_RADIUS}
+            stroke={canClaim ? "var(--brand)" : "var(--brand-weak-fg)"}
+            strokeWidth={RING_STROKE}
+            fill="none"
+            strokeLinecap="round"
+            strokeDasharray={RING_CIRC}
+            strokeDashoffset={ringOffset}
+            transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
+            style={{ transition: "stroke-dashoffset 1s linear" }}
+          />
+        </svg>
+
         <button
           onClick={handleClaim}
           disabled={!canClaim || claiming}
-          className="w-48 h-48 rounded-full text-lg font-bold transition-all border-4 flex flex-col items-center justify-center gap-1"
+          aria-label={
+            capReached
+              ? "Daily cap reached"
+              : canClaim
+              ? `Claim ₱${ratePerClaim}`
+              : `Wait ${formatCountdown(countdown)}`
+          }
+          className={`absolute inset-[14px] rounded-full flex flex-col items-center justify-center gap-1 font-semibold ${
+            canClaim ? "claim-pulse" : ""
+          }`}
           style={{
-            background: canClaim ? "var(--gold)" : "var(--surface-2)",
-            color: canClaim ? "#000" : "var(--muted)",
-            borderColor: canClaim ? "var(--gold-light)" : "var(--border)",
-            boxShadow: canClaim ? "0 0 40px rgba(245,158,11,0.4)" : "none",
+            background: canClaim ? "var(--brand)" : "var(--surface-2)",
+            color: canClaim ? "var(--brand-fg)" : "var(--text-muted)",
+            border: `1px solid ${canClaim ? "var(--brand-hover)" : "var(--border)"}`,
             cursor: canClaim ? "pointer" : "not-allowed",
+            transition: "background 200ms var(--ease-out), color 200ms var(--ease-out)",
           }}
         >
-          <span className="text-4xl">{canClaim ? "⛏" : "⏱"}</span>
-          <span>{canClaim ? (claiming ? "Claiming…" : "CLAIM") : "WAIT"}</span>
-          {!canClaim && countdown > 0 && (
-            <span className="text-2xl font-mono font-bold" style={{ color: "var(--gold)" }}>
-              {formatCountdown(countdown)}
-            </span>
-          )}
-          {dailyEarned >= dailyCap && (
-            <span className="text-xs">Daily cap reached</span>
+          {canClaim ? (
+            <>
+              <IconPickaxe size={32} />
+              <span className="text-base tracking-wide">
+                {claiming ? "CLAIMING…" : "CLAIM"}
+              </span>
+              <span className="text-xs font-mono" style={{ color: "var(--brand-fg)", opacity: 0.75 }}>
+                ₱{ratePerClaim.toFixed(3)}
+              </span>
+            </>
+          ) : capReached ? (
+            <>
+              <IconCheck size={28} />
+              <span className="text-sm">Daily cap</span>
+              <span className="text-xs" style={{ color: "var(--text-subtle)" }}>reached</span>
+            </>
+          ) : (
+            <>
+              <IconClock size={24} />
+              <span className="text-2xl font-mono font-bold tabular-nums" style={{ color: "var(--brand)" }}>
+                {formatCountdown(countdown)}
+              </span>
+              <span className="text-xs uppercase tracking-wider" style={{ color: "var(--text-subtle)" }}>
+                next claim
+              </span>
+            </>
           )}
         </button>
       </div>
 
-      {/* Flash message */}
+      {/* Flash toast */}
       {flash && (
         <div
-          className="px-4 py-2 rounded-lg text-sm font-semibold"
-          style={
-            flash.startsWith("+")
-              ? { background: "#0a2e1a", color: "#34d399" }
-              : { background: "#2e0a0a", color: "#f87171" }
-          }
+          role="status"
+          aria-live="polite"
+          className={`alert ${flash.kind === "success" ? "alert-success" : "alert-danger"}`}
         >
-          {flash}
+          {flash.kind === "success" ? <IconCheck size={16} /> : <IconError size={16} />}
+          <span>{flash.text}</span>
         </div>
       )}
 
       {/* Daily progress */}
-      <div className="w-full max-w-xs">
-        <div className="flex justify-between text-xs mb-1" style={{ color: "var(--muted)" }}>
-          <span>Today&apos;s Earnings</span>
-          <span>₱{dailyEarned.toFixed(4)} / ₱{dailyCap}</span>
+      <div className="w-full max-w-sm">
+        <div className="flex items-center justify-between text-xs mb-1.5">
+          <span style={{ color: "var(--text-muted)" }} className="flex items-center gap-1">
+            <IconBoltSmall size={12} />
+            Today&apos;s earnings
+          </span>
+          <span className="font-mono tabular-nums" style={{ color: "var(--text)" }}>
+            ₱{dailyEarned.toFixed(4)}
+            <span style={{ color: "var(--text-subtle)" }}> / ₱{dailyCap}</span>
+          </span>
         </div>
-        <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--surface-2)" }}>
+        <div className="progress" role="progressbar" aria-valuenow={Math.round(dailyProgress)} aria-valuemin={0} aria-valuemax={100}>
           <div
-            className="h-full rounded-full transition-all"
-            style={{ width: `${progress}%`, background: "var(--gold)" }}
+            className={`progress-bar ${capReached ? "is-success" : ""}`}
+            style={{ width: `${dailyProgress}%` }}
           />
         </div>
       </div>

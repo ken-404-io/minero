@@ -1,17 +1,20 @@
 import Link from "next/link";
+import { IconArrowLeft } from "@/components/icons";
 
 export default function PrivacyPage() {
   return (
-    <div className="max-w-2xl mx-auto px-4 py-12">
-      <Link href="/" className="text-sm hover:underline mb-6 block" style={{ color: "var(--gold)" }}>
-        ← Back to Home
+    <div className="mx-auto max-w-[720px] px-4 py-10 lg:py-16">
+      <Link href="/" className="link-brand text-sm mb-6 inline-flex items-center gap-1">
+        <IconArrowLeft size={14} /> Back to home
       </Link>
-      <h1 className="text-3xl font-bold mb-2">Privacy Policy</h1>
-      <p className="text-sm mb-8" style={{ color: "var(--muted)" }}>Last updated: April 2026 · Halvex Inc.</p>
+      <h1 className="text-3xl lg:text-4xl font-bold tracking-tight">Privacy policy</h1>
+      <p className="text-sm mt-1 mb-8" style={{ color: "var(--text-muted)" }}>
+        Last updated: April 2026 · Halvex Inc.
+      </p>
 
-      <div className="space-y-6 text-sm leading-relaxed" style={{ color: "var(--muted)" }}>
+      <div className="space-y-6 text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
         <section>
-          <h2 className="text-lg font-bold mb-2" style={{ color: "var(--foreground)" }}>1. Data We Collect</h2>
+          <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>1. Data we collect</h2>
           <ul className="list-disc pl-5 space-y-1">
             <li>Account information: name, email address, hashed password</li>
             <li>Activity data: claim timestamps, IP addresses, device fingerprints</li>
@@ -20,7 +23,7 @@ export default function PrivacyPage() {
           </ul>
         </section>
         <section>
-          <h2 className="text-lg font-bold mb-2" style={{ color: "var(--foreground)" }}>2. How We Use Your Data</h2>
+          <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>2. How we use your data</h2>
           <ul className="list-disc pl-5 space-y-1">
             <li>To operate and maintain the platform</li>
             <li>To detect and prevent fraud and multi-accounting</li>
@@ -29,23 +32,23 @@ export default function PrivacyPage() {
           </ul>
         </section>
         <section>
-          <h2 className="text-lg font-bold mb-2" style={{ color: "var(--foreground)" }}>3. Data Sharing</h2>
+          <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>3. Data sharing</h2>
           <p>We do not sell your personal data. We may share data with payment processors (GCash, Maya) solely to process withdrawals, and with law enforcement when required by law.</p>
         </section>
         <section>
-          <h2 className="text-lg font-bold mb-2" style={{ color: "var(--foreground)" }}>4. Cookies & Tracking</h2>
+          <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>4. Cookies &amp; tracking</h2>
           <p>We use session cookies for authentication. Ad networks (Google AdSense, etc.) may set their own cookies for ad targeting.</p>
         </section>
         <section>
-          <h2 className="text-lg font-bold mb-2" style={{ color: "var(--foreground)" }}>5. Data Retention</h2>
+          <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>5. Data retention</h2>
           <p>Account and earnings data is retained for a minimum of 2 years for financial record-keeping purposes.</p>
         </section>
         <section>
-          <h2 className="text-lg font-bold mb-2" style={{ color: "var(--foreground)" }}>6. Your Rights</h2>
+          <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>6. Your rights</h2>
           <p>You may request access to or deletion of your personal data by contacting us. Note: deletion of financial records may be restricted by law.</p>
         </section>
         <section>
-          <h2 className="text-lg font-bold mb-2" style={{ color: "var(--foreground)" }}>7. Contact</h2>
+          <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>7. Contact</h2>
           <p>For privacy concerns, contact Halvex Inc. via the support channel in your account dashboard.</p>
         </section>
       </div>

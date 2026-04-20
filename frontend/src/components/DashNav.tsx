@@ -2,133 +2,171 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
 import { API_URL } from "@/lib/api-url";
+import {
+  IconPickaxe,
+  IconChart,
+  IconSparkles,
+  IconUsers,
+  IconWallet,
+  IconShield,
+  IconLogout,
+} from "@/components/icons";
 
-const links = [
-  { href: "/dashboard", label: "Dashboard", icon: "⛏" },
-  { href: "/earnings", label: "Earnings", icon: "📊" },
-  { href: "/plans", label: "Plans", icon: "💎" },
-  { href: "/referral", label: "Referral", icon: "🤝" },
-  { href: "/withdraw", label: "Withdraw", icon: "💸" },
+type NavItem = {
+  href: string;
+  label: string;
+  Icon: (p: { size?: number }) => React.ReactNode;
+  shortcut?: string;
+};
+
+const PRIMARY: NavItem[] = [
+  { href: "/dashboard", label: "Mine",     Icon: IconPickaxe, shortcut: "g d" },
+  { href: "/earnings",  label: "Earnings", Icon: IconChart,   shortcut: "g e" },
+  { href: "/plans",     label: "Plans",    Icon: IconSparkles,shortcut: "g p" },
+  { href: "/referral",  label: "Invite",   Icon: IconUsers,   shortcut: "g r" },
+  { href: "/withdraw",  label: "Cash Out", Icon: IconWallet,  shortcut: "g w" },
 ];
+
+function isActive(pathname: string, href: string) {
+  if (href === "/dashboard") return pathname === href;
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 export default function DashNav({ name, role }: { name: string; role: string }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [open, setOpen] = useState(false);
 
   async function logout() {
-    await fetch(`${API_URL}/auth/logout`, {
-      method: "POST",
-      credentials: "include",
-    });
+    await fetch(`${API_URL}/auth/logout`, { method: "POST", credentials: "include" });
     router.push("/");
     router.refresh();
   }
 
+  const initial = (name?.trim()?.[0] ?? "U").toUpperCase();
+
   return (
     <>
-      {/* Desktop sidebar */}
-      <aside
-        className="hidden md:flex flex-col w-56 shrink-0 min-h-screen"
-        style={{ background: "var(--surface)", borderRight: "1px solid var(--border)" }}
-      >
-        <div className="h-16 flex items-center px-6 text-xl font-bold" style={{ color: "var(--gold)" }}>
-          ⛏ Minero
+      {/* ===================== Mobile: top bar (brand only, no hamburger) ===================== */}
+      <header className="mobile-topbar" role="banner">
+        <Link href="/dashboard" className="flex items-center gap-2" aria-label="Minero home">
+          <span
+            aria-hidden
+            className="inline-flex items-center justify-center rounded-md"
+            style={{ background: "var(--brand-weak)", color: "var(--brand)", width: 32, height: 32 }}
+          >
+            <IconPickaxe size={18} />
+          </span>
+          <span className="font-semibold tracking-tight">Minero</span>
+        </Link>
+        <button
+          onClick={logout}
+          aria-label="Sign out"
+          className="btn-icon"
+        >
+          <IconLogout size={18} />
+        </button>
+      </header>
+
+      {/* ===================== Desktop: persistent side nav ===================== */}
+      <aside className="side-nav" aria-label="Primary">
+        <div className="h-16 flex items-center gap-2 px-5 border-b" style={{ borderColor: "var(--border)" }}>
+          <span
+            aria-hidden
+            className="inline-flex items-center justify-center rounded-lg"
+            style={{ background: "var(--brand-weak)", color: "var(--brand)", width: 36, height: 36 }}
+          >
+            <IconPickaxe size={20} />
+          </span>
+          <div className="flex flex-col leading-tight">
+            <span className="font-semibold tracking-tight">Minero</span>
+            <span className="text-xs" style={{ color: "var(--text-subtle)" }}>by Halvex</span>
+          </div>
         </div>
-        <nav className="flex-1 flex flex-col gap-1 px-3 py-4">
-          {links.map((l) => (
-            <Link
-              key={l.href}
-              href={l.href}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors"
-              style={
-                pathname === l.href
-                  ? { background: "#2d2000", color: "var(--gold)" }
-                  : { color: "var(--muted)" }
-              }
-            >
-              <span>{l.icon}</span>
-              {l.label}
-            </Link>
-          ))}
+
+        <nav className="flex-1 flex flex-col gap-0.5 px-3 py-4" aria-label="Main">
+          <div className="section-title px-3 pb-2">Earn</div>
+          {PRIMARY.map((l) => {
+            const active = isActive(pathname, l.href);
+            return (
+              <Link
+                key={l.href}
+                href={l.href}
+                aria-current={active ? "page" : undefined}
+                className="side-nav-item"
+              >
+                <l.Icon size={18} />
+                <span className="flex-1">{l.label}</span>
+                {l.shortcut && (
+                  <span className="hidden xl:inline-flex gap-1" aria-hidden>
+                    {l.shortcut.split(" ").map((k, i) => (
+                      <kbd key={i}>{k}</kbd>
+                    ))}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+
           {role === "admin" && (
-            <Link
-              href="/admin"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors"
-              style={pathname.startsWith("/admin") ? { background: "#2d2000", color: "var(--gold)" } : { color: "var(--muted)" }}
-            >
-              <span>🛡</span>
-              Admin
-            </Link>
+            <>
+              <div className="section-title px-3 pb-2 pt-4">Admin</div>
+              <Link
+                href="/admin"
+                aria-current={pathname.startsWith("/admin") ? "page" : undefined}
+                className="side-nav-item"
+              >
+                <IconShield size={18} />
+                <span>Admin console</span>
+              </Link>
+            </>
           )}
         </nav>
-        <div className="px-3 pb-4">
-          <div className="px-3 py-2 text-xs font-medium mb-1" style={{ color: "var(--muted)" }}>
-            {name}
+
+        <div className="p-3 border-t flex items-center gap-3" style={{ borderColor: "var(--border)" }}>
+          <div
+            aria-hidden
+            className="inline-flex items-center justify-center rounded-full font-semibold"
+            style={{ background: "var(--surface-2)", color: "var(--text)", width: 36, height: 36 }}
+          >
+            {initial}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium truncate">{name}</div>
+            <div className="text-xs" style={{ color: "var(--text-subtle)" }}>
+              {role === "admin" ? "Administrator" : "Member"}
+            </div>
           </div>
           <button
             onClick={logout}
-            className="btn-secondary w-full text-sm py-2"
+            aria-label="Sign out"
+            className="btn-icon"
+            title="Sign out"
           >
-            Sign Out
+            <IconLogout size={18} />
           </button>
         </div>
       </aside>
 
-      {/* Mobile top bar */}
-      <header
-        className="md:hidden flex items-center justify-between h-14 px-4 border-b sticky top-0 z-30"
-        style={{ background: "var(--surface)", borderColor: "var(--border)" }}
-      >
-        <span className="font-bold" style={{ color: "var(--gold)" }}>⛏ Minero</span>
-        <button onClick={() => setOpen(!open)} className="text-xl">☰</button>
-      </header>
-
-      {/* Mobile menu */}
-      {open && (
-        <div
-          className="md:hidden fixed inset-0 z-40 flex"
-          onClick={() => setOpen(false)}
-        >
-          <div
-            className="w-64 min-h-full flex flex-col shadow-xl"
-            style={{ background: "var(--surface)" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="h-14 flex items-center px-6 text-xl font-bold" style={{ color: "var(--gold)" }}>
-              ⛏ Minero
-            </div>
-            <nav className="flex-1 flex flex-col gap-1 px-3 py-4">
-              {links.map((l) => (
-                <Link
-                  key={l.href}
-                  href={l.href}
-                  onClick={() => setOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium"
-                  style={
-                    pathname === l.href
-                      ? { background: "#2d2000", color: "var(--gold)" }
-                      : { color: "var(--muted)" }
-                  }
-                >
-                  <span>{l.icon}</span>
-                  {l.label}
-                </Link>
-              ))}
-              {role === "admin" && (
-                <Link href="/admin" onClick={() => setOpen(false)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium" style={{ color: "var(--muted)" }}>
-                  <span>🛡</span> Admin
-                </Link>
-              )}
-            </nav>
-            <div className="px-3 pb-4">
-              <button onClick={logout} className="btn-secondary w-full text-sm py-2">Sign Out</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ===================== Mobile: bottom tab bar ===================== */}
+      <nav className="mobile-nav lg:hidden" aria-label="Primary">
+        {PRIMARY.map((l) => {
+          const active = isActive(pathname, l.href);
+          return (
+            <Link
+              key={l.href}
+              href={l.href}
+              aria-current={active ? "page" : undefined}
+              aria-label={l.label}
+              className="mobile-nav-item"
+            >
+              <span className="mobile-nav-dot" aria-hidden />
+              <l.Icon size={22} />
+              <span>{l.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
     </>
   );
 }

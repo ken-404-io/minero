@@ -1,6 +1,16 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { apiJson } from "@/lib/api";
+import {
+  IconUsers,
+  IconLock,
+  IconCoins,
+  IconClock,
+  IconCalendar,
+  IconTrend,
+  IconArrowRight,
+  IconWallet,
+} from "@/components/icons";
 
 type Me = { user: { role: string } };
 
@@ -44,79 +54,159 @@ export default async function AdminDashboard() {
 
   const planDist = stats?.planDistribution ?? [];
   const recentWithdrawals = (recent?.withdrawals ?? []).slice(0, 10);
-
-  // TODO(admin): backend /admin/stats does not expose frozenUsers; add to endpoint.
-  const frozenUsers = 0;
-
   const pendingCount = stats?.pendingWithdrawals ?? 0;
   const pendingWithdrawalAmount = stats?.pendingWithdrawalAmount ?? 0;
+  const frozenUsers = 0;
 
-  const statCards = [
-    { label: "Total Users", value: stats?.totalUsers ?? 0, icon: "👥" },
-    { label: "Frozen Accounts", value: frozenUsers, icon: "🔒" },
-    { label: "Total Paid Out", value: `₱${(stats?.totalPaidOut ?? 0).toFixed(2)}`, icon: "💰" },
-    { label: "Pending Withdrawals", value: pendingCount, icon: "⏳" },
-    { label: "Today's Payouts", value: `₱${(stats?.todayPayouts ?? 0).toFixed(2)}`, icon: "📅" },
-    { label: "Month Payouts", value: `₱${(stats?.monthPayouts ?? 0).toFixed(2)}`, icon: "📆" },
+  const totalPlanUsers = planDist.reduce((s, p) => s + p._count.id, 0) || 1;
+
+  const tiles = [
+    { label: "Total users", value: (stats?.totalUsers ?? 0).toLocaleString(), Icon: IconUsers },
+    { label: "Active today", value: (stats?.activeToday ?? 0).toLocaleString(), Icon: IconTrend },
+    { label: "Frozen accounts", value: frozenUsers.toLocaleString(), Icon: IconLock },
+    { label: "Total paid out", value: `₱${(stats?.totalPaidOut ?? 0).toFixed(2)}`, Icon: IconCoins },
+    { label: "Pending withdrawals", value: pendingCount.toLocaleString(), Icon: IconClock },
+    { label: "Today's payouts", value: `₱${(stats?.todayPayouts ?? 0).toFixed(2)}`, Icon: IconCalendar },
+    { label: "Month payouts", value: `₱${(stats?.monthPayouts ?? 0).toFixed(2)}`, Icon: IconCalendar },
   ];
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Admin Dashboard</h1>
+    <div className="w-full">
+      <div className="mx-auto max-w-[1280px] px-4 lg:px-8 py-6 lg:py-8">
+        <header className="mb-6">
+          <span className="section-title">Admin</span>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight mt-1">Overview</h1>
+          <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
+            Platform health, user activity, and pending payouts
+          </p>
+        </header>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-        {statCards.map((s) => (
-          <div key={s.label} className="card">
-            <div className="flex items-center gap-2 mb-1">
-              <span>{s.icon}</span>
-              <span className="text-xs" style={{ color: "var(--muted)" }}>{s.label}</span>
-            </div>
-            <div className="text-2xl font-bold">{s.value}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Plan distribution */}
-        <div className="card">
-          <h2 className="font-bold mb-4">Plan Distribution</h2>
-          <div className="space-y-2">
-            {planDist.map((p) => (
-              <div key={p.plan} className="flex justify-between items-center">
-                <span className="text-sm">{p.plan}</span>
-                <span className="font-bold">{p._count.id} users</span>
+        {/* KPI grid — 2 cols mobile, 4 desktop */}
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-6">
+          {tiles.map(({ label, value, Icon }) => (
+            <div key={label} className="kpi">
+              <div className="flex items-center gap-2">
+                <span
+                  aria-hidden
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md"
+                  style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}
+                >
+                  <Icon size={14} />
+                </span>
+                <span className="kpi-label">{label}</span>
               </div>
-            ))}
-          </div>
-        </div>
+              <span className="kpi-value" style={{ fontSize: "var(--fs-20)" }}>
+                {value}
+              </span>
+            </div>
+          ))}
+        </section>
 
-        {/* Pending withdrawals */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-bold">Pending Withdrawals</h2>
-            <Link href="/admin/withdrawals" className="text-xs hover:underline" style={{ color: "var(--gold)" }}>
-              View all →
-            </Link>
-          </div>
-          {recentWithdrawals.length === 0 ? (
-            <p className="text-sm" style={{ color: "var(--muted)" }}>No pending withdrawals</p>
-          ) : (
-            <div className="space-y-2">
-              {recentWithdrawals.map((w) => (
-                <div key={w.id} className="flex justify-between items-center text-sm">
-                  <div>
-                    <div className="font-medium">{w.user.name}</div>
-                    <div className="text-xs" style={{ color: "var(--muted)" }}>{w.method} · {w.accountNumber}</div>
-                  </div>
-                  <div className="font-bold" style={{ color: "var(--gold)" }}>₱{w.amount.toFixed(2)}</div>
+        {/* Two-column detail */}
+        <div className="grid gap-4 lg:gap-6 lg:grid-cols-2">
+          {/* Plan distribution */}
+          <section className="card">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold">Plan distribution</h2>
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                {totalPlanUsers.toLocaleString()} users
+              </span>
+            </div>
+            {planDist.length === 0 ? (
+              <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                No data yet
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {planDist.map((p) => {
+                  const pct = Math.round((p._count.id / totalPlanUsers) * 100);
+                  return (
+                    <li key={p.plan}>
+                      <div className="flex items-center justify-between mb-1 text-sm">
+                        <span className={`badge badge-${p.plan}`}>{p.plan}</span>
+                        <span className="font-mono tabular-nums">
+                          {p._count.id.toLocaleString()}
+                          <span
+                            className="ml-2 text-xs"
+                            style={{ color: "var(--text-muted)" }}
+                          >
+                            {pct}%
+                          </span>
+                        </span>
+                      </div>
+                      <div className="progress">
+                        <div className="progress-bar" style={{ width: `${pct}%` }} />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+
+          {/* Pending withdrawals */}
+          <section className="card">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold">Pending withdrawals</h2>
+              <Link
+                href="/admin/withdrawals"
+                className="link-brand text-sm inline-flex items-center gap-1"
+              >
+                View all <IconArrowRight size={12} />
+              </Link>
+            </div>
+            {recentWithdrawals.length === 0 ? (
+              <div className="py-6 text-center">
+                <div
+                  aria-hidden
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full mb-2"
+                  style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}
+                >
+                  <IconWallet size={18} />
                 </div>
-              ))}
-              <div className="pt-2 font-semibold text-sm" style={{ color: "var(--gold)", borderTop: "1px solid var(--border)" }}>
-                Total: ₱{pendingWithdrawalAmount.toFixed(2)}
+                <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                  Nothing pending
+                </p>
               </div>
-            </div>
-          )}
+            ) : (
+              <>
+                <ul className="space-y-2">
+                  {recentWithdrawals.map((w) => (
+                    <li
+                      key={w.id}
+                      className="flex items-center justify-between gap-3 py-2 border-b last:border-b-0"
+                      style={{ borderColor: "var(--border)" }}
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium truncate">{w.user.name}</div>
+                        <div
+                          className="text-xs font-mono"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          {w.method} · {w.accountNumber}
+                        </div>
+                      </div>
+                      <div
+                        className="font-mono font-semibold tabular-nums"
+                        style={{ color: "var(--brand)" }}
+                      >
+                        ₱{w.amount.toFixed(2)}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div
+                  className="mt-4 pt-3 flex items-center justify-between border-t font-semibold text-sm"
+                  style={{ borderColor: "var(--border)", color: "var(--brand)" }}
+                >
+                  <span>Total pending</span>
+                  <span className="font-mono tabular-nums">
+                    ₱{pendingWithdrawalAmount.toFixed(2)}
+                  </span>
+                </div>
+              </>
+            )}
+          </section>
         </div>
       </div>
     </div>
