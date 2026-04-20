@@ -11,6 +11,9 @@ import { plansRoutes } from "./routes/plans.js";
 import { referralsRoutes } from "./routes/referrals.js";
 import { withdrawRoutes } from "./routes/withdraw.js";
 import { adminRoutes } from "./routes/admin.js";
+import { adRoutes } from "./routes/ads.js";
+import { otpRoutes } from "./routes/otp.js";
+import { paymentRoutes } from "./routes/payments.js";
 
 const app = new Hono();
 
@@ -26,7 +29,7 @@ app.use(
     origin: (origin) => (frontendOrigins.includes(origin) ? origin : null),
     credentials: true,
     allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization"],
+    allowHeaders: ["Content-Type", "Authorization", "X-Device-Hash"],
   })
 );
 app.use("*", sessionMiddleware);
@@ -41,6 +44,9 @@ app.route("/plans", plansRoutes);
 app.route("/referrals", referralsRoutes);
 app.route("/withdraw", withdrawRoutes);
 app.route("/admin", adminRoutes);
+app.route("/ad", adRoutes);
+app.route("/otp", otpRoutes);
+app.route("/payments", paymentRoutes);
 
 app.onError((err, c) => {
   console.error(err);

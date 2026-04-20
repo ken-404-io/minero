@@ -21,6 +21,12 @@ node_modules/
 
 # production
 /build
+dist/
+backend/dist/
+
+# generated prisma client
+backend/src/generated/
+src/generated/
 
 # misc
 .DS_Store

@@ -4,6 +4,7 @@ import { useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { API_URL } from "@/lib/api-url";
+import { deviceHeaders } from "@/lib/device";
 import {
   IconPickaxe,
   IconMail,
@@ -42,7 +43,7 @@ function RegisterForm() {
       const res = await fetch(`${API_URL}/auth/register`, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await deviceHeaders()) },
         body: JSON.stringify(form),
       });
       const data = await res.json();

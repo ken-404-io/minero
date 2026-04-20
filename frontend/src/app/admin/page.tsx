@@ -18,12 +18,21 @@ type PlanDist = { plan: string; _count: { id: number } };
 
 type Stats = {
   totalUsers: number;
+  frozenUsers: number;
   activeToday: number;
   totalPaidOut: number;
   pendingWithdrawals: number;
   pendingWithdrawalAmount: number;
+  pendingPlans: number;
+  openAlerts: number;
   todayPayouts: number;
   monthPayouts: number;
+  todayImpressions: number;
+  monthImpressions: number;
+  todayRevenue: number;
+  monthRevenue: number;
+  todayMargin: number;
+  todayRevenueToPayoutRatio: number | null;
   planDistribution: PlanDist[];
 };
 
@@ -56,7 +65,13 @@ export default async function AdminDashboard() {
   const recentWithdrawals = (recent?.withdrawals ?? []).slice(0, 10);
   const pendingCount = stats?.pendingWithdrawals ?? 0;
   const pendingWithdrawalAmount = stats?.pendingWithdrawalAmount ?? 0;
-  const frozenUsers = 0;
+  const frozenUsers = stats?.frozenUsers ?? 0;
+  const todayRevenue = stats?.todayRevenue ?? 0;
+  const todayPayouts = stats?.todayPayouts ?? 0;
+  const todayMargin = stats?.todayMargin ?? 0;
+  const ratio = stats?.todayRevenueToPayoutRatio;
+  const openAlerts = stats?.openAlerts ?? 0;
+  const pendingPlans = stats?.pendingPlans ?? 0;
 
   const totalPlanUsers = planDist.reduce((s, p) => s + p._count.id, 0) || 1;
 
@@ -64,10 +79,11 @@ export default async function AdminDashboard() {
     { label: "Total users", value: (stats?.totalUsers ?? 0).toLocaleString(), Icon: IconUsers },
     { label: "Active today", value: (stats?.activeToday ?? 0).toLocaleString(), Icon: IconTrend },
     { label: "Frozen accounts", value: frozenUsers.toLocaleString(), Icon: IconLock },
+    { label: "Open fraud alerts", value: openAlerts.toLocaleString(), Icon: IconClock },
+    { label: "Pending withdrawals", value: pendingCount.toLocaleString(), Icon: IconWallet },
+    { label: "Pending plan upgrades", value: pendingPlans.toLocaleString(), Icon: IconCoins },
     { label: "Total paid out", value: `₱${(stats?.totalPaidOut ?? 0).toFixed(2)}`, Icon: IconCoins },
-    { label: "Pending withdrawals", value: pendingCount.toLocaleString(), Icon: IconClock },
-    { label: "Today's payouts", value: `₱${(stats?.todayPayouts ?? 0).toFixed(2)}`, Icon: IconCalendar },
-    { label: "Month payouts", value: `₱${(stats?.monthPayouts ?? 0).toFixed(2)}`, Icon: IconCalendar },
+    { label: "Today's payouts", value: `₱${todayPayouts.toFixed(2)}`, Icon: IconCalendar },
   ];
 
   return (
@@ -100,6 +116,58 @@ export default async function AdminDashboard() {
               </span>
             </div>
           ))}
+        </section>
+
+        {/* Revenue vs payouts */}
+        <section className="card mb-6">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <h2 className="font-semibold">Revenue vs. payouts (today)</h2>
+            <span
+              className="badge"
+              style={
+                todayMargin >= 0
+                  ? { background: "var(--success-weak)", color: "var(--success-fg)" }
+                  : { background: "var(--danger-weak)", color: "var(--danger-fg)" }
+              }
+            >
+              {todayMargin >= 0 ? "Profitable" : "Losing money"}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <div className="text-xs" style={{ color: "var(--text-subtle)" }}>Ad revenue (est.)</div>
+              <div className="text-xl font-bold font-mono" style={{ color: "var(--success-fg)" }}>
+                ₱{todayRevenue.toFixed(2)}
+              </div>
+              <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                {(stats?.todayImpressions ?? 0).toLocaleString()} impressions
+              </div>
+            </div>
+            <div>
+              <div className="text-xs" style={{ color: "var(--text-subtle)" }}>Payouts</div>
+              <div className="text-xl font-bold font-mono" style={{ color: "var(--brand)" }}>
+                ₱{todayPayouts.toFixed(2)}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs" style={{ color: "var(--text-subtle)" }}>Margin</div>
+              <div
+                className="text-xl font-bold font-mono"
+                style={{ color: todayMargin >= 0 ? "var(--success-fg)" : "var(--danger-fg)" }}
+              >
+                ₱{todayMargin.toFixed(2)}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs" style={{ color: "var(--text-subtle)" }}>Revenue / payout</div>
+              <div className="text-xl font-bold font-mono">
+                {ratio ? `${ratio.toFixed(2)}×` : "—"}
+              </div>
+              <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                Target: ≥ 1.2×
+              </div>
+            </div>
+          </div>
         </section>
 
         {/* Two-column detail */}

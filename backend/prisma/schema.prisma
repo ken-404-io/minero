@@ -19,15 +19,23 @@ model User {
   referredBy     String?
   role           String   @default("user")
   frozen         Boolean  @default(false)
+  signupIp       String?
+  signupDevice   String?
+  lastDeviceHash String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   claims           Claim[]
   earnings         Earning[]
   withdrawals      Withdrawal[]
-  referralsGiven   Referral[]  @relation("Referrer")
-  referralReceived Referral[]  @relation("Referred")
+  referralsGiven   Referral[]    @relation("Referrer")
+  referralReceived Referral[]    @relation("Referred")
   plansLog         PlanLog[]
+  adTokens         AdToken[]
+  fraudAlerts      FraudAlert[]
+  otpCodes         OtpCode[]
+  refreshTokens    RefreshToken[]
+  adImpressions    AdImpression[]
 }
 
 model Earning {
@@ -82,12 +90,119 @@ model Claim {
 }
 
 model PlanLog {
-  id         String   @id @default(cuid())
-  userId     String
-  plan       String
-  amountPaid Float
-  paymentRef String?
-  createdAt  DateTime @default(now())
+  id           String    @id @default(cuid())
+  userId       String
+  plan         String
+  amountPaid   Float
+  paymentRef   String?
+  status       String    @default("pending") // pending | approved | rejected
+  reviewedAt   DateTime?
+  reviewedBy   String?
+  adminNote    String?
+  paymentProvider String? // "manual" | "paymongo" | "xendit" ...
+  createdAt    DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id])
+
+  @@index([status])
+}
+
+/// Short-lived one-time tokens that prove the user watched an ad.
+/// Issued by /ad/view-start and marked consumed by /ad/view-complete.
+/// /claim requires a valid, unconsumed token.
+model AdToken {
+  id          String    @id @default(cuid())
+  userId      String
+  token       String    @unique
+  network     String    @default("mock") // "adsense" | "adsterra" | "mock"
+  placement   String    @default("claim")
+  issuedAt    DateTime  @default(now())
+  expiresAt   DateTime
+  viewedAt    DateTime?
+  consumedAt  DateTime?
+  ip          String?
+  deviceHash  String?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, consumedAt])
+}
+
+/// Estimated ad revenue per impression — used for admin revenue dashboard
+/// and to reconcile payouts against actual earnings.
+model AdImpression {
+  id               String   @id @default(cuid())
+  userId           String?
+  adTokenId        String?
+  network          String   @default("mock")
+  placement        String   @default("claim")
+  estimatedRevenue Float    @default(0)
+  createdAt        DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
+}
+
+/// Auto-generated alerts when anti-abuse signals fire. Admins review and
+/// resolve or escalate (freeze user, reverse earnings).
+model FraudAlert {
+  id         String    @id @default(cuid())
+  userId     String?
+  type       String    // "duplicate_ip" | "duplicate_device" | "rapid_claim" | "frozen_claim_attempt"
+  severity   String    @default("medium") // low | medium | high
+  details    String    // JSON-encoded
+  status     String    @default("open") // open | resolved | dismissed
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+  resolvedBy String?
+  adminNote  String?
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([status, createdAt])
+}
+
+/// Short-lived OTP codes (email or SMS). Used before sensitive actions
+/// like withdrawal.
+model OtpCode {
+  id        String   @id @default(cuid())
+  userId    String
+  purpose   String   // "withdraw" | "login" | "change_password"
+  code      String
+  channel   String   @default("sms") // sms | email | console
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, purpose, usedAt])
+}
+
+/// Refresh tokens for session renewal. Access JWT is short-lived,
+/// refresh token is rotating and long-lived.
+model RefreshToken {
+  id         String    @id @default(cuid())
+  userId     String
+  token      String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  userAgent  String?
+  ip         String?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, revokedAt])
+}
+
+/// Live-tunable platform configuration — rates, caps, windows, minimums.
+/// Admins adjust without redeploy. mining.ts reads from this with
+/// fallback to hard-coded defaults.
+model PlatformConfig {
+  key       String   @id
+  value     String   // JSON-encoded
+  updatedAt DateTime @updatedAt
+  updatedBy String?
 }

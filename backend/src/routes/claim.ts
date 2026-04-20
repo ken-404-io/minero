@@ -1,13 +1,17 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { prisma } from "../lib/db.js";
 import { requireAuth } from "../lib/session.js";
-import {
-  getPlanConfig,
-  CLAIM_INTERVAL_MS,
-  REFERRAL_COMMISSION_RATE,
-} from "../lib/mining.js";
+import { getConfig, getPlanConfig } from "../lib/config.js";
+import { consumeAdToken } from "../lib/ads.js";
+import { raiseAlert } from "../lib/fraud.js";
+import { getClientIp, getDeviceHash } from "../lib/request.js";
 
 export const claimRoutes = new Hono();
+
+const claimSchema = z.object({
+  adToken: z.string().min(16).max(128),
+});
 
 claimRoutes.post("/", async (c) => {
   const session = requireAuth(c);
@@ -15,26 +19,46 @@ claimRoutes.post("/", async (c) => {
 
   const user = await prisma.user.findUnique({ where: { id: session.userId } });
   if (!user) return c.json({ error: "Unauthorized" }, 401);
-  if (user.frozen) return c.json({ error: "Account suspended" }, 403);
+  if (user.frozen) {
+    await raiseAlert({
+      userId: user.id,
+      type: "frozen_claim_attempt",
+      severity: "low",
+      details: { ip: getClientIp(c) },
+    });
+    return c.json({ error: "Account suspended" }, 403);
+  }
 
-  const plan = getPlanConfig(user.plan);
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "Ad verification required" }, 400); }
+
+  const parsed = claimSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Ad verification required. Watch an ad to claim." }, 400);
+  }
+  const { adToken } = parsed.data;
+
+  const cfg = await getConfig();
+  const plan = await getPlanConfig(user.plan);
   const now = new Date();
+  const ip = getClientIp(c);
+  const deviceHash = getDeviceHash(c);
 
+  // 10-minute cooldown check
   const lastClaim = await prisma.claim.findFirst({
     where: { userId: user.id },
     orderBy: { claimedAt: "desc" },
   });
-
   if (lastClaim) {
     const elapsed = now.getTime() - lastClaim.claimedAt.getTime();
-    if (elapsed < CLAIM_INTERVAL_MS) {
-      return c.json({ error: "Too soon", remainingMs: CLAIM_INTERVAL_MS - elapsed }, 429);
+    if (elapsed < cfg.claimIntervalMs) {
+      return c.json({ error: "Too soon", remainingMs: cfg.claimIntervalMs - elapsed }, 429);
     }
   }
 
+  // Daily cap
   const startOfDay = new Date(now);
   startOfDay.setHours(0, 0, 0, 0);
-
   const todayEarnings = await prisma.earning.aggregate({
     where: {
       userId: user.id,
@@ -44,19 +68,12 @@ claimRoutes.post("/", async (c) => {
     },
     _sum: { amount: true },
   });
-
   const todayTotal = todayEarnings._sum.amount ?? 0;
-  if (todayTotal >= plan.dailyCap) {
-    return c.json({ error: "Daily cap reached" }, 403);
-  }
+  if (todayTotal >= plan.dailyCap) return c.json({ error: "Daily cap reached" }, 403);
 
   const amount = Math.min(plan.ratePerClaim, plan.dailyCap - todayTotal);
 
-  const ip =
-    c.req.header("x-forwarded-for")?.split(",")[0].trim() ??
-    c.req.header("x-real-ip") ??
-    "unknown";
-
+  // Same-IP another user within the last hour → block + alert
   const recentSameIp = await prisma.claim.findFirst({
     where: {
       ip,
@@ -64,52 +81,105 @@ claimRoutes.post("/", async (c) => {
       claimedAt: { gte: new Date(now.getTime() - 60 * 60 * 1000) },
     },
   });
-  if (recentSameIp) return c.json({ error: "Claim blocked" }, 403);
-
-  const result = await prisma.$transaction(async (tx) => {
-    const claim = await tx.claim.create({
-      data: { userId: user.id, amount, ip, adToken: null },
+  if (recentSameIp) {
+    await raiseAlert({
+      userId: user.id,
+      type: "duplicate_ip",
+      severity: "high",
+      details: { ip, otherClaimId: recentSameIp.id },
     });
+    return c.json({ error: "Claim blocked" }, 403);
+  }
 
-    const earning = await tx.earning.create({
-      data: { userId: user.id, amount, type: "mining", status: "approved" },
+  // Same-device another user within 24h → block + alert
+  if (deviceHash) {
+    const recentSameDevice = await prisma.claim.findFirst({
+      where: {
+        deviceHash,
+        userId: { not: user.id },
+        claimedAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) },
+      },
     });
-
-    await tx.user.update({
-      where: { id: user.id },
-      data: { balance: { increment: amount } },
-    });
-
-    if (user.referredBy) {
-      const referrer = await tx.user.findUnique({ where: { id: user.referredBy } });
-      if (referrer && !referrer.frozen) {
-        const commission = parseFloat((amount * REFERRAL_COMMISSION_RATE).toFixed(4));
-        await tx.earning.create({
-          data: {
-            userId: user.referredBy,
-            amount: commission,
-            type: "referral",
-            status: "pending",
-          },
-        });
-        await tx.user.update({
-          where: { id: user.referredBy },
-          data: { pendingBalance: { increment: commission } },
-        });
-        await tx.referral.updateMany({
-          where: { referrerId: user.referredBy, referralId: user.id },
-          data: { commissionTotal: { increment: commission } },
-        });
-      }
+    if (recentSameDevice) {
+      await raiseAlert({
+        userId: user.id,
+        type: "duplicate_device",
+        severity: "high",
+        details: { deviceHash, otherClaimId: recentSameDevice.id },
+      });
+      return c.json({ error: "Claim blocked" }, 403);
     }
+  }
 
-    return { claim, earning };
-  });
+  // Everything checks out — consume the ad token + credit in one transaction.
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const consumed = await consumeAdToken({ userId: user.id, token: adToken, tx });
+      if (!consumed.ok) throw new Error(`ad_token:${consumed.reason}`);
 
-  return c.json({
-    amount: result.earning.amount,
-    newBalance: user.balance + amount,
-    claimedAt: result.claim.claimedAt,
-    nextClaimAt: new Date(result.claim.claimedAt.getTime() + CLAIM_INTERVAL_MS),
-  });
+      const claim = await tx.claim.create({
+        data: {
+          userId: user.id,
+          amount,
+          ip,
+          deviceHash,
+          adToken: consumed.record.id,
+        },
+      });
+      const earning = await tx.earning.create({
+        data: { userId: user.id, amount, type: "mining", status: "approved" },
+      });
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          balance: { increment: amount },
+          lastDeviceHash: deviceHash ?? undefined,
+        },
+      });
+
+      if (user.referredBy) {
+        const referrer = await tx.user.findUnique({ where: { id: user.referredBy } });
+        if (referrer && !referrer.frozen) {
+          const commission = parseFloat((amount * cfg.referralCommissionRate).toFixed(4));
+          await tx.earning.create({
+            data: {
+              userId: user.referredBy,
+              amount: commission,
+              type: "referral",
+              status: "pending",
+            },
+          });
+          await tx.user.update({
+            where: { id: user.referredBy },
+            data: { pendingBalance: { increment: commission } },
+          });
+          await tx.referral.updateMany({
+            where: { referrerId: user.referredBy, referralId: user.id },
+            data: { commissionTotal: { increment: commission } },
+          });
+        }
+      }
+
+      return { claim, earning };
+    });
+
+    return c.json({
+      amount: result.earning.amount,
+      newBalance: user.balance + amount,
+      claimedAt: result.claim.claimedAt,
+      nextClaimAt: new Date(result.claim.claimedAt.getTime() + cfg.claimIntervalMs),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "unknown";
+    if (msg.startsWith("ad_token:")) {
+      await raiseAlert({
+        userId: user.id,
+        type: "invalid_ad_token",
+        severity: "medium",
+        details: { reason: msg.slice("ad_token:".length) },
+      });
+      return c.json({ error: "Ad verification invalid. Watch a new ad." }, 400);
+    }
+    throw err;
+  }
 });
