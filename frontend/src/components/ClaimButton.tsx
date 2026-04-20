@@ -27,6 +27,35 @@ const RING_STROKE = 8;
 const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
 const RING_CIRC = 2 * Math.PI * RING_RADIUS;
 
+// Module-level cached "now" updated by a single shared interval. We can't
+// call Date.now() inside getSnapshot directly — useSyncExternalStore would
+// see a new value every render and loop forever. The interval bumps the
+// cache and notifies subscribers so React schedules a render.
+let cachedNow = 0;
+const listeners = new Set<() => void>();
+let timerId: ReturnType<typeof setInterval> | null = null;
+
+function subscribeNow(cb: () => void) {
+  if (timerId === null) {
+    cachedNow = Date.now();
+    timerId = setInterval(() => {
+      cachedNow = Date.now();
+      listeners.forEach((l) => l());
+    }, 1000);
+  }
+  listeners.add(cb);
+  return () => {
+    listeners.delete(cb);
+    if (listeners.size === 0 && timerId !== null) {
+      clearInterval(timerId);
+      timerId = null;
+    }
+  };
+}
+function getNowSnapshot() {
+  return cachedNow || (cachedNow = Date.now());
+}
+
 export default function ClaimButton({
   lastClaimAt,
   dailyEarned,
@@ -37,16 +66,11 @@ export default function ClaimButton({
   const [claiming, setClaiming] = useState(false);
   const [flash, setFlash] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
-  // Use useSyncExternalStore so the server renders a deterministic snapshot
-  // (0 = "just clicked, full cooldown") and the client subscribes to a real
-  // clock after hydration. Prevents the SSR/client hydration mismatch that
-  // `useState(() => Date.now())` caused.
+  // Server renders a deterministic snapshot (lastClaimAt or 0). Client
+  // subscribes to a shared module-level clock that ticks once per second.
   const now = useSyncExternalStore(
-    (onChange) => {
-      const id = setInterval(onChange, 1000);
-      return () => clearInterval(id);
-    },
-    () => Date.now(),
+    subscribeNow,
+    getNowSnapshot,
     () => (lastClaimAt ? new Date(lastClaimAt).getTime() : 0),
   );
 
