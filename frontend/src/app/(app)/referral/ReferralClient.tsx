@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   IconCopy,
   IconCheck,
@@ -47,8 +47,10 @@ export default function ReferralClient({
   pendingCommission,
 }: Props) {
   const [copied, setCopied] = useState(false);
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const referralLink = `${origin}/register?ref=${referralCode}`;
+  const [referralLink, setReferralLink] = useState(`/register?ref=${referralCode}`);
+  useEffect(() => {
+    setReferralLink(`${window.location.origin}/register?ref=${referralCode}`);
+  }, [referralCode]);
 
   function copyLink() {
     navigator.clipboard.writeText(referralLink);
