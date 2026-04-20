@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  passwordHash   String
+  name           String
+  balance        Float    @default(0)
+  pendingBalance Float    @default(0)
+  plan           String   @default("free")
+  referralCode   String   @unique
+  referredBy     String?
+  role           String   @default("user")
+  frozen         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  claims           Claim[]
+  earnings         Earning[]
+  withdrawals      Withdrawal[]
+  referralsGiven   Referral[]  @relation("Referrer")
+  referralReceived Referral[]  @relation("Referred")
+  plansLog         PlanLog[]
+}
+
+model Earning {
+  id        String   @id @default(cuid())
+  userId    String
+  amount    Float
+  type      String
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Withdrawal {
+  id            String    @id @default(cuid())
+  userId        String
+  amount        Float
+  method        String
+  accountNumber String
+  status        String    @default("pending")
+  requestedAt   DateTime  @default(now())
+  processedAt   DateTime?
+  adminNote     String?
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Referral {
+  id              String   @id @default(cuid())
+  referrerId      String
+  referralId      String
+  commissionTotal Float    @default(0)
+  status          String   @default("active")
+  createdAt       DateTime @default(now())
+
+  referrer User @relation("Referrer", fields: [referrerId], references: [id])
+  referred User @relation("Referred", fields: [referralId], references: [id])
+
+  @@unique([referrerId, referralId])
+}
+
+model Claim {
+  id         String   @id @default(cuid())
+  userId     String
+  claimedAt  DateTime @default(now())
+  adToken    String?
+  ip         String?
+  deviceHash String?
+  amount     Float
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model PlanLog {
+  id         String   @id @default(cuid())
+  userId     String
+  plan       String
+  amountPaid Float
+  paymentRef String?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}

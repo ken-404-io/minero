@@ -1,0 +1,124 @@
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import { apiJson } from "@/lib/api";
+
+type Me = { user: { role: string } };
+
+type PlanDist = { plan: string; _count: { id: number } };
+
+type Stats = {
+  totalUsers: number;
+  activeToday: number;
+  totalPaidOut: number;
+  pendingWithdrawals: number;
+  pendingWithdrawalAmount: number;
+  todayPayouts: number;
+  monthPayouts: number;
+  planDistribution: PlanDist[];
+};
+
+type PendingWithdrawal = {
+  id: string;
+  amount: number;
+  method: string;
+  accountNumber: string;
+  user: { name: string; email: string };
+};
+
+type WithdrawalsResp = {
+  withdrawals: PendingWithdrawal[];
+  total: number;
+  page: number;
+  pages: number;
+};
+
+export default async function AdminDashboard() {
+  const me = await apiJson<Me>("/auth/me");
+  if (!me) redirect("/login");
+  if (me.user.role !== "admin") redirect("/dashboard");
+
+  const [stats, recent] = await Promise.all([
+    apiJson<Stats>("/admin/stats"),
+    apiJson<WithdrawalsResp>("/admin/withdrawals?status=pending&page=1"),
+  ]);
+
+  const planDist = stats?.planDistribution ?? [];
+  const recentWithdrawals = (recent?.withdrawals ?? []).slice(0, 10);
+
+  // TODO(admin): backend /admin/stats does not expose frozenUsers; add to endpoint.
+  const frozenUsers = 0;
+
+  const pendingCount = stats?.pendingWithdrawals ?? 0;
+  const pendingWithdrawalAmount = stats?.pendingWithdrawalAmount ?? 0;
+
+  const statCards = [
+    { label: "Total Users", value: stats?.totalUsers ?? 0, icon: "👥" },
+    { label: "Frozen Accounts", value: frozenUsers, icon: "🔒" },
+    { label: "Total Paid Out", value: `₱${(stats?.totalPaidOut ?? 0).toFixed(2)}`, icon: "💰" },
+    { label: "Pending Withdrawals", value: pendingCount, icon: "⏳" },
+    { label: "Today's Payouts", value: `₱${(stats?.todayPayouts ?? 0).toFixed(2)}`, icon: "📅" },
+    { label: "Month Payouts", value: `₱${(stats?.monthPayouts ?? 0).toFixed(2)}`, icon: "📆" },
+  ];
+
+  return (
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-6">Admin Dashboard</h1>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+        {statCards.map((s) => (
+          <div key={s.label} className="card">
+            <div className="flex items-center gap-2 mb-1">
+              <span>{s.icon}</span>
+              <span className="text-xs" style={{ color: "var(--muted)" }}>{s.label}</span>
+            </div>
+            <div className="text-2xl font-bold">{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Plan distribution */}
+        <div className="card">
+          <h2 className="font-bold mb-4">Plan Distribution</h2>
+          <div className="space-y-2">
+            {planDist.map((p) => (
+              <div key={p.plan} className="flex justify-between items-center">
+                <span className="text-sm">{p.plan}</span>
+                <span className="font-bold">{p._count.id} users</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Pending withdrawals */}
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-bold">Pending Withdrawals</h2>
+            <Link href="/admin/withdrawals" className="text-xs hover:underline" style={{ color: "var(--gold)" }}>
+              View all →
+            </Link>
+          </div>
+          {recentWithdrawals.length === 0 ? (
+            <p className="text-sm" style={{ color: "var(--muted)" }}>No pending withdrawals</p>
+          ) : (
+            <div className="space-y-2">
+              {recentWithdrawals.map((w) => (
+                <div key={w.id} className="flex justify-between items-center text-sm">
+                  <div>
+                    <div className="font-medium">{w.user.name}</div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>{w.method} · {w.accountNumber}</div>
+                  </div>
+                  <div className="font-bold" style={{ color: "var(--gold)" }}>₱{w.amount.toFixed(2)}</div>
+                </div>
+              ))}
+              <div className="pt-2 font-semibold text-sm" style={{ color: "var(--gold)", borderTop: "1px solid var(--border)" }}>
+                Total: ₱{pendingWithdrawalAmount.toFixed(2)}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
