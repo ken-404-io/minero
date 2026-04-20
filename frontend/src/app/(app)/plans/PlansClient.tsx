@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { API_URL } from "@/lib/api-url";
 
 type PlanConfig = { label: string; ratePerClaim: number; dailyCap: number; price: number };
 type Plans = Record<string, PlanConfig>;
@@ -28,7 +29,7 @@ export default function PlansClient({ currentPlan, plans }: Props) {
     setUpgrading(selectedPlan);
     setError("");
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/plans/upgrade`, {
+      const res = await fetch(`${API_URL}/plans/upgrade`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

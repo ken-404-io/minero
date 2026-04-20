@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { API_URL } from "@/lib/api-url";
 
 type Withdrawal = {
   id: string;
@@ -44,7 +45,7 @@ export default function WithdrawClient({ balance, pendingBalance, withdrawals, m
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/withdraw`, {
+      const res = await fetch(`${API_URL}/withdraw`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

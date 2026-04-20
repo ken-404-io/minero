@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
+import { API_URL } from "@/lib/api-url";
 
 const links = [
   { href: "/dashboard", label: "Dashboard", icon: "⛏" },
@@ -18,7 +19,7 @@ export default function DashNav({ name, role }: { name: string; role: string }) 
   const [open, setOpen] = useState(false);
 
   async function logout() {
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/logout`, {
+    await fetch(`${API_URL}/auth/logout`, {
       method: "POST",
       credentials: "include",
     });
