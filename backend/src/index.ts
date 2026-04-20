@@ -13,6 +13,7 @@ import { withdrawRoutes } from "./routes/withdraw.js";
 import { adminRoutes } from "./routes/admin.js";
 import { otpRoutes } from "./routes/otp.js";
 import { paymentRoutes } from "./routes/payments.js";
+import { oauthRoutes } from "./routes/oauth.js";
 
 const app = new Hono();
 
@@ -37,6 +38,7 @@ app.get("/", (c) => c.json({ service: "minero-backend", status: "ok" }));
 app.get("/health", (c) => c.json({ ok: true }));
 
 app.route("/auth", authRoutes);
+app.route("/auth/oauth", oauthRoutes);
 app.route("/claim", claimRoutes);
 app.route("/earnings", earningsRoutes);
 app.route("/plans", plansRoutes);

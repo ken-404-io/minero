@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { API_URL } from "@/lib/api-url";
 import { deviceHeaders } from "@/lib/device";
+import OAuthButtons from "@/components/OAuthButtons";
 import {
   IconPickaxe,
   IconMail,
@@ -15,12 +16,30 @@ import {
   IconError,
 } from "@/components/icons";
 
-export default function LoginPage() {
+function humanizeOAuthError(code: string | null): string | null {
+  if (!code) return null;
+  if (code === "state_mismatch") return "Sign-in was interrupted. Please try again.";
+  if (code === "account_suspended") return "Your account is suspended.";
+  if (code === "bad_callback") return "Sign-in failed. Please try again.";
+  if (code.startsWith("email_uses_")) {
+    const other = code.slice("email_uses_".length);
+    return `That email already signed in with ${other}. Use ${other} to continue.`;
+  }
+  if (code === "facebook_missing_email") {
+    return "Facebook didn't share your email. Grant email permission and retry.";
+  }
+  return `Sign-in failed: ${code.replace(/_/g, " ")}`;
+}
+
+function LoginInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const oauthError = humanizeOAuthError(searchParams.get("error"));
   const [form, setForm] = useState({ email: "", password: "" });
-  const [error, setError] = useState("");
+  const [submitError, setSubmitError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw] = useState(false);
+  const error = submitError || oauthError || "";
 
   function set(field: string, val: string) {
     setForm((f) => ({ ...f, [field]: val }));
@@ -29,7 +48,7 @@ export default function LoginPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setError("");
+    setSubmitError("");
     try {
       const res = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
@@ -39,13 +58,13 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Login failed");
+        setSubmitError(data.error || "Login failed");
       } else {
         router.push(data.user.role === "admin" ? "/admin" : "/dashboard");
         router.refresh();
       }
     } catch {
-      setError("Network error. Try again.");
+      setSubmitError("Network error. Try again.");
     } finally {
       setLoading(false);
     }
@@ -183,6 +202,10 @@ export default function LoginPage() {
             </button>
           </form>
 
+          <div className="mt-5">
+            <OAuthButtons />
+          </div>
+
           <p className="text-center text-sm mt-6" style={{ color: "var(--text-muted)" }}>
             No account?{" "}
             <Link href="/register" className="link-brand">
@@ -192,5 +215,13 @@ export default function LoginPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginInner />
+    </Suspense>
   );
 }
