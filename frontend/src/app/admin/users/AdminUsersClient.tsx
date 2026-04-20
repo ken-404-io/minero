@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { API_URL } from "@/lib/api-url";
 
 type User = {
   id: string;
@@ -38,7 +39,7 @@ export default function AdminUsersClient({ users, total, page, pages, search }: 
   async function toggleFreeze(userId: string, frozen: boolean) {
     setLoading(userId);
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/admin/users/${userId}`, {
+      await fetch(`${API_URL}/admin/users/${userId}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

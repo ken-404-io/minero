@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { API_URL } from "@/lib/api-url";
 
 type Withdrawal = {
   id: string;
@@ -32,7 +33,7 @@ export default function AdminWithdrawalsClient({ withdrawals, total, page, pages
   async function process(id: string, action: "approve" | "reject") {
     setLoading(id);
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/admin/withdrawals/${id}`, {
+      await fetch(`${API_URL}/admin/withdrawals/${id}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

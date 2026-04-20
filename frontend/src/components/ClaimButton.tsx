@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { CLAIM_INTERVAL_MS } from "@/lib/mining";
+import { API_URL } from "@/lib/api-url";
 
 type Props = {
   lastClaimAt: Date | null;
@@ -46,7 +47,7 @@ export default function ClaimButton({ lastClaimAt, dailyEarned, dailyCap, ratePe
     setClaiming(true);
     setFlash(null);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/claim`, {
+      const res = await fetch(`${API_URL}/claim`, {
         method: "POST",
         credentials: "include",
       });
