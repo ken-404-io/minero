@@ -353,8 +353,8 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
         </div>
       </div>
 
-      {/* Game cards */}
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* Game list — compact rows on mobile, full cards on md+ */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
         <GameCard
           href="/game/trivia"
           title="Trivia Quiz"
@@ -489,7 +489,7 @@ function GameCard({
           "linear-gradient(165deg, color-mix(in oklab, var(--brand-weak) 45%, transparent), var(--surface))",
       }}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-center gap-3 md:items-start">
         <span
           aria-hidden
           className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
@@ -498,10 +498,23 @@ function GameCard({
           {icon}
         </span>
         <div className="flex-1 min-w-0">
-          <h2 className="text-lg font-semibold leading-snug">{title}</h2>
-          <div className="text-xs" style={{ color: "var(--text-subtle)" }}>
+          <h2 className="text-base md:text-lg font-semibold leading-snug truncate">
+            {title}
+          </h2>
+          <div
+            className="text-xs truncate"
+            style={{ color: "var(--text-subtle)" }}
+          >
             {tagline}
           </div>
+          {/* Inline status on mobile (keeps row compact & scannable) */}
+          <span
+            className="md:hidden mt-1 text-xs font-medium inline-flex items-center gap-1.5 min-w-0"
+            style={{ color: statusColor }}
+          >
+            {statusIcon}
+            <span className="truncate">{status}</span>
+          </span>
         </div>
         <span
           aria-hidden
@@ -511,10 +524,14 @@ function GameCard({
           <IconArrowRight size={14} />
         </span>
       </div>
-      <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+      {/* Description & footer: only on md+ — mobile stays a compact row */}
+      <p
+        className="hidden md:block text-sm"
+        style={{ color: "var(--text-muted)" }}
+      >
         {description}
       </p>
-      <div className="mt-auto flex items-center justify-between pt-1">
+      <div className="hidden md:flex mt-auto items-center justify-between pt-1">
         <span
           className="text-xs font-medium inline-flex items-center gap-1.5"
           style={{ color: statusColor }}
@@ -544,8 +561,9 @@ function ComingSoonCard({
     <div
       className="card flex flex-col gap-3"
       style={{ opacity: 0.7, borderStyle: "dashed" }}
+      aria-disabled
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-center gap-3 md:items-start">
         <span
           aria-hidden
           className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
@@ -554,13 +572,22 @@ function ComingSoonCard({
           <IconGame size={22} />
         </span>
         <div className="flex-1 min-w-0">
-          <h2 className="text-lg font-semibold leading-snug">{title}</h2>
-          <div className="text-xs" style={{ color: "var(--text-subtle)" }}>
+          <h2 className="text-base md:text-lg font-semibold leading-snug truncate">
+            {title}
+          </h2>
+          <div
+            className="text-xs truncate"
+            style={{ color: "var(--text-subtle)" }}
+          >
             Coming soon
           </div>
         </div>
       </div>
-      <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+      {/* Description only on md+ — mobile keeps the row silhouette dense */}
+      <p
+        className="hidden md:block text-sm"
+        style={{ color: "var(--text-muted)" }}
+      >
         {description}
       </p>
     </div>
