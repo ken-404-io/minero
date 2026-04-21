@@ -474,6 +474,38 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
         </div>
       </div>
 
+      {/* Redeem rewards CTA */}
+      <Link
+        href="/rewards"
+        className="card card-hover mb-6 flex items-center gap-3"
+        style={{
+          background:
+            "linear-gradient(165deg, color-mix(in oklab, var(--brand-weak) 60%, transparent), var(--surface))",
+        }}
+      >
+        <span
+          aria-hidden
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
+          style={{ background: "var(--brand-weak)", color: "var(--brand)" }}
+        >
+          <IconGift size={22} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="text-base md:text-lg font-semibold leading-snug">
+            Redeem rewards
+          </div>
+          <div className="text-xs md:text-sm" style={{ color: "var(--text-muted)" }}>
+            Convert your points into peso-value cards · 2,499 pts = ₱1
+          </div>
+        </div>
+        <span
+          className="text-sm font-semibold shrink-0"
+          style={{ color: "var(--brand)" }}
+        >
+          Open →
+        </span>
+      </Link>
+
       {/* Game list — compact rows on mobile, full cards on md+ */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
         <GameCard
