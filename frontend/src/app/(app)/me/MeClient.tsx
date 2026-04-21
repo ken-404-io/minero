@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { API_URL } from "@/lib/api-url";
+import AuthOverlay from "@/components/AuthOverlay";
 import {
   IconChart,
   IconChevronRight,
@@ -60,6 +61,7 @@ export default function MeClient({ user, planLabel }: Props) {
       });
       router.push("/");
       router.refresh();
+      // Keep loggingOut=true so the overlay stays until navigation completes.
     } catch {
       setLoggingOut(false);
     }
@@ -69,6 +71,8 @@ export default function MeClient({ user, planLabel }: Props) {
   const isAdmin = user.role === "admin";
 
   return (
+    <>
+    {loggingOut && <AuthOverlay mode="out" />}
     <div className="flex flex-col" style={{ background: "var(--bg)" }}>
       {/* ============================================================
          Brand-colored identity header
@@ -206,7 +210,7 @@ export default function MeClient({ user, planLabel }: Props) {
             }}
           >
             <IconLogout size={18} />
-            {loggingOut ? "Signing out…" : "Log Out"}
+            Log Out
           </button>
         </div>
 
@@ -218,6 +222,7 @@ export default function MeClient({ user, planLabel }: Props) {
         </p>
       </section>
     </div>
+    </>
   );
 }
 
