@@ -11,6 +11,7 @@ import {
   IconWallet,
   IconShield,
   IconLogout,
+  IconGame,
 } from "@/components/icons";
 
 type NavItem = {
@@ -24,6 +25,7 @@ const PRIMARY: NavItem[] = [
   { href: "/dashboard", label: "Mine",     Icon: IconPickaxe, shortcut: "g d" },
   { href: "/earnings",  label: "Earnings", Icon: IconChart,   shortcut: "g e" },
   { href: "/plans",     label: "Plans",    Icon: IconSparkles,shortcut: "g p" },
+  { href: "/game",      label: "Game",     Icon: IconGame,    shortcut: "g g" },
   { href: "/referral",  label: "Invite",   Icon: IconUsers,   shortcut: "g r" },
   { href: "/withdraw",  label: "Cash Out", Icon: IconWallet,  shortcut: "g w" },
 ];

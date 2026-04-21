@@ -336,3 +336,37 @@ export function IconBoltSmall(p: IconProps) {
     </svg>
   );
 }
+
+export function IconGame(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M6 12h4" />
+      <path d="M8 10v4" />
+      <path d="M15 13h.01" />
+      <path d="M18 11h.01" />
+      <rect x="2" y="6" width="20" height="12" rx="4" />
+    </svg>
+  );
+}
+
+export function IconTrophy(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M8 4h8v4a4 4 0 0 1-8 0V4Z" />
+      <path d="M8 6H5a2 2 0 0 0 0 4h3" />
+      <path d="M16 6h3a2 2 0 0 1 0 4h-3" />
+      <path d="M10 14h4l-1 4h-2l-1-4Z" />
+      <path d="M9 21h6" />
+    </svg>
+  );
+}
+
+export function IconBrain(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M12 4a3 3 0 0 0-3 3v.3A3 3 0 0 0 7 13a3 3 0 0 0 2 5 3 3 0 0 0 3 2" />
+      <path d="M12 4a3 3 0 0 1 3 3v.3A3 3 0 0 1 17 13a3 3 0 0 1-2 5 3 3 0 0 1-3 2" />
+      <path d="M12 4v16" />
+    </svg>
+  );
+}

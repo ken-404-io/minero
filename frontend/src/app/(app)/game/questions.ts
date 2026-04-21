@@ -1,0 +1,283 @@
+export type TriviaDifficulty = "easy" | "medium" | "hard";
+
+export type TriviaQuestion = {
+  id: string;
+  category: string;
+  difficulty: TriviaDifficulty;
+  question: string;
+  options: string[];
+  answer: number;
+};
+
+export const TRIVIA_QUESTIONS: TriviaQuestion[] = [
+  {
+    id: "geo-001",
+    category: "Geography",
+    difficulty: "easy",
+    question: "Which is the capital city of the Philippines?",
+    options: ["Cebu", "Manila", "Davao", "Quezon City"],
+    answer: 1,
+  },
+  {
+    id: "geo-002",
+    category: "Geography",
+    difficulty: "easy",
+    question: "Which ocean is the largest by surface area?",
+    options: ["Atlantic", "Indian", "Pacific", "Arctic"],
+    answer: 2,
+  },
+  {
+    id: "geo-003",
+    category: "Geography",
+    difficulty: "medium",
+    question: "Mount Everest sits on the border of Nepal and which other country?",
+    options: ["India", "China", "Bhutan", "Pakistan"],
+    answer: 1,
+  },
+  {
+    id: "geo-004",
+    category: "Geography",
+    difficulty: "medium",
+    question: "Which river flows through Cairo?",
+    options: ["Tigris", "Amazon", "Nile", "Congo"],
+    answer: 2,
+  },
+  {
+    id: "geo-005",
+    category: "Geography",
+    difficulty: "hard",
+    question: "Which country has the most time zones?",
+    options: ["Russia", "United States", "France", "China"],
+    answer: 2,
+  },
+  {
+    id: "sci-001",
+    category: "Science",
+    difficulty: "easy",
+    question: "What planet is known as the Red Planet?",
+    options: ["Venus", "Jupiter", "Mars", "Saturn"],
+    answer: 2,
+  },
+  {
+    id: "sci-002",
+    category: "Science",
+    difficulty: "easy",
+    question: "What gas do plants primarily absorb for photosynthesis?",
+    options: ["Oxygen", "Nitrogen", "Carbon dioxide", "Hydrogen"],
+    answer: 2,
+  },
+  {
+    id: "sci-003",
+    category: "Science",
+    difficulty: "medium",
+    question: "What is the chemical symbol for gold?",
+    options: ["Go", "Gd", "Au", "Ag"],
+    answer: 2,
+  },
+  {
+    id: "sci-004",
+    category: "Science",
+    difficulty: "medium",
+    question: "How many bones are in the adult human body?",
+    options: ["206", "198", "212", "180"],
+    answer: 0,
+  },
+  {
+    id: "sci-005",
+    category: "Science",
+    difficulty: "hard",
+    question: "Which particle is responsible for giving mass to other particles?",
+    options: ["Photon", "Higgs boson", "Neutrino", "Gluon"],
+    answer: 1,
+  },
+  {
+    id: "tech-001",
+    category: "Technology",
+    difficulty: "easy",
+    question: "What does CPU stand for?",
+    options: [
+      "Central Process Unit",
+      "Central Processing Unit",
+      "Computer Personal Unit",
+      "Control Processing Unit",
+    ],
+    answer: 1,
+  },
+  {
+    id: "tech-002",
+    category: "Technology",
+    difficulty: "easy",
+    question: "Which company created the iPhone?",
+    options: ["Google", "Samsung", "Apple", "Microsoft"],
+    answer: 2,
+  },
+  {
+    id: "tech-003",
+    category: "Technology",
+    difficulty: "medium",
+    question: "Which language is primarily used to style web pages?",
+    options: ["HTML", "CSS", "Python", "SQL"],
+    answer: 1,
+  },
+  {
+    id: "tech-004",
+    category: "Technology",
+    difficulty: "medium",
+    question: "Who is widely credited as the first computer programmer?",
+    options: ["Alan Turing", "Ada Lovelace", "Grace Hopper", "Linus Torvalds"],
+    answer: 1,
+  },
+  {
+    id: "tech-005",
+    category: "Technology",
+    difficulty: "hard",
+    question: "In Bitcoin, what is the maximum total supply that will ever exist?",
+    options: ["18 million", "21 million", "42 million", "100 million"],
+    answer: 1,
+  },
+  {
+    id: "hist-001",
+    category: "History",
+    difficulty: "easy",
+    question: "In which year did World War II end?",
+    options: ["1943", "1944", "1945", "1946"],
+    answer: 2,
+  },
+  {
+    id: "hist-002",
+    category: "History",
+    difficulty: "medium",
+    question: "Who was the first person to walk on the Moon?",
+    options: ["Buzz Aldrin", "Yuri Gagarin", "Neil Armstrong", "Michael Collins"],
+    answer: 2,
+  },
+  {
+    id: "hist-003",
+    category: "History",
+    difficulty: "medium",
+    question: "Which empire built Machu Picchu?",
+    options: ["Aztec", "Maya", "Inca", "Olmec"],
+    answer: 2,
+  },
+  {
+    id: "hist-004",
+    category: "History",
+    difficulty: "hard",
+    question: "In what year did Jose Rizal publish Noli Me Tangere?",
+    options: ["1872", "1887", "1896", "1901"],
+    answer: 1,
+  },
+  {
+    id: "ent-001",
+    category: "Entertainment",
+    difficulty: "easy",
+    question: "What is the name of Harry Potter's pet owl?",
+    options: ["Crookshanks", "Hedwig", "Errol", "Fawkes"],
+    answer: 1,
+  },
+  {
+    id: "ent-002",
+    category: "Entertainment",
+    difficulty: "easy",
+    question: "Which movie features a character named Woody and Buzz?",
+    options: ["Shrek", "Cars", "Toy Story", "Up"],
+    answer: 2,
+  },
+  {
+    id: "ent-003",
+    category: "Entertainment",
+    difficulty: "medium",
+    question: "Who directed the movie 'Inception'?",
+    options: ["Steven Spielberg", "Christopher Nolan", "James Cameron", "Martin Scorsese"],
+    answer: 1,
+  },
+  {
+    id: "ent-004",
+    category: "Entertainment",
+    difficulty: "medium",
+    question: "Which band performed the song 'Bohemian Rhapsody'?",
+    options: ["The Beatles", "Queen", "Led Zeppelin", "Pink Floyd"],
+    answer: 1,
+  },
+  {
+    id: "sport-001",
+    category: "Sports",
+    difficulty: "easy",
+    question: "How many players are on a standard football (soccer) team on the field?",
+    options: ["9", "10", "11", "12"],
+    answer: 2,
+  },
+  {
+    id: "sport-002",
+    category: "Sports",
+    difficulty: "medium",
+    question: "Manny Pacquiao has won world titles in how many weight divisions?",
+    options: ["6", "7", "8", "9"],
+    answer: 2,
+  },
+  {
+    id: "math-001",
+    category: "Math",
+    difficulty: "easy",
+    question: "What is 12 × 12?",
+    options: ["124", "132", "144", "156"],
+    answer: 2,
+  },
+  {
+    id: "math-002",
+    category: "Math",
+    difficulty: "medium",
+    question: "What is the value of π rounded to 2 decimal places?",
+    options: ["3.12", "3.14", "3.16", "3.18"],
+    answer: 1,
+  },
+  {
+    id: "math-003",
+    category: "Math",
+    difficulty: "hard",
+    question: "What is the square root of 729?",
+    options: ["23", "25", "27", "29"],
+    answer: 2,
+  },
+  {
+    id: "lang-001",
+    category: "Language",
+    difficulty: "easy",
+    question: "How many letters are in the English alphabet?",
+    options: ["24", "25", "26", "27"],
+    answer: 2,
+  },
+  {
+    id: "lang-002",
+    category: "Language",
+    difficulty: "medium",
+    question: "What does 'mabuhay' commonly mean in Filipino?",
+    options: ["Goodbye", "Thank you", "Long live / Welcome", "Sorry"],
+    answer: 2,
+  },
+  {
+    id: "food-001",
+    category: "Food",
+    difficulty: "easy",
+    question: "Adobo is a well-known dish from which cuisine?",
+    options: ["Thai", "Filipino", "Japanese", "Indian"],
+    answer: 1,
+  },
+  {
+    id: "food-002",
+    category: "Food",
+    difficulty: "medium",
+    question: "Which fruit is known as the 'king of fruits' in Southeast Asia?",
+    options: ["Mango", "Banana", "Durian", "Pineapple"],
+    answer: 2,
+  },
+];
+
+export function pickRandomQuestions(count: number): TriviaQuestion[] {
+  const pool = [...TRIVIA_QUESTIONS];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, Math.min(count, pool.length));
+}
