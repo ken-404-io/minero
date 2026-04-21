@@ -13,6 +13,7 @@ import {
   IconLogout,
   IconGame,
   IconGift,
+  IconUser,
 } from "@/components/icons";
 
 type NavItem = {
@@ -28,9 +29,10 @@ const PRIMARY: NavItem[] = [
   { href: "/earnings",  label: "Earnings", shortLabel: "Earn",   Icon: IconChart,   shortcut: "g e" },
   { href: "/plans",     label: "Plans",    Icon: IconSparkles,shortcut: "g p" },
   { href: "/game",      label: "Game",     Icon: IconGame,    shortcut: "g g" },
-  { href: "/rewards",   label: "Rewards",  Icon: IconGift,    shortcut: "g x" },
+  { href: "/rewards",   label: "Rewards",  shortLabel: "Reward", Icon: IconGift,    shortcut: "g x" },
   { href: "/referral",  label: "Invite",   Icon: IconUsers,   shortcut: "g r" },
   { href: "/withdraw",  label: "Cash Out", shortLabel: "Cash",   Icon: IconWallet,  shortcut: "g w" },
+  { href: "/me",        label: "Me",       Icon: IconUser,    shortcut: "g m" },
 ];
 
 function isActive(pathname: string, href: string) {

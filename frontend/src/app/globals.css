@@ -512,7 +512,7 @@ kbd {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
   font-weight: 500;
   color: var(--text-muted);
   min-height: 48px;

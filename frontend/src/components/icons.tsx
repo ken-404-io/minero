@@ -247,6 +247,25 @@ export function IconMail(p: IconProps) {
   );
 }
 
+export function IconChevronRight(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="m9 6 6 6-6 6" />
+    </svg>
+  );
+}
+
+export function IconFileText(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z" />
+      <path d="M14 3v6h6" />
+      <path d="M8 13h8" />
+      <path d="M8 17h5" />
+    </svg>
+  );
+}
+
 export function IconUser(p: IconProps) {
   return (
     <svg {...base(p)}>
