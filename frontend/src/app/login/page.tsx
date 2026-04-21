@@ -7,6 +7,7 @@ import { API_URL } from "@/lib/api-url";
 import { deviceHeaders } from "@/lib/device";
 import OAuthButtons from "@/components/OAuthButtons";
 import MiningAnimation from "@/components/MiningAnimation";
+import AuthOverlay from "@/components/AuthOverlay";
 import {
   IconPickaxe,
   IconMail,
@@ -74,18 +75,21 @@ function LoginInner() {
       const data = await res.json();
       if (!res.ok) {
         setSubmitError(data.error || "Login failed");
+        setLoading(false);
       } else {
         router.push(data.user.role === "admin" ? "/admin" : "/dashboard");
         router.refresh();
+        // Keep loading=true so the overlay stays until navigation completes.
       }
     } catch {
       setSubmitError("Network error. Try again.");
-    } finally {
       setLoading(false);
     }
   }
 
   return (
+    <>
+    {loading && <AuthOverlay mode="in" />}
     <div className="min-h-screen grid lg:grid-cols-2">
       {/* ==================== Left: brand panel (desktop only) ==================== */}
       <aside
@@ -243,6 +247,7 @@ function LoginInner() {
         </div>
       </main>
     </div>
+    </>
   );
 }
 

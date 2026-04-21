@@ -54,7 +54,7 @@ export default function DashNav({ name, role }: { name: string; role: string }) 
 
   return (
     <>
-      {/* ===================== Mobile: top bar (brand only, no hamburger) ===================== */}
+      {/* ===================== Mobile: top bar (brand only) ===================== */}
       <header className="mobile-topbar" role="banner">
         <Link href="/dashboard" className="flex items-center gap-2" aria-label="Minero home">
           <span
@@ -66,13 +66,6 @@ export default function DashNav({ name, role }: { name: string; role: string }) 
           </span>
           <span className="font-semibold tracking-tight">Minero</span>
         </Link>
-        <button
-          onClick={logout}
-          aria-label="Sign out"
-          className="btn-icon"
-        >
-          <IconLogout size={18} />
-        </button>
       </header>
 
       {/* ===================== Desktop: persistent side nav ===================== */}
