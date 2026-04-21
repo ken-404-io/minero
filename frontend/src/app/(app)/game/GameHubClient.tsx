@@ -6,6 +6,7 @@ import {
   IconArrowRight,
   IconBrain,
   IconClock,
+  IconCopy,
   IconGame,
   IconGift,
   IconSparkles,
@@ -18,6 +19,7 @@ import {
 
 const TRIVIA_KEY = "minero_trivia_stats_v1";
 const SPIN_KEY = "minero_spin_stats_v1";
+const MEMORY_KEY = "minero_memory_stats_v1";
 const SPIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 type TriviaStats = {
@@ -34,6 +36,19 @@ type SpinStats = {
   spinsCompleted: number;
 };
 
+type DiffStats = {
+  gamesWon: number;
+  bestMoves: number;
+  bestTimeMs: number;
+};
+
+type MemoryStats = {
+  totalPoints: number;
+  easy: DiffStats;
+  medium: DiffStats;
+  hard: DiffStats;
+};
+
 const EMPTY_TRIVIA: TriviaStats = {
   bestScore: 0,
   totalPoints: 0,
@@ -46,6 +61,15 @@ const EMPTY_SPIN: SpinStats = {
   lastPrize: 0,
   totalPoints: 0,
   spinsCompleted: 0,
+};
+
+const EMPTY_DIFF: DiffStats = { gamesWon: 0, bestMoves: 0, bestTimeMs: 0 };
+
+const EMPTY_MEMORY: MemoryStats = {
+  totalPoints: 0,
+  easy: { ...EMPTY_DIFF },
+  medium: { ...EMPTY_DIFF },
+  hard: { ...EMPTY_DIFF },
 };
 
 function parseTrivia(raw: string | null): TriviaStats {
@@ -78,11 +102,38 @@ function parseSpin(raw: string | null): SpinStats {
   }
 }
 
+function parseDiff(v: unknown): DiffStats {
+  if (!v || typeof v !== "object") return { ...EMPTY_DIFF };
+  const o = v as Record<string, unknown>;
+  return {
+    gamesWon: Number(o.gamesWon) || 0,
+    bestMoves: Number(o.bestMoves) || 0,
+    bestTimeMs: Number(o.bestTimeMs) || 0,
+  };
+}
+
+function parseMemory(raw: string | null): MemoryStats {
+  if (!raw) return EMPTY_MEMORY;
+  try {
+    const p = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      totalPoints: Number(p.totalPoints) || 0,
+      easy: parseDiff(p.easy),
+      medium: parseDiff(p.medium),
+      hard: parseDiff(p.hard),
+    };
+  } catch {
+    return EMPTY_MEMORY;
+  }
+}
+
 // Per-key raw+parsed cache so useSyncExternalStore returns stable references.
 let triviaRaw: string | null = null;
 let triviaCache: TriviaStats = EMPTY_TRIVIA;
 let spinRaw: string | null = null;
 let spinCache: SpinStats = EMPTY_SPIN;
+let memoryRaw: string | null = null;
+let memoryCache: MemoryStats = EMPTY_MEMORY;
 
 function getTriviaSnapshot(): TriviaStats {
   if (typeof window === "undefined") return EMPTY_TRIVIA;
@@ -104,6 +155,16 @@ function getSpinSnapshot(): SpinStats {
   return spinCache;
 }
 
+function getMemorySnapshot(): MemoryStats {
+  if (typeof window === "undefined") return EMPTY_MEMORY;
+  const raw = window.localStorage.getItem(MEMORY_KEY);
+  if (raw !== memoryRaw) {
+    memoryRaw = raw;
+    memoryCache = parseMemory(raw);
+  }
+  return memoryCache;
+}
+
 function makeSubscriber(key: string) {
   return (cb: () => void) => {
     const onStorage = (e: StorageEvent) => {
@@ -119,6 +180,9 @@ const getTriviaServer = () => EMPTY_TRIVIA;
 
 const subscribeSpin = makeSubscriber(SPIN_KEY);
 const getSpinServer = () => EMPTY_SPIN;
+
+const subscribeMemory = makeSubscriber(MEMORY_KEY);
+const getMemoryServer = () => EMPTY_MEMORY;
 
 function formatCountdown(ms: number) {
   if (ms <= 0) return "Ready";
@@ -145,6 +209,11 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     getSpinSnapshot,
     getSpinServer,
   );
+  const memory = useSyncExternalStore(
+    subscribeMemory,
+    getMemorySnapshot,
+    getMemoryServer,
+  );
 
   const [now, setNow] = useState<number>(() => Date.now());
   useEffect(() => {
@@ -157,8 +226,12 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     : 0;
   const spinReady = spinCooldown === 0;
 
+  const memoryWins =
+    memory.easy.gamesWon + memory.medium.gamesWon + memory.hard.gamesWon;
+
   const firstName = playerName?.split(/\s+/)[0] || "Miner";
-  const totalGamePoints = trivia.totalPoints + spin.totalPoints;
+  const totalGamePoints =
+    trivia.totalPoints + spin.totalPoints + memory.totalPoints;
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-6 lg:px-8 lg:py-8">
@@ -235,9 +308,23 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
           accent={spinReady ? "success" : "muted"}
         />
 
-        <ComingSoonCard
+        <GameCard
+          href="/game/memory"
           title="Memory Match"
-          description="Classic flip-and-match card game. Quick sessions, satisfying payoff."
+          tagline="Flip-and-match card game"
+          description="Pair up the cards with as few moves as possible. Three difficulty tiers, scored on moves + time."
+          icon={<IconCopy size={22} />}
+          status={
+            memoryWins > 0
+              ? `${memoryWins} cleared${
+                  memory.easy.bestMoves
+                    ? ` · Easy best ${memory.easy.bestMoves}`
+                    : ""
+                }`
+              : "New — start on Easy"
+          }
+          ctaLabel="Play Memory"
+          accent="brand"
         />
         <ComingSoonCard
           title="Minesweeper"
