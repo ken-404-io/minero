@@ -9,6 +9,7 @@ import {
   IconCopy,
   IconGame,
   IconGift,
+  IconMine,
   IconSparkles,
   IconTrophy,
 } from "@/components/icons";
@@ -20,6 +21,7 @@ import {
 const TRIVIA_KEY = "minero_trivia_stats_v1";
 const SPIN_KEY = "minero_spin_stats_v1";
 const MEMORY_KEY = "minero_memory_stats_v1";
+const MINESWEEPER_KEY = "minero_minesweeper_stats_v1";
 const SPIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 type TriviaStats = {
@@ -49,6 +51,18 @@ type MemoryStats = {
   hard: DiffStats;
 };
 
+type MinesweeperDiff = {
+  gamesWon: number;
+  bestTimeMs: number;
+};
+
+type MinesweeperStats = {
+  totalPoints: number;
+  easy: MinesweeperDiff;
+  medium: MinesweeperDiff;
+  hard: MinesweeperDiff;
+};
+
 const EMPTY_TRIVIA: TriviaStats = {
   bestScore: 0,
   totalPoints: 0,
@@ -70,6 +84,14 @@ const EMPTY_MEMORY: MemoryStats = {
   easy: { ...EMPTY_DIFF },
   medium: { ...EMPTY_DIFF },
   hard: { ...EMPTY_DIFF },
+};
+
+const EMPTY_SWEEP_DIFF: MinesweeperDiff = { gamesWon: 0, bestTimeMs: 0 };
+const EMPTY_MINESWEEPER: MinesweeperStats = {
+  totalPoints: 0,
+  easy: { ...EMPTY_SWEEP_DIFF },
+  medium: { ...EMPTY_SWEEP_DIFF },
+  hard: { ...EMPTY_SWEEP_DIFF },
 };
 
 function parseTrivia(raw: string | null): TriviaStats {
@@ -127,6 +149,30 @@ function parseMemory(raw: string | null): MemoryStats {
   }
 }
 
+function parseSweepDiff(v: unknown): MinesweeperDiff {
+  if (!v || typeof v !== "object") return { ...EMPTY_SWEEP_DIFF };
+  const o = v as Record<string, unknown>;
+  return {
+    gamesWon: Number(o.gamesWon) || 0,
+    bestTimeMs: Number(o.bestTimeMs) || 0,
+  };
+}
+
+function parseMinesweeper(raw: string | null): MinesweeperStats {
+  if (!raw) return EMPTY_MINESWEEPER;
+  try {
+    const p = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      totalPoints: Number(p.totalPoints) || 0,
+      easy: parseSweepDiff(p.easy),
+      medium: parseSweepDiff(p.medium),
+      hard: parseSweepDiff(p.hard),
+    };
+  } catch {
+    return EMPTY_MINESWEEPER;
+  }
+}
+
 // Per-key raw+parsed cache so useSyncExternalStore returns stable references.
 let triviaRaw: string | null = null;
 let triviaCache: TriviaStats = EMPTY_TRIVIA;
@@ -134,6 +180,8 @@ let spinRaw: string | null = null;
 let spinCache: SpinStats = EMPTY_SPIN;
 let memoryRaw: string | null = null;
 let memoryCache: MemoryStats = EMPTY_MEMORY;
+let sweepRaw: string | null = null;
+let sweepCache: MinesweeperStats = EMPTY_MINESWEEPER;
 
 function getTriviaSnapshot(): TriviaStats {
   if (typeof window === "undefined") return EMPTY_TRIVIA;
@@ -165,6 +213,16 @@ function getMemorySnapshot(): MemoryStats {
   return memoryCache;
 }
 
+function getMinesweeperSnapshot(): MinesweeperStats {
+  if (typeof window === "undefined") return EMPTY_MINESWEEPER;
+  const raw = window.localStorage.getItem(MINESWEEPER_KEY);
+  if (raw !== sweepRaw) {
+    sweepRaw = raw;
+    sweepCache = parseMinesweeper(raw);
+  }
+  return sweepCache;
+}
+
 function makeSubscriber(key: string) {
   return (cb: () => void) => {
     const onStorage = (e: StorageEvent) => {
@@ -184,6 +242,9 @@ const getSpinServer = () => EMPTY_SPIN;
 const subscribeMemory = makeSubscriber(MEMORY_KEY);
 const getMemoryServer = () => EMPTY_MEMORY;
 
+const subscribeMinesweeper = makeSubscriber(MINESWEEPER_KEY);
+const getMinesweeperServer = () => EMPTY_MINESWEEPER;
+
 function formatCountdown(ms: number) {
   if (ms <= 0) return "Ready";
   const total = Math.ceil(ms / 1000);
@@ -192,6 +253,13 @@ function formatCountdown(ms: number) {
   const s = total % 60;
   const pad = (n: number) => n.toString().padStart(2, "0");
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
+
+function formatTimeShort(ms: number) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 /* ============================================================
@@ -214,6 +282,11 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     getMemorySnapshot,
     getMemoryServer,
   );
+  const sweep = useSyncExternalStore(
+    subscribeMinesweeper,
+    getMinesweeperSnapshot,
+    getMinesweeperServer,
+  );
 
   const [now, setNow] = useState<number>(() => Date.now());
   useEffect(() => {
@@ -228,10 +301,16 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
 
   const memoryWins =
     memory.easy.gamesWon + memory.medium.gamesWon + memory.hard.gamesWon;
+  const sweepWins =
+    sweep.easy.gamesWon + sweep.medium.gamesWon + sweep.hard.gamesWon;
+  const sweepEasyBest = sweep.easy.bestTimeMs;
 
   const firstName = playerName?.split(/\s+/)[0] || "Miner";
   const totalGamePoints =
-    trivia.totalPoints + spin.totalPoints + memory.totalPoints;
+    trivia.totalPoints +
+    spin.totalPoints +
+    memory.totalPoints +
+    sweep.totalPoints;
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-6 lg:px-8 lg:py-8">
@@ -326,9 +405,32 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
           ctaLabel="Play Memory"
           accent="brand"
         />
-        <ComingSoonCard
+        <GameCard
+          href="/game/minesweeper"
           title="Minesweeper"
-          description="Clear the board, earn more points for harder difficulties."
+          tagline="Clear the board, dodge the mines"
+          description="Classic logic puzzle. Flag mines, reveal safe cells. Harder difficulties pay out more points."
+          icon={<IconMine size={22} />}
+          status={
+            sweepWins > 0
+              ? `${sweepWins} cleared${
+                  sweepEasyBest
+                    ? ` · Easy best ${formatTimeShort(sweepEasyBest)}`
+                    : ""
+                }`
+              : "New — first click is always safe"
+          }
+          ctaLabel="Play Minesweeper"
+          accent="brand"
+        />
+
+        <ComingSoonCard
+          title="Word Game"
+          description="Wordle-style daily word challenge — 6 tries, one word per day."
+        />
+        <ComingSoonCard
+          title="Snake"
+          description="Arcade classic on a canvas. Eat, grow, don't hit the walls."
         />
       </div>
 
