@@ -512,13 +512,20 @@ kbd {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  font-size: var(--fs-12);
+  font-size: 0.6875rem;
   font-weight: 500;
   color: var(--text-muted);
   min-height: 48px;
-  padding: 6px 4px;
+  min-width: 0;
+  padding: 6px 2px;
   transition: color var(--dur-fast) var(--ease-out);
   -webkit-tap-highlight-color: transparent;
+}
+.mobile-nav-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .mobile-nav-item[aria-current="page"] {
   color: var(--brand);
