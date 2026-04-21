@@ -125,7 +125,7 @@ function scoreForQuestion(
   return Math.round(withSpeed + streakBonus);
 }
 
-export default function GameClient({ playerName }: { playerName: string }) {
+export default function TriviaClient({ playerName }: { playerName: string }) {
   const [stage, setStage] = useState<Stage>("idle");
   const stats = useSyncExternalStore(
     subscribeStats,
