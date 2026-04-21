@@ -370,3 +370,28 @@ export function IconBrain(p: IconProps) {
     </svg>
   );
 }
+
+export function IconMine(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <circle cx="12" cy="12" r="5" />
+      <path d="M12 4v3" />
+      <path d="M12 17v3" />
+      <path d="M4 12h3" />
+      <path d="M17 12h3" />
+      <path d="m6.3 6.3 2.1 2.1" />
+      <path d="m15.6 15.6 2.1 2.1" />
+      <path d="m6.3 17.7 2.1-2.1" />
+      <path d="m15.6 8.4 2.1-2.1" />
+    </svg>
+  );
+}
+
+export function IconFlag(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M5 21V4" />
+      <path d="M5 4h11l-2 4 2 4H5" />
+    </svg>
+  );
+}
