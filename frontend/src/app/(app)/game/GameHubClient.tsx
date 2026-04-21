@@ -22,7 +22,10 @@ const TRIVIA_KEY = "minero_trivia_stats_v1";
 const SPIN_KEY = "minero_spin_stats_v1";
 const MEMORY_KEY = "minero_memory_stats_v1";
 const MINESWEEPER_KEY = "minero_minesweeper_stats_v1";
+const WORD_KEY = "minero_word_stats_v1";
+const SNAKE_KEY = "minero_snake_stats_v1";
 const SPIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 type TriviaStats = {
   bestScore: number;
@@ -92,6 +95,40 @@ const EMPTY_MINESWEEPER: MinesweeperStats = {
   easy: { ...EMPTY_SWEEP_DIFF },
   medium: { ...EMPTY_SWEEP_DIFF },
   hard: { ...EMPTY_SWEEP_DIFF },
+};
+
+type WordStats = {
+  totalPoints: number;
+  gamesPlayed: number;
+  wins: number;
+  currentStreak: number;
+  bestStreak: number;
+  lastPlayedDay: number;
+  lastResult: "win" | "loss" | null;
+};
+
+const EMPTY_WORD: WordStats = {
+  totalPoints: 0,
+  gamesPlayed: 0,
+  wins: 0,
+  currentStreak: 0,
+  bestStreak: 0,
+  lastPlayedDay: -1,
+  lastResult: null,
+};
+
+type SnakeStats = {
+  totalPoints: number;
+  bestScore: number;
+  gamesPlayed: number;
+  applesEaten: number;
+};
+
+const EMPTY_SNAKE: SnakeStats = {
+  totalPoints: 0,
+  bestScore: 0,
+  gamesPlayed: 0,
+  applesEaten: 0,
 };
 
 function parseTrivia(raw: string | null): TriviaStats {
@@ -173,6 +210,43 @@ function parseMinesweeper(raw: string | null): MinesweeperStats {
   }
 }
 
+function parseWord(raw: string | null): WordStats {
+  if (!raw) return EMPTY_WORD;
+  try {
+    const p = JSON.parse(raw) as Partial<WordStats>;
+    return {
+      totalPoints: Number(p.totalPoints) || 0,
+      gamesPlayed: Number(p.gamesPlayed) || 0,
+      wins: Number(p.wins) || 0,
+      currentStreak: Number(p.currentStreak) || 0,
+      bestStreak: Number(p.bestStreak) || 0,
+      lastPlayedDay:
+        typeof p.lastPlayedDay === "number" && Number.isFinite(p.lastPlayedDay)
+          ? p.lastPlayedDay
+          : -1,
+      lastResult:
+        p.lastResult === "win" || p.lastResult === "loss" ? p.lastResult : null,
+    };
+  } catch {
+    return EMPTY_WORD;
+  }
+}
+
+function parseSnake(raw: string | null): SnakeStats {
+  if (!raw) return EMPTY_SNAKE;
+  try {
+    const p = JSON.parse(raw) as Partial<SnakeStats>;
+    return {
+      totalPoints: Number(p.totalPoints) || 0,
+      bestScore: Number(p.bestScore) || 0,
+      gamesPlayed: Number(p.gamesPlayed) || 0,
+      applesEaten: Number(p.applesEaten) || 0,
+    };
+  } catch {
+    return EMPTY_SNAKE;
+  }
+}
+
 // Per-key raw+parsed cache so useSyncExternalStore returns stable references.
 let triviaRaw: string | null = null;
 let triviaCache: TriviaStats = EMPTY_TRIVIA;
@@ -182,6 +256,10 @@ let memoryRaw: string | null = null;
 let memoryCache: MemoryStats = EMPTY_MEMORY;
 let sweepRaw: string | null = null;
 let sweepCache: MinesweeperStats = EMPTY_MINESWEEPER;
+let wordRaw: string | null = null;
+let wordCache: WordStats = EMPTY_WORD;
+let snakeRaw: string | null = null;
+let snakeCache: SnakeStats = EMPTY_SNAKE;
 
 function getTriviaSnapshot(): TriviaStats {
   if (typeof window === "undefined") return EMPTY_TRIVIA;
@@ -223,6 +301,26 @@ function getMinesweeperSnapshot(): MinesweeperStats {
   return sweepCache;
 }
 
+function getWordSnapshot(): WordStats {
+  if (typeof window === "undefined") return EMPTY_WORD;
+  const raw = window.localStorage.getItem(WORD_KEY);
+  if (raw !== wordRaw) {
+    wordRaw = raw;
+    wordCache = parseWord(raw);
+  }
+  return wordCache;
+}
+
+function getSnakeSnapshot(): SnakeStats {
+  if (typeof window === "undefined") return EMPTY_SNAKE;
+  const raw = window.localStorage.getItem(SNAKE_KEY);
+  if (raw !== snakeRaw) {
+    snakeRaw = raw;
+    snakeCache = parseSnake(raw);
+  }
+  return snakeCache;
+}
+
 function makeSubscriber(key: string) {
   return (cb: () => void) => {
     const onStorage = (e: StorageEvent) => {
@@ -244,6 +342,12 @@ const getMemoryServer = () => EMPTY_MEMORY;
 
 const subscribeMinesweeper = makeSubscriber(MINESWEEPER_KEY);
 const getMinesweeperServer = () => EMPTY_MINESWEEPER;
+
+const subscribeWord = makeSubscriber(WORD_KEY);
+const getWordServer = () => EMPTY_WORD;
+
+const subscribeSnake = makeSubscriber(SNAKE_KEY);
+const getSnakeServer = () => EMPTY_SNAKE;
 
 function formatCountdown(ms: number) {
   if (ms <= 0) return "Ready";
@@ -287,6 +391,16 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     getMinesweeperSnapshot,
     getMinesweeperServer,
   );
+  const word = useSyncExternalStore(
+    subscribeWord,
+    getWordSnapshot,
+    getWordServer,
+  );
+  const snake = useSyncExternalStore(
+    subscribeSnake,
+    getSnakeSnapshot,
+    getSnakeServer,
+  );
 
   const [now, setNow] = useState<number>(() => Date.now());
   useEffect(() => {
@@ -305,12 +419,19 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     sweep.easy.gamesWon + sweep.medium.gamesWon + sweep.hard.gamesWon;
   const sweepEasyBest = sweep.easy.bestTimeMs;
 
+  // Word: daily challenge. "Done today" = last played day matches today.
+  const todayDay = Math.floor(now / DAY_MS);
+  const wordDoneToday = word.lastPlayedDay === todayDay;
+  const wordNextMs = Math.max(0, (todayDay + 1) * DAY_MS - now);
+
   const firstName = playerName?.split(/\s+/)[0] || "Miner";
   const totalGamePoints =
     trivia.totalPoints +
     spin.totalPoints +
     memory.totalPoints +
-    sweep.totalPoints;
+    sweep.totalPoints +
+    word.totalPoints +
+    snake.totalPoints;
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-6 lg:px-8 lg:py-8">
@@ -424,13 +545,38 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
           accent="brand"
         />
 
-        <ComingSoonCard
+        <GameCard
+          href="/game/word"
           title="Word Game"
-          description="Wordle-style daily word challenge — 6 tries, one word per day."
+          tagline="Daily 5-letter puzzle"
+          description="Guess the day's word in six tries. Fewer tries earn bigger payouts. One word per day."
+          icon={<IconBrain size={22} />}
+          status={
+            wordDoneToday
+              ? word.lastResult === "win"
+                ? `Solved today · next in ${formatCountdown(wordNextMs)}`
+                : `Missed today · next in ${formatCountdown(wordNextMs)}`
+              : word.gamesPlayed > 0
+                ? `Streak ${word.currentStreak} · best ${word.bestStreak}`
+                : "New — today's word is waiting"
+          }
+          statusIcon={wordDoneToday ? <IconClock size={14} /> : undefined}
+          ctaLabel={wordDoneToday ? "View result" : "Play today"}
+          accent={wordDoneToday ? "muted" : "brand"}
         />
-        <ComingSoonCard
+        <GameCard
+          href="/game/snake"
           title="Snake"
-          description="Arcade classic on a canvas. Eat, grow, don't hit the walls."
+          tagline="Arcade classic on a canvas"
+          description="Eat apples, grow longer, don't hit a wall or yourself. Score = apples × 10."
+          icon={<IconGame size={22} />}
+          status={
+            snake.gamesPlayed > 0
+              ? `Best ${snake.bestScore} · ${snake.gamesPlayed} played`
+              : "New — arrows / swipe to play"
+          }
+          ctaLabel="Play Snake"
+          accent="brand"
         />
       </div>
 
@@ -550,46 +696,3 @@ function GameCard({
   );
 }
 
-function ComingSoonCard({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div
-      className="card flex flex-col gap-3"
-      style={{ opacity: 0.7, borderStyle: "dashed" }}
-      aria-disabled
-    >
-      <div className="flex items-center gap-3 md:items-start">
-        <span
-          aria-hidden
-          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
-          style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}
-        >
-          <IconGame size={22} />
-        </span>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-base md:text-lg font-semibold leading-snug truncate">
-            {title}
-          </h2>
-          <div
-            className="text-xs truncate"
-            style={{ color: "var(--text-subtle)" }}
-          >
-            Coming soon
-          </div>
-        </div>
-      </div>
-      {/* Description only on md+ — mobile keeps the row silhouette dense */}
-      <p
-        className="hidden md:block text-sm"
-        style={{ color: "var(--text-muted)" }}
-      >
-        {description}
-      </p>
-    </div>
-  );
-}
