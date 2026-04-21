@@ -12,22 +12,25 @@ import {
   IconShield,
   IconLogout,
   IconGame,
+  IconGift,
 } from "@/components/icons";
 
 type NavItem = {
   href: string;
   label: string;
+  shortLabel?: string;
   Icon: (p: { size?: number }) => React.ReactNode;
   shortcut?: string;
 };
 
 const PRIMARY: NavItem[] = [
   { href: "/dashboard", label: "Mine",     Icon: IconPickaxe, shortcut: "g d" },
-  { href: "/earnings",  label: "Earnings", Icon: IconChart,   shortcut: "g e" },
+  { href: "/earnings",  label: "Earnings", shortLabel: "Earn",   Icon: IconChart,   shortcut: "g e" },
   { href: "/plans",     label: "Plans",    Icon: IconSparkles,shortcut: "g p" },
   { href: "/game",      label: "Game",     Icon: IconGame,    shortcut: "g g" },
+  { href: "/rewards",   label: "Rewards",  Icon: IconGift,    shortcut: "g x" },
   { href: "/referral",  label: "Invite",   Icon: IconUsers,   shortcut: "g r" },
-  { href: "/withdraw",  label: "Cash Out", Icon: IconWallet,  shortcut: "g w" },
+  { href: "/withdraw",  label: "Cash Out", shortLabel: "Cash",   Icon: IconWallet,  shortcut: "g w" },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -164,7 +167,7 @@ export default function DashNav({ name, role }: { name: string; role: string }) 
             >
               <span className="mobile-nav-dot" aria-hidden />
               <l.Icon size={22} />
-              <span>{l.label}</span>
+              <span className="mobile-nav-label">{l.shortLabel ?? l.label}</span>
             </Link>
           );
         })}
