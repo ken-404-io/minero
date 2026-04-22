@@ -486,9 +486,7 @@ const configUpdateSchema = z.object({
   plans: z
     .object({
       free: planSchema,
-      plan499: planSchema,
-      plan699: planSchema,
-      plan799: planSchema,
+      paid: planSchema,
     })
     .optional(),
   claimIntervalMs: z.number().int().min(60_000).max(6 * 60 * 60 * 1000).optional(),

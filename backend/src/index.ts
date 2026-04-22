@@ -3,7 +3,7 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-import { sessionMiddleware } from "./lib/session.js";
+import { sessionMiddleware, requireActivated } from "./lib/session.js";
 import { authRoutes } from "./routes/auth.js";
 import { claimRoutes } from "./routes/claim.js";
 import { earningsRoutes } from "./routes/earnings.js";
@@ -37,16 +37,24 @@ app.use("*", sessionMiddleware);
 app.get("/", (c) => c.json({ service: "minero-backend", status: "ok" }));
 app.get("/health", (c) => c.json({ ok: true }));
 
+// Always-accessible routes (auth, OTP, activation payment, webhook).
 app.route("/auth", authRoutes);
 app.route("/auth/oauth", oauthRoutes);
+app.route("/otp", otpRoutes);
+app.route("/plans", plansRoutes);
+app.route("/payments", paymentRoutes);
+app.route("/admin", adminRoutes);
+
+// App features gated behind the ₱49 activation paywall.
+app.use("/claim/*", requireActivated);
+app.use("/earnings/*", requireActivated);
+app.use("/referrals/*", requireActivated);
+app.use("/withdraw/*", requireActivated);
+
 app.route("/claim", claimRoutes);
 app.route("/earnings", earningsRoutes);
-app.route("/plans", plansRoutes);
 app.route("/referrals", referralsRoutes);
 app.route("/withdraw", withdrawRoutes);
-app.route("/admin", adminRoutes);
-app.route("/otp", otpRoutes);
-app.route("/payments", paymentRoutes);
 
 app.onError((err, c) => {
   console.error(err);

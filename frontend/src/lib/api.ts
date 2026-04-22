@@ -1,4 +1,5 @@
 import { cookies, headers } from "next/headers";
+import { redirect } from "next/navigation";
 
 export function publicApiUrl(): string {
   return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -26,11 +27,24 @@ export async function apiFetch(
   }
 
   // Next.js caches fetch by default; always opt out for authenticated API calls.
-  return fetch(`${serverApiUrl()}${path}`, {
+  const res = await fetch(`${serverApiUrl()}${path}`, {
     ...init,
     headers: hdrs,
     cache: "no-store",
   });
+
+  // Global paywall redirect: the backend returns 402 with { redirectTo }
+  // for users whose plan !== "paid" on gated routes.
+  if (res.status === 402) {
+    try {
+      const data = (await res.clone().json()) as { redirectTo?: string };
+      redirect(data?.redirectTo ?? "/activate");
+    } catch {
+      redirect("/activate");
+    }
+  }
+
+  return res;
 }
 
 export async function apiJson<T>(path: string, init?: RequestInit): Promise<T | null> {
@@ -39,6 +53,16 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T | 
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch (err) {
+    // `redirect()` throws NEXT_REDIRECT; let it propagate.
+    if (
+      err &&
+      typeof err === "object" &&
+      "digest" in err &&
+      typeof (err as { digest?: string }).digest === "string" &&
+      (err as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+    ) {
+      throw err;
+    }
     console.warn(`[apiJson] ${path} failed:`, err instanceof Error ? err.message : err);
     return null;
   }

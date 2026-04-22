@@ -11,7 +11,7 @@ import {
 } from "@/components/icons";
 
 type PlanConfig = { label: string; ratePerClaim: number; dailyCap: number; price: number };
-type PlanKey = "free" | "plan499" | "plan699" | "plan799";
+type PlanKey = "free" | "paid";
 type PlanMap = Record<PlanKey, PlanConfig>;
 
 type Config = {
@@ -26,7 +26,7 @@ type Config = {
 
 type Props = { config: Config; defaults: Config };
 
-const PLAN_KEYS: PlanKey[] = ["free", "plan499", "plan699", "plan799"];
+const PLAN_KEYS: PlanKey[] = ["free", "paid"];
 
 export default function AdminRatesClient({ config, defaults }: Props) {
   const router = useRouter();
@@ -105,7 +105,8 @@ export default function AdminRatesClient({ config, defaults }: Props) {
           <section className="card">
             <h2 className="font-semibold mb-1">Plans</h2>
             <p className="text-sm mb-4" style={{ color: "var(--text-muted)" }}>
-              Rate per claim and daily cap, per plan tier.
+              Activation fee, rate per claim, and daily cap for the single paid plan.
+              &quot;Free&quot; is retained only for legacy rows where activation is still pending.
             </p>
             <div className="overflow-x-auto">
               <table className="data-table">

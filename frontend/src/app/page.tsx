@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { apiJson } from "@/lib/api";
-import { PLANS } from "@/lib/mining";
+import { ACTIVATION_FEE_PHP } from "@/lib/mining";
 import {
   IconPickaxe,
   IconCheck,
@@ -13,13 +13,14 @@ import {
   IconShield,
 } from "@/components/icons";
 
-type Me = { user: { id: string; name: string; role: string } };
+type Me = { user: { id: string; name: string; role: string; plan: string } };
 
 export default async function LandingPage() {
   const me = await apiJson<Me>("/auth/me");
-  if (me) redirect("/dashboard");
-
-  const plans = Object.entries(PLANS);
+  if (me) {
+    if (me.user.role !== "admin" && me.user.plan !== "paid") redirect("/activate");
+    redirect("/dashboard");
+  }
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -46,7 +47,7 @@ export default async function LandingPage() {
 
           <nav className="hidden md:flex items-center gap-1" aria-label="Marketing">
             <a href="#how" className="btn btn-ghost btn-sm">How it works</a>
-            <a href="#plans" className="btn btn-ghost btn-sm">Plans</a>
+            <a href="#pricing" className="btn btn-ghost btn-sm">Pricing</a>
             <a href="#referral" className="btn btn-ghost btn-sm">Referral</a>
           </nav>
 
@@ -204,59 +205,57 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ======================== Plans ======================== */}
-      <section id="plans" className="px-4 sm:px-6 py-16 border-t" style={{ borderColor: "var(--border)" }}>
-        <div className="mx-auto max-w-6xl">
-          <div className="flex flex-wrap items-end justify-between gap-4 mb-10">
-            <div className="max-w-xl">
-              <span className="section-title">Plans</span>
-              <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mt-2">
-                Start free. Upgrade when it pays back.
-              </h2>
-              <p className="mt-2 text-sm" style={{ color: "var(--text-muted)" }}>
-                One-time payment, lifetime access. No subscriptions. No hidden fees.
-              </p>
-            </div>
+      {/* ======================== Pricing ======================== */}
+      <section id="pricing" className="px-4 sm:px-6 py-16 border-t" style={{ borderColor: "var(--border)" }}>
+        <div className="mx-auto max-w-3xl">
+          <div className="mb-8 text-center">
+            <span className="section-title">Pricing</span>
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mt-2">
+              One payment. Lifetime access.
+            </h2>
+            <p className="mt-2 text-sm" style={{ color: "var(--text-muted)" }}>
+              A single ₱{ACTIVATION_FEE_PHP} activation fee unlocks mining forever. No subscriptions, no tiers.
+            </p>
           </div>
 
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-            {plans.map(([key, plan]) => {
-              const best = key === "plan799";
-              return (
-                <div
-                  key={key}
-                  className="card card-hover flex flex-col gap-4"
-                  style={best ? { borderColor: "var(--brand)" } : {}}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold">{plan.label}</span>
-                    {best && <span className="badge badge-plan799">Best value</span>}
-                  </div>
-                  <div>
-                    <div className="text-3xl font-bold" style={{ color: "var(--brand)" }}>
-                      {plan.price === 0 ? "Free" : `₱${plan.price}`}
-                    </div>
-                    <div className="text-xs mt-1" style={{ color: "var(--text-subtle)" }}>
-                      {plan.price === 0 ? "Forever" : "One-time · lifetime"}
-                    </div>
-                  </div>
-                  <ul className="space-y-2 text-sm">
-                    <li className="flex items-start gap-2">
-                      <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
-                      <span>₱{plan.ratePerClaim} per 10-min claim</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
-                      <span>₱{plan.dailyCap} daily cap</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
-                      <span>10% referral commission</span>
-                    </li>
-                  </ul>
-                </div>
-              );
-            })}
+          <div
+            className="card card-hover flex flex-col gap-5 mx-auto"
+            style={{ borderColor: "var(--brand)", maxWidth: 480 }}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold">Activation</span>
+              <span className="badge badge-approved">Only plan</span>
+            </div>
+            <div>
+              <div className="text-5xl font-bold" style={{ color: "var(--brand)" }}>
+                ₱{ACTIVATION_FEE_PHP}
+              </div>
+              <div className="text-xs mt-1" style={{ color: "var(--text-subtle)" }}>
+                One-time · lifetime access
+              </div>
+            </div>
+            <ul className="space-y-2 text-sm">
+              <li className="flex items-start gap-2">
+                <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
+                <span>Claim every 10 minutes</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
+                <span>10% referral commission, forever</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
+                <span>GCash, Maya, or card via PayMongo</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
+                <span>Withdraw once you reach ₱300</span>
+              </li>
+            </ul>
+            <Link href="/register" className="btn btn-primary btn-lg">
+              Create account
+              <IconArrowRight size={18} />
+            </Link>
           </div>
         </div>
       </section>
