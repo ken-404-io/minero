@@ -1,22 +1,17 @@
 import { Hono } from "hono";
-import { z } from "zod";
 import { prisma } from "../lib/db.js";
 import { requireAuth } from "../lib/session.js";
-import { canUpgradeTo, getPlanConfig } from "../lib/config.js";
+import { getPlanConfig, isActivated } from "../lib/config.js";
 import { paymentProvider } from "../lib/payments.js";
 
 export const plansRoutes = new Hono();
 
-const upgradeSchema = z.object({
-  plan: z.enum(["plan499", "plan699", "plan799"]),
-  paymentRef: z.string().min(5).max(100),
-});
-
 /**
- * Start a plan upgrade. Creates a PENDING PlanLog row — the user's plan
- * is NOT changed until an admin approves (or a payment webhook fires).
+ * Start the one-time ₱49 activation payment. Creates a PENDING PlanLog row —
+ * the user's plan is NOT changed until the PayMongo webhook confirms
+ * `checkout_session.payment.paid` (or an admin manually approves).
  */
-plansRoutes.post("/upgrade", async (c) => {
+plansRoutes.post("/pay-signup", async (c) => {
   const session = requireAuth(c);
   if (session instanceof Response) return session;
 
@@ -24,60 +19,57 @@ plansRoutes.post("/upgrade", async (c) => {
   if (!user) return c.json({ error: "Unauthorized" }, 401);
   if (user.frozen) return c.json({ error: "Account suspended" }, 403);
 
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON" }, 400); }
-
-  const parsed = upgradeSchema.safeParse(body);
-  if (!parsed.success) {
-    return c.json({ error: parsed.error.flatten().fieldErrors }, 400);
+  if (isActivated(user.plan)) {
+    return c.json({ error: "already_activated" }, 400);
   }
 
-  const { plan, paymentRef } = parsed.data;
-  if (!canUpgradeTo(user.plan, plan)) {
-    return c.json({ error: "Cannot downgrade or re-purchase current plan" }, 400);
-  }
+  const planConfig = await getPlanConfig("paid");
 
-  const planConfig = await getPlanConfig(plan);
-
-  // Reject if another pending upgrade is already in the queue
-  const pending = await prisma.planLog.findFirst({
+  // Reuse an existing pending row if one already exists so refreshing the
+  // activate page doesn't create a backlog of orphan PlanLog rows.
+  const existingPending = await prisma.planLog.findFirst({
     where: { userId: user.id, status: "pending" },
+    orderBy: { createdAt: "desc" },
   });
-  if (pending) {
-    return c.json({ error: "You already have a pending plan upgrade request." }, 409);
-  }
 
   const checkout = await paymentProvider.createCheckout({
     userId: user.id,
-    plan,
+    plan: "paid",
     amountPhp: planConfig.price,
-    paymentRef,
   });
 
-  const log = await prisma.planLog.create({
-    data: {
-      userId: user.id,
-      plan,
-      amountPaid: planConfig.price,
-      paymentRef: checkout.reference,
-      paymentProvider: checkout.provider,
-      status: "pending",
-    },
-  });
+  if (existingPending) {
+    await prisma.planLog.update({
+      where: { id: existingPending.id },
+      data: {
+        paymentRef: checkout.reference,
+        paymentProvider: checkout.provider,
+        amountPaid: planConfig.price,
+        plan: "paid",
+      },
+    });
+  } else {
+    await prisma.planLog.create({
+      data: {
+        userId: user.id,
+        plan: "paid",
+        amountPaid: planConfig.price,
+        paymentRef: checkout.reference,
+        paymentProvider: checkout.provider,
+        status: "pending",
+      },
+    });
+  }
 
   return c.json({
     ok: true,
-    status: "pending",
-    plan,
-    label: planConfig.label,
-    reference: checkout.reference,
     redirectUrl: checkout.redirectUrl,
-    planLogId: log.id,
+    reference: checkout.reference,
   });
 });
 
 /**
- * User's own upgrade history. Lets the frontend show "pending" and
+ * User's own payment history. Lets the frontend show "pending" and
  * prevents double-submits.
  */
 plansRoutes.get("/my-upgrades", async (c) => {

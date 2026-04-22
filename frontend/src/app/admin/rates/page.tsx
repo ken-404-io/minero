@@ -5,7 +5,7 @@ import AdminRatesClient from "./AdminRatesClient";
 type Me = { user: { role: string } };
 
 type PlanConfig = { label: string; ratePerClaim: number; dailyCap: number; price: number };
-type PlanMap = Record<"free" | "plan499" | "plan699" | "plan799", PlanConfig>;
+type PlanMap = Record<"free" | "paid", PlanConfig>;
 
 type ConfigResp = {
   config: {

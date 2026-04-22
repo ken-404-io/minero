@@ -8,7 +8,6 @@ import {
   IconCopy,
   IconCheck,
   IconUsers,
-  IconSparkles,
   IconWallet,
   IconShare,
   IconTrend,
@@ -86,15 +85,13 @@ export default function DashboardClient({
               <Link href="/earnings" className="btn btn-secondary btn-sm">
                 <IconTrend size={16} /> View earnings
               </Link>
-              {balanceReady ? (
-                <Link href="/withdraw" className="btn btn-primary btn-sm">
-                  <IconWallet size={16} /> Withdraw
-                </Link>
-              ) : (
-                <Link href="/plans" className="btn btn-primary btn-sm">
-                  <IconSparkles size={16} /> Upgrade plan
-                </Link>
-              )}
+              <Link
+                href="/withdraw"
+                className={`btn btn-sm ${balanceReady ? "btn-primary" : "btn-secondary"}`}
+                aria-disabled={!balanceReady}
+              >
+                <IconWallet size={16} /> Withdraw
+              </Link>
             </div>
           </header>
 
@@ -180,32 +177,6 @@ export default function DashboardClient({
                 </Link>
               </section>
 
-              {user.plan === "free" && (
-                <section
-                  className="card"
-                  style={{
-                    borderColor: "color-mix(in oklab, var(--brand) 35%, var(--border))",
-                  }}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <span
-                      aria-hidden
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-md"
-                      style={{ background: "var(--brand-weak)", color: "var(--brand)" }}
-                    >
-                      <IconSparkles size={16} />
-                    </span>
-                    <span className="section-title">Upgrade</span>
-                  </div>
-                  <div className="text-lg font-semibold">Earn up to 9× more</div>
-                  <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-                    Jump to the ₱799 plan: ₱0.045/claim and ₱8 daily cap.
-                  </p>
-                  <Link href="/plans" className="mt-4 btn btn-primary w-full btn-sm">
-                    View plans <IconArrowRight size={14} />
-                  </Link>
-                </section>
-              )}
             </aside>
           </div>
         </div>
@@ -301,32 +272,6 @@ export default function DashboardClient({
             </div>
           </section>
 
-          {/* Upgrade banner */}
-          {user.plan === "free" && (
-            <Link
-              href="/plans"
-              className="card flex items-center gap-3"
-              style={{
-                borderColor: "color-mix(in oklab, var(--brand) 35%, var(--border))",
-                padding: "1rem",
-              }}
-            >
-              <span
-                aria-hidden
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
-                style={{ background: "var(--brand-weak)", color: "var(--brand)" }}
-              >
-                <IconSparkles size={20} />
-              </span>
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold">Earn up to 9× more</div>
-                <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  Upgrade to ₱799 plan → ₱0.045/claim
-                </div>
-              </div>
-              <IconArrowRight size={18} style={{ color: "var(--brand)" }} />
-            </Link>
-          )}
         </div>
       </div>
     </div>

@@ -1,23 +1,21 @@
 import { Hono } from "hono";
 import { prisma } from "../lib/db.js";
 import { paymentProvider } from "../lib/payments.js";
-import { canUpgradeTo } from "../lib/config.js";
 
 export const paymentRoutes = new Hono();
 
 /**
- * Payment provider webhook — authenticates an async callback from
- * PayMongo / Xendit / etc. and transitions the PlanLog from pending
- * to approved (applying the plan to the user) or rejected.
+ * PayMongo webhook — authenticates the async callback via HMAC-SHA256 and
+ * transitions the PlanLog from pending to approved (activating the user's
+ * account) or rejected.
  *
- * Provider-specific signature verification lives in paymentProvider.verifyWebhook().
+ * Signature verification lives in paymentProvider.verifyWebhook().
  */
 paymentRoutes.post("/webhook", async (c) => {
   const rawBody = await c.req.text();
   const signature =
-    c.req.header("x-signature") ??
     c.req.header("paymongo-signature") ??
-    c.req.header("x-xendit-signature") ??
+    c.req.header("Paymongo-Signature") ??
     null;
 
   const verdict = await paymentProvider.verifyWebhook({ rawBody, signature });
@@ -37,16 +35,16 @@ paymentRoutes.post("/webhook", async (c) => {
       });
       return c.json({ ok: true, note: "user_unavailable" });
     }
-    if (!canUpgradeTo(user.plan, log.plan)) {
+    if (user.plan === "paid") {
       await prisma.planLog.update({
         where: { id: log.id },
-        data: { status: "rejected", reviewedAt: new Date(), adminNote: "cannot_upgrade" },
+        data: { status: "approved", reviewedAt: new Date(), reviewedBy: "webhook", adminNote: "already_activated" },
       });
-      return c.json({ ok: true, note: "cannot_upgrade" });
+      return c.json({ ok: true, applied: false, note: "already_activated" });
     }
 
     await prisma.$transaction([
-      prisma.user.update({ where: { id: user.id }, data: { plan: log.plan } }),
+      prisma.user.update({ where: { id: user.id }, data: { plan: "paid" } }),
       prisma.planLog.update({
         where: { id: log.id },
         data: { status: "approved", reviewedAt: new Date(), reviewedBy: "webhook" },

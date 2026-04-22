@@ -4,15 +4,15 @@ import { prisma } from "./db.js";
 // PlatformConfig table and be adjusted from /admin/rates without redeploy.
 
 export const DEFAULT_PLANS = {
-  free:    { label: "Free",      ratePerClaim: 0.005, dailyCap: 3.0, price: 0   },
-  plan499: { label: "₱499 Plan", ratePerClaim: 0.02,  dailyCap: 4.0, price: 499 },
-  plan699: { label: "₱699 Plan", ratePerClaim: 0.035, dailyCap: 6.0, price: 699 },
-  plan799: { label: "₱799 Plan", ratePerClaim: 0.045, dailyCap: 8.0, price: 799 },
+  free: { label: "Free",      ratePerClaim: 0,    dailyCap: 0,   price: 0  },
+  paid: { label: "Activated", ratePerClaim: 0.02, dailyCap: 5.0, price: 49 },
 } as const;
 
 export type PlanKey = keyof typeof DEFAULT_PLANS;
 export type PlanConfig = { label: string; ratePerClaim: number; dailyCap: number; price: number };
 export type PlanConfigMap = Record<PlanKey, PlanConfig>;
+
+export const ACTIVATION_FEE_PHP = DEFAULT_PLANS.paid.price;
 
 export const DEFAULTS = {
   plans: DEFAULT_PLANS as PlanConfigMap,
@@ -89,9 +89,8 @@ export async function getPlanConfig(plan: string): Promise<PlanConfig> {
   return cfg.plans[plan as PlanKey] ?? cfg.plans.free;
 }
 
-export function canUpgradeTo(currentPlan: string, targetPlan: string): boolean {
-  const order: PlanKey[] = ["free", "plan499", "plan699", "plan799"];
-  return order.indexOf(targetPlan as PlanKey) > order.indexOf(currentPlan as PlanKey);
+export function isActivated(plan: string): boolean {
+  return plan === "paid";
 }
 
 // Admin updaters — invalidate cache on write so changes are live.

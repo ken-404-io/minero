@@ -165,7 +165,7 @@ export default function AdminUsersClient({ users, total, page, pages, search }: 
                               </span>
                             )}
                             {u.role === "admin" && (
-                              <span className="badge badge-plan499">
+                              <span className="badge badge-paid">
                                 <IconShield size={12} /> Admin
                               </span>
                             )}

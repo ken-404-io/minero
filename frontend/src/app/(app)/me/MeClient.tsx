@@ -13,7 +13,6 @@ import {
   IconInfo,
   IconLogout,
   IconShield,
-  IconSparkles,
   IconUsers,
   IconWallet,
 } from "@/components/icons";
@@ -143,12 +142,6 @@ export default function MeClient({ user, planLabel }: Props) {
             icon={<IconChart size={20} />}
             label="Financial Overview"
             caption="Balance, claim history, payouts"
-          />
-          <MenuRow
-            href="/plans"
-            icon={<IconSparkles size={20} />}
-            label="Mining Plan"
-            caption={planLabel}
           />
           <MenuRow
             href="/withdraw"

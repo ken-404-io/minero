@@ -4,7 +4,7 @@
 // These constants remain as fallback defaults and for any caller that
 // needs a synchronous value (e.g. seed scripts).
 
-import { DEFAULTS, DEFAULT_PLANS, canUpgradeTo as _canUpgradeTo, type PlanKey as _PlanKey } from "./config.js";
+import { DEFAULTS, DEFAULT_PLANS, isActivated as _isActivated, type PlanKey as _PlanKey } from "./config.js";
 
 export const PLANS = DEFAULT_PLANS;
 export type PlanKey = _PlanKey;
@@ -19,4 +19,4 @@ export function getPlanConfig(plan: string) {
   return DEFAULT_PLANS[plan as PlanKey] ?? DEFAULT_PLANS.free;
 }
 
-export const canUpgradeTo = _canUpgradeTo;
+export const isActivated = _isActivated;

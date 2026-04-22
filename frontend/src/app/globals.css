@@ -376,9 +376,7 @@ textarea:focus-visible,
 .badge-approved { background: var(--success-weak); color: var(--success-fg); border-color: color-mix(in oklab, var(--success) 30%, transparent); }
 .badge-rejected { background: var(--danger-weak);  color: var(--danger-fg);  border-color: color-mix(in oklab, var(--danger) 30%, transparent); }
 .badge-free     { background: var(--surface-2);    color: var(--text-muted); border-color: var(--border); }
-.badge-plan499  { background: var(--info-weak);    color: var(--info-fg);    border-color: color-mix(in oklab, var(--info) 30%, transparent); }
-.badge-plan699  { background: var(--info-weak);    color: var(--info-fg);    border-color: color-mix(in oklab, var(--info) 30%, transparent); }
-.badge-plan799  { background: var(--brand-weak);   color: var(--brand-weak-fg); border-color: color-mix(in oklab, var(--brand) 30%, transparent); }
+.badge-paid     { background: var(--brand-weak);   color: var(--brand-weak-fg); border-color: color-mix(in oklab, var(--brand) 30%, transparent); }
 
 /* Alert banners */
 .alert {

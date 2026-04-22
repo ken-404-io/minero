@@ -11,15 +11,15 @@ import {
   IconPickaxe,
   IconLogout,
   IconWarning,
-  IconSparkles,
   IconBoltSmall,
+  IconCoins,
 } from "@/components/icons";
 
 const LINKS = [
   { href: "/admin",             label: "Overview",    Icon: IconChart },
   { href: "/admin/users",       label: "Users",       Icon: IconUsers },
   { href: "/admin/withdrawals", label: "Withdrawals", Icon: IconWallet },
-  { href: "/admin/plans",       label: "Plan queue",  Icon: IconSparkles },
+  { href: "/admin/payments",    label: "Payments",    Icon: IconCoins },
   { href: "/admin/alerts",      label: "Fraud alerts", Icon: IconWarning },
   { href: "/admin/rates",       label: "Rates",       Icon: IconBoltSmall },
 ];

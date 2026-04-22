@@ -6,7 +6,6 @@ import { API_URL } from "@/lib/api-url";
 import {
   IconPickaxe,
   IconChart,
-  IconSparkles,
   IconUsers,
   IconWallet,
   IconShield,
@@ -27,7 +26,6 @@ type NavItem = {
 const PRIMARY: NavItem[] = [
   { href: "/dashboard", label: "Mine",     Icon: IconPickaxe, shortcut: "g d" },
   { href: "/earnings",  label: "Earnings", shortLabel: "Earn",   Icon: IconChart,   shortcut: "g e" },
-  { href: "/plans",     label: "Plans",    Icon: IconSparkles,shortcut: "g p" },
   { href: "/game",      label: "Game",     Icon: IconGame,    shortcut: "g g" },
   { href: "/rewards",   label: "Rewards",  shortLabel: "Reward", Icon: IconGift,    shortcut: "g x" },
   { href: "/referral",  label: "Invite",   Icon: IconUsers,   shortcut: "g r" },
