@@ -24,6 +24,7 @@ const MEMORY_KEY = "minero_memory_stats_v1";
 const MINESWEEPER_KEY = "minero_minesweeper_stats_v1";
 const WORD_KEY = "minero_word_stats_v1";
 const SNAKE_KEY = "minero_snake_stats_v1";
+const BLOCKBLAST_KEY = "minero_blockblast_stats_v1";
 const SPIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -129,6 +130,20 @@ const EMPTY_SNAKE: SnakeStats = {
   bestScore: 0,
   gamesPlayed: 0,
   applesEaten: 0,
+};
+
+type BlockBlastStats = {
+  totalPoints: number;
+  bestScore: number;
+  gamesPlayed: number;
+  linesCleared: number;
+};
+
+const EMPTY_BLOCKBLAST: BlockBlastStats = {
+  totalPoints: 0,
+  bestScore: 0,
+  gamesPlayed: 0,
+  linesCleared: 0,
 };
 
 function parseTrivia(raw: string | null): TriviaStats {
@@ -247,6 +262,21 @@ function parseSnake(raw: string | null): SnakeStats {
   }
 }
 
+function parseBlockBlast(raw: string | null): BlockBlastStats {
+  if (!raw) return EMPTY_BLOCKBLAST;
+  try {
+    const p = JSON.parse(raw) as Partial<BlockBlastStats>;
+    return {
+      totalPoints: Number(p.totalPoints) || 0,
+      bestScore: Number(p.bestScore) || 0,
+      gamesPlayed: Number(p.gamesPlayed) || 0,
+      linesCleared: Number(p.linesCleared) || 0,
+    };
+  } catch {
+    return EMPTY_BLOCKBLAST;
+  }
+}
+
 // Per-key raw+parsed cache so useSyncExternalStore returns stable references.
 let triviaRaw: string | null = null;
 let triviaCache: TriviaStats = EMPTY_TRIVIA;
@@ -260,6 +290,8 @@ let wordRaw: string | null = null;
 let wordCache: WordStats = EMPTY_WORD;
 let snakeRaw: string | null = null;
 let snakeCache: SnakeStats = EMPTY_SNAKE;
+let bbRaw: string | null = null;
+let bbCache: BlockBlastStats = EMPTY_BLOCKBLAST;
 
 function getTriviaSnapshot(): TriviaStats {
   if (typeof window === "undefined") return EMPTY_TRIVIA;
@@ -349,6 +381,15 @@ const getWordServer = () => EMPTY_WORD;
 const subscribeSnake = makeSubscriber(SNAKE_KEY);
 const getSnakeServer = () => EMPTY_SNAKE;
 
+function getBlockBlastSnapshot(): BlockBlastStats {
+  if (typeof window === "undefined") return EMPTY_BLOCKBLAST;
+  const raw = window.localStorage.getItem(BLOCKBLAST_KEY);
+  if (raw !== bbRaw) { bbRaw = raw; bbCache = parseBlockBlast(raw); }
+  return bbCache;
+}
+const subscribeBlockBlast = makeSubscriber(BLOCKBLAST_KEY);
+const getBlockBlastServer = () => EMPTY_BLOCKBLAST;
+
 function formatCountdown(ms: number) {
   if (ms <= 0) return "Ready";
   const total = Math.ceil(ms / 1000);
@@ -401,6 +442,11 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     getSnakeSnapshot,
     getSnakeServer,
   );
+  const blockblast = useSyncExternalStore(
+    subscribeBlockBlast,
+    getBlockBlastSnapshot,
+    getBlockBlastServer,
+  );
 
   const [now, setNow] = useState<number>(() => Date.now());
   useEffect(() => {
@@ -431,7 +477,8 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     memory.totalPoints +
     sweep.totalPoints +
     word.totalPoints +
-    snake.totalPoints;
+    snake.totalPoints +
+    blockblast.totalPoints;
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-6 lg:px-8 lg:py-8">
@@ -608,6 +655,20 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
               : "New — arrows / swipe to play"
           }
           ctaLabel="Play Snake"
+          accent="brand"
+        />
+        <GameCard
+          href="/game/blockblast"
+          title="Block Blast"
+          tagline="Place blocks, clear lines"
+          description="Drop pieces onto an 8×8 grid. Fill complete rows or columns to clear them. Game ends when no piece fits."
+          icon={<IconGame size={22} />}
+          status={
+            blockblast.gamesPlayed > 0
+              ? `Best ${blockblast.bestScore} · ${blockblast.gamesPlayed} played`
+              : "New — tap a piece to start"
+          }
+          ctaLabel="Play Block Blast"
           accent="brand"
         />
       </div>
