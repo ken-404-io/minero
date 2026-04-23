@@ -14,6 +14,26 @@ import { adminRoutes } from "./routes/admin.js";
 import { otpRoutes } from "./routes/otp.js";
 import { paymentRoutes } from "./routes/payments.js";
 import { oauthRoutes } from "./routes/oauth.js";
+import { prisma } from "./lib/db.js";
+import { DEFAULT_PLANS, invalidateConfigCache } from "./lib/config.js";
+
+async function migratePlanConfig() {
+  try {
+    const row = await prisma.platformConfig.findUnique({ where: { key: "plans" } });
+    if (!row) return;
+    const stored = JSON.parse(row.value) as Record<string, { ratePerClaim?: number; dailyCap?: number }>;
+    if ((stored.free?.ratePerClaim ?? 0) === 0 || (stored.free?.dailyCap ?? 0) === 0) {
+      await prisma.platformConfig.update({
+        where: { key: "plans" },
+        data: { value: JSON.stringify(DEFAULT_PLANS), updatedBy: "auto-migrate" },
+      });
+      invalidateConfigCache();
+      console.log("[startup] Migrated free plan config to ad-supported model (ratePerClaim=0.02, dailyCap=5)");
+    }
+  } catch (err) {
+    console.warn("[startup] Could not migrate plan config:", err);
+  }
+}
 
 const app = new Hono();
 
@@ -63,4 +83,5 @@ app.notFound((c) => c.json({ error: "Not found" }, 404));
 const port = Number(process.env.PORT ?? 4000);
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`minero-backend listening on http://localhost:${info.port}`);
+  migratePlanConfig();
 });
