@@ -121,7 +121,7 @@ adminRoutes.get("/users", async (c) => {
     ? { OR: [{ email: { contains: search } }, { name: { contains: search } }] }
     : {};
 
-  const [users, total] = await prisma.$transaction([
+  const [users, total] = await Promise.all([
     prisma.user.findMany({
       where,
       select: {
@@ -199,7 +199,7 @@ adminRoutes.get("/withdrawals", async (c) => {
 
   const where = status === "all" ? {} : { status };
 
-  const [withdrawals, total] = await prisma.$transaction([
+  const [withdrawals, total] = await Promise.all([
     prisma.withdrawal.findMany({
       where,
       include: { user: { select: { name: true, email: true } } },
@@ -278,20 +278,18 @@ adminRoutes.post("/referrals/approve", async (c) => {
 
   if (pendingCommissions.length === 0) return c.json({ approved: 0 });
 
-  await Promise.all(
-    pendingCommissions.map((e) =>
-      prisma.$transaction([
-        prisma.earning.update({ where: { id: e.id }, data: { status: "approved" } }),
-        prisma.user.update({
-          where: { id: e.userId },
-          data: {
-            balance: { increment: e.amount },
-            pendingBalance: { decrement: e.amount },
-          },
-        }),
-      ])
-    )
-  );
+  await prisma.$transaction(async (tx) => {
+    for (const e of pendingCommissions) {
+      await tx.earning.update({ where: { id: e.id }, data: { status: "approved" } });
+      await tx.user.update({
+        where: { id: e.userId },
+        data: {
+          balance: { increment: e.amount },
+          pendingBalance: { decrement: e.amount },
+        },
+      });
+    }
+  });
 
   return c.json({ approved: pendingCommissions.length });
 });
@@ -309,7 +307,7 @@ adminRoutes.get("/fraud-alerts", async (c) => {
   const limit = 20;
   const where = status === "all" ? {} : { status };
 
-  const [alerts, total] = await prisma.$transaction([
+  const [alerts, total] = await Promise.all([
     prisma.fraudAlert.findMany({
       where,
       include: { user: { select: { id: true, name: true, email: true, frozen: true } } },
@@ -391,7 +389,7 @@ adminRoutes.get("/plans", async (c) => {
   const limit = 20;
   const where = status === "all" ? {} : { status };
 
-  const [plans, total] = await prisma.$transaction([
+  const [plans, total] = await Promise.all([
     prisma.planLog.findMany({
       where,
       include: { user: { select: { name: true, email: true, plan: true } } },
