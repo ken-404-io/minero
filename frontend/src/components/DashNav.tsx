@@ -13,6 +13,7 @@ import {
   IconGame,
   IconGift,
   IconUser,
+  IconSparkles,
 } from "@/components/icons";
 
 type NavItem = {
@@ -38,7 +39,7 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export default function DashNav({ name, role }: { name: string; role: string }) {
+export default function DashNav({ name, role, plan }: { name: string; role: string; plan: string }) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -121,6 +122,19 @@ export default function DashNav({ name, role }: { name: string; role: string }) 
           )}
         </nav>
 
+        {plan !== "paid" && role !== "admin" && (
+          <div className="px-3 pb-3">
+            <Link
+              href="/activate"
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+              style={{ background: "var(--brand-weak)", color: "var(--brand)" }}
+            >
+              <IconSparkles size={16} />
+              <span>Remove Ads</span>
+            </Link>
+          </div>
+        )}
+
         <div className="p-3 border-t flex items-center gap-3" style={{ borderColor: "var(--border)" }}>
           <div
             aria-hidden
@@ -132,7 +146,7 @@ export default function DashNav({ name, role }: { name: string; role: string }) 
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium truncate">{name}</div>
             <div className="text-xs" style={{ color: "var(--text-subtle)" }}>
-              {role === "admin" ? "Administrator" : "Member"}
+              {role === "admin" ? "Administrator" : plan === "paid" ? "Ad-Free" : "Member"}
             </div>
           </div>
           <button

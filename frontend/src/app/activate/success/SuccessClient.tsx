@@ -59,7 +59,7 @@ export default function SuccessClient() {
       </div>
       <h1 className="text-2xl font-bold tracking-tight">Payment received</h1>
       <p className="mt-2 text-sm" style={{ color: "var(--text-muted)" }}>
-        Activating your account… redirecting you to the dashboard.
+        Removing ads from your account… redirecting you to the dashboard.
       </p>
       <p className="mt-6 text-xs" style={{ color: "var(--text-subtle)" }}>
         Attempt {attempt + 1} of {MAX_ATTEMPTS + 1}

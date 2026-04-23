@@ -8,13 +8,13 @@ import { paymentProvider } from "../lib/payments.js";
 export const plansRoutes = new Hono();
 
 /**
- * Start the one-time ₱49 activation payment. Creates a PENDING PlanLog row —
+ * Start the one-time ₱49 payment to remove ads. Creates a PENDING PlanLog row —
  * the user's plan is NOT changed until the PayMongo webhook confirms
  * `checkout_session.payment.paid` (or an admin manually approves).
  *
  * Dev fallback: when PAYMONGO_SECRET_KEY is unset and NODE_ENV !== "production",
  * we skip the real checkout and auto-approve the PlanLog so local development
- * can exercise the full activation flow without PayMongo credentials.
+ * can exercise the full flow without PayMongo credentials.
  */
 plansRoutes.post("/pay-signup", async (c) => {
   const session = requireAuth(c);
@@ -25,7 +25,7 @@ plansRoutes.post("/pay-signup", async (c) => {
   if (user.frozen) return c.json({ error: "Account suspended" }, 403);
 
   if (isActivated(user.plan)) {
-    return c.json({ error: "already_activated" }, 400);
+    return c.json({ error: "already_ad_free" }, 400);
   }
 
   const planConfig = await getPlanConfig("paid");

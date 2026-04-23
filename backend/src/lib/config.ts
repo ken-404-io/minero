@@ -4,15 +4,15 @@ import { prisma } from "./db.js";
 // PlatformConfig table and be adjusted from /admin/rates without redeploy.
 
 export const DEFAULT_PLANS = {
-  free: { label: "Free",      ratePerClaim: 0,    dailyCap: 0,   price: 0  },
-  paid: { label: "Activated", ratePerClaim: 0.02, dailyCap: 5.0, price: 49 },
+  free: { label: "Free (with ads)", ratePerClaim: 0.02, dailyCap: 5.0, price: 0  },
+  paid: { label: "Ad-Free",         ratePerClaim: 0.02, dailyCap: 5.0, price: 49 },
 } as const;
 
 export type PlanKey = keyof typeof DEFAULT_PLANS;
 export type PlanConfig = { label: string; ratePerClaim: number; dailyCap: number; price: number };
 export type PlanConfigMap = Record<PlanKey, PlanConfig>;
 
-export const ACTIVATION_FEE_PHP = DEFAULT_PLANS.paid.price;
+export const AD_FREE_FEE_PHP = DEFAULT_PLANS.paid.price;
 
 export const DEFAULTS = {
   plans: DEFAULT_PLANS as PlanConfigMap,

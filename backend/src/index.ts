@@ -3,7 +3,7 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-import { sessionMiddleware, requireActivated } from "./lib/session.js";
+import { sessionMiddleware } from "./lib/session.js";
 import { authRoutes } from "./routes/auth.js";
 import { claimRoutes } from "./routes/claim.js";
 import { earningsRoutes } from "./routes/earnings.js";
@@ -45,11 +45,8 @@ app.route("/plans", plansRoutes);
 app.route("/payments", paymentRoutes);
 app.route("/admin", adminRoutes);
 
-// App features gated behind the ₱49 activation paywall.
-app.use("/claim/*", requireActivated);
-app.use("/earnings/*", requireActivated);
-app.use("/referrals/*", requireActivated);
-app.use("/withdraw/*", requireActivated);
+// App features require authentication only — all signed-in users have full access.
+// Ads are shown to free-plan users; paying ₱49 removes ads (plan: "paid").
 
 app.route("/claim", claimRoutes);
 app.route("/earnings", earningsRoutes);
