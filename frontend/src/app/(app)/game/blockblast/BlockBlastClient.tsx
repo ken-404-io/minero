@@ -9,53 +9,56 @@ import { IconTrophy } from "@/components/icons";
 
 const G = 8;
 const STORAGE_KEY = "minero_blockblast_stats_v1";
+const DAILY_KEY = "minero_blockblast_daily_v1";
 const CELL = 34;
 const GAP = 2;
+const MAX_DAILY_PLAYS = 20;
+const SCORE_CAP = 20_000;
 
 /* ============================================================
-   Types & Piece definitions
+   Types
    ============================================================ */
 
 type Piece = [number, number][];
 type ColoredPiece = { shape: Piece; color: string };
 type Stats = { totalPoints: number; bestScore: number; gamesPlayed: number; linesCleared: number };
+type DailyData = { date: string; plays: number };
 type Status = "idle" | "playing" | "over";
 
-const ALL_PIECES: Piece[] = [
-  // 1×1
-  [[0, 0]],
-  // 1×2
-  [[0, 0], [0, 1]],
-  [[0, 0], [1, 0]],
-  // 1×3
-  [[0, 0], [0, 1], [0, 2]],
-  [[0, 0], [1, 0], [2, 0]],
-  // 1×4
-  [[0, 0], [0, 1], [0, 2], [0, 3]],
-  [[0, 0], [1, 0], [2, 0], [3, 0]],
-  // 1×5
-  [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]],
-  [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]],
-  // 2×2
-  [[0, 0], [0, 1], [1, 0], [1, 1]],
-  // 3×3
-  [[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [2, 0], [2, 1], [2, 2]],
-  // L shapes
-  [[0, 0], [0, 1], [1, 0]],
-  [[0, 0], [1, 0], [1, 1]],
-  [[0, 1], [1, 0], [1, 1]],
-  [[0, 0], [0, 1], [1, 1]],
-  // Long L
-  [[0, 0], [0, 1], [0, 2], [1, 0]],
-  [[0, 0], [0, 1], [0, 2], [1, 2]],
-  [[0, 0], [1, 0], [2, 0], [2, 1]],
-  [[0, 1], [1, 1], [2, 0], [2, 1]],
-  // T
-  [[0, 0], [0, 1], [0, 2], [1, 1]],
-  [[0, 0], [1, 0], [2, 0], [1, 1]],
-  // S / Z
-  [[0, 0], [1, 0], [1, 1], [2, 1]],
-  [[0, 1], [1, 0], [1, 1], [2, 0]],
+/* ============================================================
+   Piece library — grouped by difficulty
+   ============================================================ */
+
+const EASY_PIECES: Piece[] = [
+  [[0, 0]],                             // 1×1
+  [[0, 0], [0, 1]],                     // 1×2 H
+  [[0, 0], [1, 0]],                     // 1×2 V
+  [[0, 0], [0, 1], [1, 0], [1, 1]],    // 2×2
+];
+
+const MEDIUM_PIECES: Piece[] = [
+  [[0, 0], [0, 1], [0, 2]],                         // 1×3 H
+  [[0, 0], [1, 0], [2, 0]],                         // 1×3 V
+  [[0, 0], [0, 1], [0, 2], [0, 3]],                 // 1×4 H
+  [[0, 0], [1, 0], [2, 0], [3, 0]],                 // 1×4 V
+  [[0, 0], [0, 1], [1, 0]],                         // small-L 1
+  [[0, 0], [1, 0], [1, 1]],                         // small-L 2
+  [[0, 1], [1, 0], [1, 1]],                         // small-L 3
+  [[0, 0], [0, 1], [1, 1]],                         // small-L 4
+  [[0, 0], [0, 1], [0, 2], [1, 1]],                 // T-H
+  [[0, 0], [1, 0], [2, 0], [1, 1]],                 // T-V
+];
+
+const HARD_PIECES: Piece[] = [
+  [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]],         // 1×5 H
+  [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]],         // 1×5 V
+  [[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [2, 0], [2, 1], [2, 2]], // 3×3
+  [[0, 0], [0, 1], [0, 2], [1, 0]],                 // long-L 1
+  [[0, 0], [0, 1], [0, 2], [1, 2]],                 // long-L 2
+  [[0, 0], [1, 0], [2, 0], [2, 1]],                 // long-L 3
+  [[0, 1], [1, 1], [2, 0], [2, 1]],                 // long-L 4
+  [[0, 0], [1, 0], [1, 1], [2, 1]],                 // S
+  [[0, 1], [1, 0], [1, 1], [2, 0]],                 // Z
 ];
 
 const PALETTE = [
@@ -72,19 +75,57 @@ const PALETTE = [
 const EMPTY_STATS: Stats = { totalPoints: 0, bestScore: 0, gamesPlayed: 0, linesCleared: 0 };
 
 /* ============================================================
-   Game helpers
+   Difficulty helpers
    ============================================================ */
 
-function rndColoredPiece(): ColoredPiece {
+function diffWeights(score: number): [number, number, number] {
+  // [easy%, medium%, hard%]
+  if (score < 1_000) return [50, 35, 15];
+  if (score < 3_000) return [30, 42, 28];
+  if (score < 6_000) return [15, 38, 47];
+  if (score < 10_000) return [8,  28, 64];
+  return [2, 15, 83];
+}
+
+function pickPiece(score: number): Piece {
+  const [we, wm, wh] = diffWeights(score);
+  const r = Math.random() * (we + wm + wh);
+  let pool: Piece[];
+  if (r < we)       pool = EASY_PIECES;
+  else if (r < we + wm) pool = MEDIUM_PIECES;
+  else              pool = HARD_PIECES;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function rndColoredPiece(score: number): ColoredPiece {
   return {
-    shape: ALL_PIECES[Math.floor(Math.random() * ALL_PIECES.length)],
+    shape: pickPiece(score),
     color: PALETTE[Math.floor(Math.random() * PALETTE.length)],
   };
 }
 
-function threeNew(): [ColoredPiece, ColoredPiece, ColoredPiece] {
-  return [rndColoredPiece(), rndColoredPiece(), rndColoredPiece()];
+function threeNew(score: number): [ColoredPiece, ColoredPiece, ColoredPiece] {
+  return [rndColoredPiece(score), rndColoredPiece(score), rndColoredPiece(score)];
 }
+
+/* ============================================================
+   Score decay
+   ============================================================ */
+
+function scoreMultiplier(current: number): number {
+  return Math.max(0.05, (SCORE_CAP - current) / SCORE_CAP);
+}
+
+function multColor(m: number): string {
+  if (m > 0.7) return "#10b981"; // green
+  if (m > 0.45) return "#f59e0b"; // amber
+  if (m > 0.2) return "#f97316"; // orange
+  return "#ef4444"; // red
+}
+
+/* ============================================================
+   Grid helpers
+   ============================================================ */
 
 function emptyGrid(): (string | null)[][] {
   return Array.from({ length: G }, () => Array<string | null>(G).fill(null));
@@ -92,8 +133,7 @@ function emptyGrid(): (string | null)[][] {
 
 function fits(grid: (string | null)[][], piece: Piece, r: number, c: number) {
   return piece.every(([dr, dc]) => {
-    const nr = r + dr;
-    const nc = c + dc;
+    const nr = r + dr, nc = c + dc;
     return nr >= 0 && nr < G && nc >= 0 && nc < G && grid[nr][nc] === null;
   });
 }
@@ -132,7 +172,7 @@ function place(
 }
 
 /* ============================================================
-   Stats helpers
+   Persistence helpers
    ============================================================ */
 
 function loadStats(): Stats {
@@ -153,6 +193,29 @@ function saveStats(s: Stats) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
     window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
   } catch {}
+}
+
+function todayStr(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function loadDailyData(): DailyData {
+  try {
+    const d = JSON.parse(localStorage.getItem(DAILY_KEY) ?? "null") as DailyData | null;
+    if (!d || d.date !== todayStr()) return { date: todayStr(), plays: 0 };
+    return d;
+  } catch { return { date: todayStr(), plays: 0 }; }
+}
+
+function saveDailyData(d: DailyData) {
+  try { localStorage.setItem(DAILY_KEY, JSON.stringify(d)); } catch {}
+}
+
+function hoursUntilReset(): number {
+  const now = new Date();
+  const midnight = new Date(now);
+  midnight.setHours(24, 0, 0, 0);
+  return Math.ceil((midnight.getTime() - now.getTime()) / 3_600_000);
 }
 
 /* ============================================================
@@ -178,10 +241,7 @@ function PieceMini({ piece }: { piece: ColoredPiece }) {
         const pc = j % (maxC + 1);
         const on = shape.some(([r, c]) => r === pr && c === pc);
         return (
-          <div
-            key={j}
-            style={{ width: csz, height: csz, background: on ? color : "transparent", borderRadius: 2 }}
-          />
+          <div key={j} style={{ width: csz, height: csz, background: on ? color : "transparent", borderRadius: 2 }} />
         );
       })}
     </div>
@@ -207,12 +267,25 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
   const [clearingCells, setClearingCells] = useState<Map<string, string>>(new Map());
   const [scorePops, setScorePops] = useState<ScorePop[]>([]);
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
+  const [daily, setDaily] = useState<DailyData>({ date: todayStr(), plays: 0 });
 
-  useEffect(() => { setStats(loadStats()); }, []);
+  useEffect(() => {
+    setStats(loadStats());
+    setDaily(loadDailyData());
+  }, []);
+
+  const playsLeft = MAX_DAILY_PLAYS - daily.plays;
+  const canPlay = playsLeft > 0;
 
   function startGame() {
+    if (!canPlay) return;
+
+    const newDaily: DailyData = { date: todayStr(), plays: daily.plays + 1 };
+    setDaily(newDaily);
+    saveDailyData(newDaily);
+
     setGrid(emptyGrid());
-    setPieces(threeNew());
+    setPieces(threeNew(0));
     setSel(null);
     setHeld(null);
     setScore(0);
@@ -231,12 +304,10 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
     const next: [ColoredPiece | null, ColoredPiece | null, ColoredPiece | null] = [pieces[0], pieces[1], pieces[2]];
     next[sel] = held ?? null;
 
-    // If all slots become empty after swapping, give 3 new pieces
-    const finalPieces = next.every((p) => !p) ? threeNew() : next;
+    const finalPieces = next.every((p) => !p) ? threeNew(score) : next;
 
     setHeld(current);
     setPieces(finalPieces);
-    // Keep selection only if we swapped the held piece into this slot
     setSel(held !== null ? sel : null);
   }
 
@@ -246,7 +317,11 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
     if (!piece || !fits(grid, piece.shape, row, col)) return;
 
     const { grid: ng, cleared, lines: ln } = place(grid, piece.shape, piece.color, row, col);
-    const pts = piece.shape.length + ln * 10 + Math.max(0, ln - 1) * 5;
+
+    // Score decay: points earned shrink as current score approaches SCORE_CAP
+    const mult = scoreMultiplier(score);
+    const basePts = piece.shape.length + ln * 10 + Math.max(0, ln - 1) * 5;
+    const pts = Math.max(1, Math.round(basePts * mult));
     const newScore = score + pts;
     const newLines = lines + ln;
 
@@ -258,16 +333,15 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
 
     // Score pop
     const pop: ScorePop = { id: ++_popId, pts };
-    setScorePops((prev) => [...prev, pop]);
-    setTimeout(() => setScorePops((prev) => prev.filter((p) => p.id !== pop.id)), 1150);
+    setScorePops((prev: ScorePop[]) => [...prev, pop]);
+    setTimeout(() => setScorePops((prev: ScorePop[]) => prev.filter((p: ScorePop) => p.id !== pop.id)), 1150);
 
-    // Next pieces
+    // Next pieces — use newScore for difficulty escalation
     const next: [ColoredPiece | null, ColoredPiece | null, ColoredPiece | null] = [pieces[0], pieces[1], pieces[2]];
     next[sel] = null;
     const finalPieces: [ColoredPiece | null, ColoredPiece | null, ColoredPiece | null] =
-      next.every((p) => !p) ? threeNew() : next;
+      next.every((p) => !p) ? threeNew(newScore) : next;
 
-    // Game over if no piece in queue fits AND held piece doesn't fit either
     const queueOver = finalPieces.every((p) => !p || !fitsAnywhere(ng, p.shape));
     const heldFits = held !== null ? fitsAnywhere(ng, held.shape) : false;
     const over = queueOver && !heldFits;
@@ -302,13 +376,13 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
     previewOk = fits(grid, p.shape, hr, hc);
     previewColor = p.color;
     for (const [dr, dc] of p.shape) {
-      const r = hr + dr;
-      const c = hc + dc;
+      const r = hr + dr, c = hc + dc;
       if (r >= 0 && r < G && c >= 0 && c < G) preview.add(`${r}-${c}`);
     }
   }
 
   const gridWidth = G * CELL + (G - 1) * GAP;
+  const currentMult = scoreMultiplier(score);
 
   return (
     <div className="mx-auto max-w-lg px-4 py-6 lg:px-8 lg:py-8">
@@ -323,6 +397,10 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
           0%   { transform: translate(-50%, 0)     scale(1);    opacity: 1; }
           18%  { transform: translate(-50%, -16px) scale(1.4);  opacity: 1; }
           100% { transform: translate(-50%, -80px) scale(0.85); opacity: 0; }
+        }
+        @keyframes bb-limitblink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.45; }
         }
       `}</style>
 
@@ -339,6 +417,11 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
         <div className="kpi">
           <span className="kpi-label">Score</span>
           <span className="kpi-value kpi-value-brand">{score}</span>
+          {status === "playing" && (
+            <span style={{ fontSize: 10, fontWeight: 600, color: multColor(currentMult), marginTop: 1 }}>
+              ×{currentMult.toFixed(2)} rate
+            </span>
+          )}
         </div>
         <div className="kpi">
           <span className="kpi-label">Best</span>
@@ -357,11 +440,45 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
           <h2 className="text-xl font-bold">Block Blast</h2>
           <p className="text-sm max-w-xs" style={{ color: "var(--text-muted)" }}>
             Select a piece, then tap the grid to place it. Fill complete rows or
-            columns to clear them and score! Use Hold to save a piece for later.
+            columns to clear them and score! Pieces get harder and points decay
+            as your score climbs — max {SCORE_CAP.toLocaleString()} pts.
           </p>
-          <button className="btn btn-primary btn-lg" onClick={startGame}>
-            Start Game
-          </button>
+
+          {/* Daily plays counter */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "6px 14px",
+              borderRadius: 20,
+              background: canPlay
+                ? "color-mix(in oklab,var(--brand) 12%,var(--surface))"
+                : "color-mix(in oklab,#ef4444 12%,var(--surface))",
+              border: `1px solid ${canPlay ? "var(--brand)" : "#ef4444"}`,
+            }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 600, color: canPlay ? "var(--brand)" : "#ef4444" }}>
+              {canPlay
+                ? `${playsLeft} of ${MAX_DAILY_PLAYS} plays left today`
+                : `Daily limit reached`}
+            </span>
+          </div>
+
+          {canPlay ? (
+            <button className="btn btn-primary btn-lg" onClick={startGame}>
+              Start Game
+            </button>
+          ) : (
+            <div style={{ textAlign: "center" }}>
+              <p className="text-sm" style={{ color: "var(--text-muted)", marginBottom: 8 }}>
+                Resets in ~{hoursUntilReset()} hour{hoursUntilReset() !== 1 ? "s" : ""}
+              </p>
+              <button className="btn btn-primary btn-lg" disabled style={{ opacity: 0.4, cursor: "not-allowed" }}>
+                Come Back Tomorrow
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -374,13 +491,59 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
             Score&nbsp;<strong>{score}</strong>&nbsp;·&nbsp;Best&nbsp;
             <strong>{stats.bestScore}</strong>
           </p>
-          <button className="btn btn-primary" onClick={startGame}>Play Again</button>
+          {canPlay ? (
+            <>
+              <p className="text-xs" style={{ color: "var(--text-subtle)" }}>
+                {playsLeft} of {MAX_DAILY_PLAYS} plays left today
+              </p>
+              <button className="btn btn-primary" onClick={startGame}>Play Again</button>
+            </>
+          ) : (
+            <>
+              <p
+                className="text-sm"
+                style={{
+                  color: "#ef4444",
+                  fontWeight: 600,
+                  animation: "bb-limitblink 1.4s ease-in-out infinite",
+                }}
+              >
+                Daily limit reached — resets in ~{hoursUntilReset()}h
+              </p>
+              <button className="btn btn-primary" disabled style={{ opacity: 0.4, cursor: "not-allowed" }}>
+                No Plays Left
+              </button>
+            </>
+          )}
         </div>
       )}
 
       {/* Board + pieces */}
       {status !== "idle" && (
         <>
+          {/* Decay bar */}
+          {status === "playing" && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                <span style={{ fontSize: 10, color: "var(--text-subtle)" }}>Score rate</span>
+                <span style={{ fontSize: 10, fontWeight: 600, color: multColor(currentMult) }}>
+                  {Math.round(currentMult * 100)}%
+                </span>
+              </div>
+              <div style={{ height: 4, borderRadius: 2, background: "var(--surface-2)", overflow: "hidden" }}>
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${currentMult * 100}%`,
+                    background: multColor(currentMult),
+                    borderRadius: 2,
+                    transition: "width 400ms ease, background 400ms ease",
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Grid */}
           <div style={{ overflowX: "auto" }}>
             <div style={{ position: "relative", width: gridWidth, margin: "0 auto 20px" }}>
@@ -406,9 +569,7 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                   if (clearColor !== undefined) {
                     bg = clearColor;
                     border = clearColor;
-                    animCss = {
-                      animation: "bb-cellpop 0.56s cubic-bezier(0.34,1.56,0.64,1) forwards",
-                    };
+                    animCss = { animation: "bb-cellpop 0.56s cubic-bezier(0.34,1.56,0.64,1) forwards" };
                   } else if (cellColor) {
                     bg = cellColor;
                     border = cellColor;
@@ -471,22 +632,20 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
               <div style={{ display: "flex", gap: 10, alignItems: "flex-end", justifyContent: "center" }}>
                 {/* Hold slot */}
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                  <span
-                    style={{
-                      fontSize: 9,
-                      fontWeight: 700,
-                      letterSpacing: "0.12em",
-                      textTransform: "uppercase",
-                      color: "var(--text-subtle)",
-                      userSelect: "none",
-                    }}
-                  >
+                  <span style={{
+                    fontSize: 9,
+                    fontWeight: 700,
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    color: "var(--text-subtle)",
+                    userSelect: "none",
+                  }}>
                     Hold
                   </span>
                   <button
                     onClick={holdPiece}
                     disabled={sel === null}
-                    title={sel !== null ? "Hold selected piece (swap if one is stored)" : "Select a piece first"}
+                    title={sel !== null ? "Hold selected piece (swap if stored)" : "Select a piece first"}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -503,24 +662,14 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                       transition: "opacity 150ms, border-color 150ms, background 150ms",
                     }}
                   >
-                    {held ? (
-                      <PieceMini piece={held} />
-                    ) : (
+                    {held ? <PieceMini piece={held} /> : (
                       <span style={{ fontSize: 20, color: "var(--text-subtle)", userSelect: "none" }}>∅</span>
                     )}
                   </button>
                 </div>
 
                 {/* Divider */}
-                <div
-                  style={{
-                    width: 1,
-                    height: 54,
-                    background: "var(--border)",
-                    flexShrink: 0,
-                    alignSelf: "center",
-                  }}
-                />
+                <div style={{ width: 1, height: 54, background: "var(--border)", flexShrink: 0, alignSelf: "center" }} />
 
                 {/* Piece queue */}
                 <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flex: 1, justifyContent: "space-around" }}>
@@ -569,15 +718,7 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                             const pc = j % (maxC + 1);
                             const on = shape.some(([r, c]) => r === pr && c === pc);
                             return (
-                              <div
-                                key={j}
-                                style={{
-                                  width: csz,
-                                  height: csz,
-                                  background: on ? color : "transparent",
-                                  borderRadius: 2,
-                                }}
-                              />
+                              <div key={j} style={{ width: csz, height: csz, background: on ? color : "transparent", borderRadius: 2 }} />
                             );
                           })}
                         </div>
