@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { apiJson } from "@/lib/api";
-import { ACTIVATION_FEE_PHP } from "@/lib/mining";
+import { AD_FREE_FEE_PHP } from "@/lib/mining";
 import {
   IconPickaxe,
   IconCheck,
@@ -211,51 +211,72 @@ export default async function LandingPage() {
           <div className="mb-8 text-center">
             <span className="section-title">Pricing</span>
             <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mt-2">
-              One payment. Lifetime access.
+              Free to mine. Pay to remove ads.
             </h2>
             <p className="mt-2 text-sm" style={{ color: "var(--text-muted)" }}>
-              A single ₱{ACTIVATION_FEE_PHP} activation fee unlocks mining forever. No subscriptions, no tiers.
+              Mining is free for everyone. Pay once to remove all ads — no subscriptions, no tiers.
             </p>
           </div>
 
-          <div
-            className="card card-hover flex flex-col gap-5 mx-auto"
-            style={{ borderColor: "var(--brand)", maxWidth: 480 }}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold">Activation</span>
-              <span className="badge badge-approved">Only plan</span>
-            </div>
-            <div>
-              <div className="text-5xl font-bold" style={{ color: "var(--brand)" }}>
-                ₱{ACTIVATION_FEE_PHP}
+          <div className="grid gap-4 sm:grid-cols-2 mx-auto max-w-2xl">
+            <div className="card flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold">Free</span>
+                <span className="badge">With ads</span>
               </div>
-              <div className="text-xs mt-1" style={{ color: "var(--text-subtle)" }}>
-                One-time · lifetime access
+              <div>
+                <div className="text-5xl font-bold">₱0</div>
+                <div className="text-xs mt-1" style={{ color: "var(--text-subtle)" }}>Always free</div>
               </div>
+              <ul className="space-y-2 text-sm flex-1">
+                <li className="flex items-start gap-2">
+                  <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
+                  <span>Claim every 10 minutes</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
+                  <span>10% referral commission</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
+                  <span>Withdraw once you reach ₱300</span>
+                </li>
+              </ul>
+              <Link href="/register" className="btn btn-secondary btn-lg">
+                Start for free
+              </Link>
             </div>
-            <ul className="space-y-2 text-sm">
-              <li className="flex items-start gap-2">
-                <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
-                <span>Claim every 10 minutes</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
-                <span>10% referral commission, forever</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
-                <span>GCash, Maya, or card via PayMongo</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
-                <span>Withdraw once you reach ₱300</span>
-              </li>
-            </ul>
-            <Link href="/register" className="btn btn-primary btn-lg">
-              Create account
-              <IconArrowRight size={18} />
-            </Link>
+
+            <div className="card flex flex-col gap-4" style={{ borderColor: "var(--brand)" }}>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold">Ad-Free</span>
+                <span className="badge badge-approved">One-time</span>
+              </div>
+              <div>
+                <div className="text-5xl font-bold" style={{ color: "var(--brand)" }}>
+                  ₱{AD_FREE_FEE_PHP}
+                </div>
+                <div className="text-xs mt-1" style={{ color: "var(--text-subtle)" }}>One-time · lifetime</div>
+              </div>
+              <ul className="space-y-2 text-sm flex-1">
+                <li className="flex items-start gap-2">
+                  <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
+                  <span>Everything in Free</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
+                  <span>No ads, ever</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
+                  <span>GCash, Maya, or card (PayMongo)</span>
+                </li>
+              </ul>
+              <Link href="/register" className="btn btn-primary btn-lg">
+                Get started
+                <IconArrowRight size={18} />
+              </Link>
+            </div>
           </div>
         </div>
       </section>
