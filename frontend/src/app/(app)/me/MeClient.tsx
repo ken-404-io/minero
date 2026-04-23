@@ -153,7 +153,7 @@ export default function MeClient({ user, planLabel }: Props) {
             href="/rewards"
             icon={<IconGift size={20} />}
             label="Rewards"
-            caption="Redeem game points"
+            caption="Redeem game coins"
           />
           <MenuRow
             href="/referral"

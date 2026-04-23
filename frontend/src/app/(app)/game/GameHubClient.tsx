@@ -6,6 +6,7 @@ import {
   IconArrowRight,
   IconBrain,
   IconClock,
+  IconCoin,
   IconCopy,
   IconGame,
   IconGift,
@@ -30,7 +31,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 type TriviaStats = {
   bestScore: number;
-  totalPoints: number;
+  totalCoins: number;
   gamesPlayed: number;
   totalCorrect: number;
 };
@@ -38,7 +39,7 @@ type TriviaStats = {
 type SpinStats = {
   lastSpinAt: number;
   lastPrize: number;
-  totalPoints: number;
+  totalCoins: number;
   spinsCompleted: number;
 };
 
@@ -49,7 +50,7 @@ type DiffStats = {
 };
 
 type MemoryStats = {
-  totalPoints: number;
+  totalCoins: number;
   easy: DiffStats;
   medium: DiffStats;
   hard: DiffStats;
@@ -61,7 +62,7 @@ type MinesweeperDiff = {
 };
 
 type MinesweeperStats = {
-  totalPoints: number;
+  totalCoins: number;
   easy: MinesweeperDiff;
   medium: MinesweeperDiff;
   hard: MinesweeperDiff;
@@ -69,7 +70,7 @@ type MinesweeperStats = {
 
 const EMPTY_TRIVIA: TriviaStats = {
   bestScore: 0,
-  totalPoints: 0,
+  totalCoins: 0,
   gamesPlayed: 0,
   totalCorrect: 0,
 };
@@ -77,14 +78,14 @@ const EMPTY_TRIVIA: TriviaStats = {
 const EMPTY_SPIN: SpinStats = {
   lastSpinAt: 0,
   lastPrize: 0,
-  totalPoints: 0,
+  totalCoins: 0,
   spinsCompleted: 0,
 };
 
 const EMPTY_DIFF: DiffStats = { gamesWon: 0, bestMoves: 0, bestTimeMs: 0 };
 
 const EMPTY_MEMORY: MemoryStats = {
-  totalPoints: 0,
+  totalCoins: 0,
   easy: { ...EMPTY_DIFF },
   medium: { ...EMPTY_DIFF },
   hard: { ...EMPTY_DIFF },
@@ -92,14 +93,14 @@ const EMPTY_MEMORY: MemoryStats = {
 
 const EMPTY_SWEEP_DIFF: MinesweeperDiff = { gamesWon: 0, bestTimeMs: 0 };
 const EMPTY_MINESWEEPER: MinesweeperStats = {
-  totalPoints: 0,
+  totalCoins: 0,
   easy: { ...EMPTY_SWEEP_DIFF },
   medium: { ...EMPTY_SWEEP_DIFF },
   hard: { ...EMPTY_SWEEP_DIFF },
 };
 
 type WordStats = {
-  totalPoints: number;
+  totalCoins: number;
   gamesPlayed: number;
   wins: number;
   currentStreak: number;
@@ -109,7 +110,7 @@ type WordStats = {
 };
 
 const EMPTY_WORD: WordStats = {
-  totalPoints: 0,
+  totalCoins: 0,
   gamesPlayed: 0,
   wins: 0,
   currentStreak: 0,
@@ -119,28 +120,28 @@ const EMPTY_WORD: WordStats = {
 };
 
 type SnakeStats = {
-  totalPoints: number;
+  totalCoins: number;
   bestScore: number;
   gamesPlayed: number;
   applesEaten: number;
 };
 
 const EMPTY_SNAKE: SnakeStats = {
-  totalPoints: 0,
+  totalCoins: 0,
   bestScore: 0,
   gamesPlayed: 0,
   applesEaten: 0,
 };
 
 type BlockBlastStats = {
-  totalPoints: number;
+  totalCoins: number;
   bestScore: number;
   gamesPlayed: number;
   linesCleared: number;
 };
 
 const EMPTY_BLOCKBLAST: BlockBlastStats = {
-  totalPoints: 0,
+  totalCoins: 0,
   bestScore: 0,
   gamesPlayed: 0,
   linesCleared: 0,
@@ -149,10 +150,10 @@ const EMPTY_BLOCKBLAST: BlockBlastStats = {
 function parseTrivia(raw: string | null): TriviaStats {
   if (!raw) return EMPTY_TRIVIA;
   try {
-    const p = JSON.parse(raw) as Partial<TriviaStats>;
+    const p = JSON.parse(raw) as Record<string, unknown>;
     return {
       bestScore: Number(p.bestScore) || 0,
-      totalPoints: Number(p.totalPoints) || 0,
+      totalCoins: Number(p.totalCoins) || Number(p.totalPoints) || 0,
       gamesPlayed: Number(p.gamesPlayed) || 0,
       totalCorrect: Number(p.totalCorrect) || 0,
     };
@@ -164,11 +165,11 @@ function parseTrivia(raw: string | null): TriviaStats {
 function parseSpin(raw: string | null): SpinStats {
   if (!raw) return EMPTY_SPIN;
   try {
-    const p = JSON.parse(raw) as Partial<SpinStats>;
+    const p = JSON.parse(raw) as Record<string, unknown>;
     return {
       lastSpinAt: Number(p.lastSpinAt) || 0,
       lastPrize: Number(p.lastPrize) || 0,
-      totalPoints: Number(p.totalPoints) || 0,
+      totalCoins: Number(p.totalCoins) || Number(p.totalPoints) || 0,
       spinsCompleted: Number(p.spinsCompleted) || 0,
     };
   } catch {
@@ -191,7 +192,7 @@ function parseMemory(raw: string | null): MemoryStats {
   try {
     const p = JSON.parse(raw) as Record<string, unknown>;
     return {
-      totalPoints: Number(p.totalPoints) || 0,
+      totalCoins: Number(p.totalCoins) || Number(p.totalPoints) || 0,
       easy: parseDiff(p.easy),
       medium: parseDiff(p.medium),
       hard: parseDiff(p.hard),
@@ -215,7 +216,7 @@ function parseMinesweeper(raw: string | null): MinesweeperStats {
   try {
     const p = JSON.parse(raw) as Record<string, unknown>;
     return {
-      totalPoints: Number(p.totalPoints) || 0,
+      totalCoins: Number(p.totalCoins) || Number(p.totalPoints) || 0,
       easy: parseSweepDiff(p.easy),
       medium: parseSweepDiff(p.medium),
       hard: parseSweepDiff(p.hard),
@@ -228,9 +229,9 @@ function parseMinesweeper(raw: string | null): MinesweeperStats {
 function parseWord(raw: string | null): WordStats {
   if (!raw) return EMPTY_WORD;
   try {
-    const p = JSON.parse(raw) as Partial<WordStats>;
+    const p = JSON.parse(raw) as Record<string, unknown>;
     return {
-      totalPoints: Number(p.totalPoints) || 0,
+      totalCoins: Number(p.totalCoins) || Number(p.totalPoints) || 0,
       gamesPlayed: Number(p.gamesPlayed) || 0,
       wins: Number(p.wins) || 0,
       currentStreak: Number(p.currentStreak) || 0,
@@ -250,9 +251,9 @@ function parseWord(raw: string | null): WordStats {
 function parseSnake(raw: string | null): SnakeStats {
   if (!raw) return EMPTY_SNAKE;
   try {
-    const p = JSON.parse(raw) as Partial<SnakeStats>;
+    const p = JSON.parse(raw) as Record<string, unknown>;
     return {
-      totalPoints: Number(p.totalPoints) || 0,
+      totalCoins: Number(p.totalCoins) || Number(p.totalPoints) || 0,
       bestScore: Number(p.bestScore) || 0,
       gamesPlayed: Number(p.gamesPlayed) || 0,
       applesEaten: Number(p.applesEaten) || 0,
@@ -265,9 +266,9 @@ function parseSnake(raw: string | null): SnakeStats {
 function parseBlockBlast(raw: string | null): BlockBlastStats {
   if (!raw) return EMPTY_BLOCKBLAST;
   try {
-    const p = JSON.parse(raw) as Partial<BlockBlastStats>;
+    const p = JSON.parse(raw) as Record<string, unknown>;
     return {
-      totalPoints: Number(p.totalPoints) || 0,
+      totalCoins: Number(p.totalCoins) || Number(p.totalPoints) || 0,
       bestScore: Number(p.bestScore) || 0,
       gamesPlayed: Number(p.gamesPlayed) || 0,
       linesCleared: Number(p.linesCleared) || 0,
@@ -471,14 +472,14 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
   const wordNextMs = Math.max(0, (todayDay + 1) * DAY_MS - now);
 
   const firstName = playerName?.split(/\s+/)[0] || "Miner";
-  const totalGamePoints =
-    trivia.totalPoints +
-    spin.totalPoints +
-    memory.totalPoints +
-    sweep.totalPoints +
-    word.totalPoints +
-    snake.totalPoints +
-    blockblast.totalPoints;
+  const totalGameCoins =
+    trivia.totalCoins +
+    spin.totalCoins +
+    memory.totalCoins +
+    sweep.totalCoins +
+    word.totalCoins +
+    snake.totalCoins +
+    blockblast.totalCoins;
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-6 lg:px-8 lg:py-8">
@@ -495,8 +496,11 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
       {/* Combined stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         <div className="kpi">
-          <span className="kpi-label">Total game points</span>
-          <span className="kpi-value kpi-value-brand">{totalGamePoints}</span>
+          <span className="kpi-label">Total game coins</span>
+          <span className="kpi-value kpi-value-brand flex items-center gap-1">
+            <IconCoin size={16} />
+            {totalGameCoins}
+          </span>
         </div>
         <div className="kpi">
           <span className="kpi-label">Trivia best score</span>
@@ -542,7 +546,7 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
             Redeem rewards
           </div>
           <div className="text-xs md:text-sm" style={{ color: "var(--text-muted)" }}>
-            Convert your points into peso-value cards · 2,499 pts = ₱1
+            Convert your coins into peso-value cards · 2,499 coins = ₱1
           </div>
         </div>
         <span
@@ -573,7 +577,7 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
           href="/game/spin"
           title="Daily Spin"
           tagline="Free spin every 24h"
-          description="Give the wheel a whirl once a day for up to 250 free game points. No skill required."
+          description="Give the wheel a whirl once a day for up to 250 free game coins. No skill required."
           icon={<IconGift size={22} />}
           status={
             spinReady
@@ -609,7 +613,7 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
           href="/game/minesweeper"
           title="Minesweeper"
           tagline="Clear the board, dodge the mines"
-          description="Classic logic puzzle. Flag mines, reveal safe cells. Harder difficulties pay out more points."
+          description="Classic logic puzzle. Flag mines, reveal safe cells. Harder difficulties pay out more coins."
           icon={<IconMine size={22} />}
           status={
             sweepWins > 0
@@ -678,8 +682,8 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
         className="mt-8 flex items-center gap-2 text-xs"
         style={{ color: "var(--text-subtle)" }}
       >
-        <IconTrophy size={14} />
-        Game points are tracked locally on this device.
+        <IconCoin size={14} />
+        Game coins are tracked locally on this device.
       </div>
     </div>
   );

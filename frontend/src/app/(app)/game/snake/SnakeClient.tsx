@@ -7,7 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { IconArrowRight, IconError, IconTrophy } from "@/components/icons";
+import { IconArrowRight, IconCoin, IconError, IconTrophy } from "@/components/icons";
 
 /* ============================================================
    Config
@@ -17,7 +17,7 @@ const GRID = 20; // 20×20 playfield
 const BASE_STEP_MS = 160; // starting tick interval
 const MIN_STEP_MS = 60; // fastest tick interval
 const SPEEDUP_PER_APPLE_MS = 4; // shave this much off each tick per apple eaten
-const POINTS_PER_APPLE = 10;
+const COINS_PER_APPLE = 10; // coins earned per apple
 
 type Point = { x: number; y: number };
 type Dir = "up" | "down" | "left" | "right";
@@ -42,14 +42,14 @@ const OPPOSITE: Record<Dir, Dir> = {
    ============================================================ */
 
 type Stats = {
-  totalPoints: number;
+  totalCoins: number;
   bestScore: number;
   gamesPlayed: number;
   applesEaten: number;
 };
 
 const EMPTY_STATS: Stats = {
-  totalPoints: 0,
+  totalCoins: 0,
   bestScore: 0,
   gamesPlayed: 0,
   applesEaten: 0,
@@ -62,7 +62,7 @@ function parseStats(raw: string | null): Stats {
   try {
     const p = JSON.parse(raw) as Partial<Stats>;
     return {
-      totalPoints: Number(p.totalPoints) || 0,
+      totalCoins: Number(p.totalCoins) || Number(p.totalPoints) || 0,
       bestScore: Number(p.bestScore) || 0,
       gamesPlayed: Number(p.gamesPlayed) || 0,
       applesEaten: Number(p.applesEaten) || 0,
@@ -303,13 +303,13 @@ export default function SnakeClient({ playerName }: { playerName: string }) {
       window.clearInterval(tickTimerRef.current);
       tickTimerRef.current = null;
     }
-    const runScore = applesEatenRef.current * POINTS_PER_APPLE;
+    const runScore = applesEatenRef.current * COINS_PER_APPLE;
     setFinalScore(runScore);
     setStatus("over");
 
     const prev = getSnapshot();
     writeStats({
-      totalPoints: prev.totalPoints + runScore,
+      totalCoins: prev.totalCoins + runScore,
       bestScore: Math.max(prev.bestScore, runScore),
       gamesPlayed: prev.gamesPlayed + 1,
       applesEaten: prev.applesEaten + applesEatenRef.current,
@@ -355,7 +355,7 @@ export default function SnakeClient({ playerName }: { playerName: string }) {
 
     if (willEatApple) {
       applesEatenRef.current += 1;
-      setScore(applesEatenRef.current * POINTS_PER_APPLE);
+      setScore(applesEatenRef.current * COINS_PER_APPLE);
       appleRef.current = spawnApple(newSnake);
       // Restart timer so the new (faster) step rate takes effect.
       if (tickTimerRef.current !== null) {
@@ -535,7 +535,7 @@ export default function SnakeClient({ playerName }: { playerName: string }) {
               ? `New best, ${firstName}!`
               : "Game over"
           }
-          detail={`${finalScore} points this run · Best ${Math.max(stats.bestScore, finalScore)}`}
+          detail={<><IconCoin size={13} style={{ display: "inline", verticalAlign: "middle" }} /> {finalScore} coins this run · Best {Math.max(stats.bestScore, finalScore)}</>}
           onAction={startRun}
           actionLabel="Play again"
         />
@@ -646,7 +646,7 @@ export default function SnakeClient({ playerName }: { playerName: string }) {
           className="text-xs"
           style={{ color: "var(--text-subtle)" }}
         >
-          +{POINTS_PER_APPLE} per apple · speeds up as you grow
+          <span className="inline-flex items-center gap-1"><IconCoin size={12} /> +{COINS_PER_APPLE} per apple · speeds up as you grow</span>
         </div>
         <button
           type="button"
@@ -732,7 +732,7 @@ function ResultBanner({
   onAction,
 }: {
   title: string;
-  detail: string;
+  detail: React.ReactNode;
   actionLabel: string;
   onAction: () => void;
 }) {

@@ -14,6 +14,7 @@ import {
   IconClock,
   IconTrophy,
   IconCheck,
+  IconCoin,
 } from "@/components/icons";
 
 /* ============================================================
@@ -57,14 +58,14 @@ const WEDGE_TEXT_FILLS = [
 type SpinStats = {
   lastSpinAt: number; // epoch ms, 0 if never
   lastPrize: number;
-  totalPoints: number;
+  totalCoins: number;
   spinsCompleted: number;
 };
 
 const EMPTY_STATS: SpinStats = {
   lastSpinAt: 0,
   lastPrize: 0,
-  totalPoints: 0,
+  totalCoins: 0,
   spinsCompleted: 0,
 };
 
@@ -77,7 +78,7 @@ function parseStats(raw: string | null): SpinStats {
     return {
       lastSpinAt: Number(parsed.lastSpinAt) || 0,
       lastPrize: Number(parsed.lastPrize) || 0,
-      totalPoints: Number(parsed.totalPoints) || 0,
+      totalCoins: Number((parsed as Record<string, unknown>).totalCoins) || Number(parsed.totalPoints) || 0,
       spinsCompleted: Number(parsed.spinsCompleted) || 0,
     };
   } catch {
@@ -197,7 +198,7 @@ export default function SpinClient({ playerName }: { playerName: string }) {
       writeStats({
         lastSpinAt: Date.now(),
         lastPrize: prize,
-        totalPoints: prev.totalPoints + prize,
+        totalCoins: prev.totalCoins + prize,
         spinsCompleted: prev.spinsCompleted + 1,
       });
       setLastResult({ prize, wedge });
@@ -272,7 +273,7 @@ export default function SpinClient({ playerName }: { playerName: string }) {
         </h1>
         <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
           One free spin every 24 hours. Win up to {Math.max(...PRIZES)} game
-          points per spin.
+          coins per spin.
         </p>
       </header>
 
@@ -280,13 +281,16 @@ export default function SpinClient({ playerName }: { playerName: string }) {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         <div className="kpi">
           <span className="kpi-label">Last win</span>
-          <span className="kpi-value kpi-value-brand">
-            {stats.lastPrize > 0 ? `+${stats.lastPrize}` : "—"}
+          <span className="kpi-value kpi-value-brand flex items-center gap-1">
+            {stats.lastPrize > 0 ? <><IconCoin size={14} /> +{stats.lastPrize}</> : "—"}
           </span>
         </div>
         <div className="kpi">
-          <span className="kpi-label">Total points</span>
-          <span className="kpi-value">{stats.totalPoints}</span>
+          <span className="kpi-label">Total coins</span>
+          <span className="kpi-value flex items-center gap-1">
+            <IconCoin size={14} />
+            {stats.totalCoins}
+          </span>
         </div>
         <div className="kpi">
           <span className="kpi-label">Spins completed</span>
@@ -334,10 +338,10 @@ export default function SpinClient({ playerName }: { playerName: string }) {
                 <IconCheck size={16} />
                 <span>
                   You won{" "}
-                  <strong style={{ color: "var(--success-fg)" }}>
-                    +{lastResult.prize}
+                  <strong style={{ color: "var(--success-fg)" }} className="inline-flex items-center gap-1">
+                    <IconCoin size={13} /> +{lastResult.prize}
                   </strong>{" "}
-                  game points, {firstName}!
+                  game coins, {firstName}!
                 </span>
               </div>
             ) : cooldownActive ? (
@@ -447,8 +451,8 @@ export default function SpinClient({ playerName }: { playerName: string }) {
               {[
                 "One spin every 24 hours — the cooldown starts the moment the wheel stops.",
                 "The pointer at the top decides your prize.",
-                "Game points are tracked on this device.",
-                "Come back daily to stack up points.",
+                "Game coins are tracked on this device.",
+                "Come back daily to stack up coins.",
               ].map((step, i) => (
                 <li key={i} className="flex gap-2.5">
                   <span
