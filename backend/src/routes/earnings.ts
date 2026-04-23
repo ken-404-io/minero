@@ -11,7 +11,7 @@ earningsRoutes.get("/", async (c) => {
   const page = Math.max(1, parseInt(c.req.query("page") ?? "1"));
   const limit = 20;
 
-  const [earnings, total] = await prisma.$transaction([
+  const [earnings, total] = await Promise.all([
     prisma.earning.findMany({
       where: { userId: session.userId },
       orderBy: { createdAt: "desc" },
