@@ -19,6 +19,7 @@ type EarningsResp = {
   total: number;
   page: number;
   pages: number;
+  approvedTotal: number;
 };
 
 export default async function EarningsPage({
@@ -39,12 +40,7 @@ export default async function EarningsPage({
   const earnings = earningsResp?.earnings ?? [];
   const total = earningsResp?.total ?? 0;
   const pages = earningsResp?.pages ?? 1;
-
-  // TODO(earnings): backend /earnings does not return a global approvedTotal.
-  // For now we sum only the current page — needs a dedicated aggregate endpoint.
-  const approvedTotal = earnings
-    .filter((e) => e.status === "approved")
-    .reduce((sum, e) => sum + e.amount, 0);
+  const approvedTotal = earningsResp?.approvedTotal ?? 0;
 
   return (
     <EarningsClient
