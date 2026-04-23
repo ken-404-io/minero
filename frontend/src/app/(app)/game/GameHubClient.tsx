@@ -26,6 +26,7 @@ const MINESWEEPER_KEY = "minero_minesweeper_stats_v1";
 const WORD_KEY = "minero_word_stats_v1";
 const SNAKE_KEY = "minero_snake_stats_v1";
 const BLOCKBLAST_KEY = "minero_blockblast_stats_v1";
+const REWARDS_KEY = "minero_rewards_v1";
 const SPIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -391,6 +392,26 @@ function getBlockBlastSnapshot(): BlockBlastStats {
 const subscribeBlockBlast = makeSubscriber(BLOCKBLAST_KEY);
 const getBlockBlastServer = () => EMPTY_BLOCKBLAST;
 
+let rewardsRaw: string | null = null;
+let rewardsCache = 0;
+function getRedeemedSnapshot(): number {
+  if (typeof window === "undefined") return 0;
+  const raw = window.localStorage.getItem(REWARDS_KEY);
+  if (raw !== rewardsRaw) {
+    rewardsRaw = raw;
+    try {
+      const p = JSON.parse(raw ?? "null") as { redeemedCoins?: unknown; redeemedPoints?: unknown } | null;
+      const v = Number(p?.redeemedCoins ?? p?.redeemedPoints);
+      rewardsCache = Number.isFinite(v) && v > 0 ? v : 0;
+    } catch {
+      rewardsCache = 0;
+    }
+  }
+  return rewardsCache;
+}
+const subscribeRewards = makeSubscriber(REWARDS_KEY);
+const getRedeemedServer = () => 0;
+
 function formatCountdown(ms: number) {
   if (ms <= 0) return "Ready";
   const total = Math.ceil(ms / 1000);
@@ -448,6 +469,11 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     getBlockBlastSnapshot,
     getBlockBlastServer,
   );
+  const redeemedCoins = useSyncExternalStore(
+    subscribeRewards,
+    getRedeemedSnapshot,
+    getRedeemedServer,
+  );
 
   const [now, setNow] = useState<number>(() => Date.now());
   useEffect(() => {
@@ -480,6 +506,7 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     word.totalCoins +
     snake.totalCoins +
     blockblast.totalCoins;
+  const availableCoins = Math.max(0, totalGameCoins - redeemedCoins);
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-6 lg:px-8 lg:py-8">
@@ -496,10 +523,10 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
       {/* Combined stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         <div className="kpi">
-          <span className="kpi-label">Total game coins</span>
+          <span className="kpi-label">Available coins</span>
           <span className="kpi-value kpi-value-brand flex items-center gap-1">
             <IconCoin size={16} />
-            {totalGameCoins}
+            {availableCoins}
           </span>
         </div>
         <div className="kpi">
