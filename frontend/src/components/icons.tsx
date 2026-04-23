@@ -414,3 +414,16 @@ export function IconFlag(p: IconProps) {
     </svg>
   );
 }
+
+export function IconCoin(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 6v2" />
+      <path d="M12 16v2" />
+      <path d="M6 12h2" />
+      <path d="M16 12h2" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}

@@ -3,22 +3,22 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import {
   IconCheck,
-  IconCoins,
+  IconCoin,
   IconGift,
   IconLock,
   IconSparkles,
   IconTrophy,
   IconX,
 } from "@/components/icons";
+import { API_URL } from "@/lib/api-url";
 
 /* ============================================================
    Conversion config
    ------------------------------------------------------------
-   Flat rate: 2,499 game points = ₱1.
-   Each "card" is a fixed-peso denomination the user redeems.
+   2,499 coins = ₱1  (flat rate, same as before)
    ============================================================ */
 
-const POINTS_PER_PESO = 2499;
+const COINS_PER_PESO = 2499;
 
 type RewardCard = {
   id: string;
@@ -37,15 +37,15 @@ const CARDS: RewardCard[] = [
 ];
 
 function cardCost(peso: number) {
-  return peso * POINTS_PER_PESO;
+  return peso * COINS_PER_PESO;
 }
 
 /* ============================================================
-   Game-points aggregation
+   Game-coins aggregation
    ------------------------------------------------------------
    Each game writes its own localStorage stats object with a
-   numeric `totalPoints` field. We sum them into an "earned"
-   total, then subtract redeemed points for availability.
+   numeric `totalCoins` (or legacy `totalPoints`) field.
+   We sum them into an "earned" total.
    ============================================================ */
 
 const GAME_KEYS = [
@@ -55,6 +55,7 @@ const GAME_KEYS = [
   "minero_minesweeper_stats_v1",
   "minero_word_stats_v1",
   "minero_snake_stats_v1",
+  "minero_blockblast_stats_v1",
 ];
 
 function readTotalFromKey(key: string): number {
@@ -62,9 +63,12 @@ function readTotalFromKey(key: string): number {
   const raw = window.localStorage.getItem(key);
   if (!raw) return 0;
   try {
-    const parsed = JSON.parse(raw) as { totalPoints?: unknown };
-    const n = Number(parsed?.totalPoints);
-    return Number.isFinite(n) && n > 0 ? n : 0;
+    const parsed = JSON.parse(raw) as { totalCoins?: unknown; totalPoints?: unknown };
+    // Prefer totalCoins (new format), fall back to totalPoints (legacy games)
+    const coins = Number(parsed?.totalCoins);
+    if (Number.isFinite(coins) && coins > 0) return coins;
+    const pts = Number(parsed?.totalPoints);
+    return Number.isFinite(pts) && pts > 0 ? pts : 0;
   } catch {
     return 0;
   }
@@ -79,42 +83,44 @@ function readEarnedTotal(): number {
    ============================================================ */
 
 type Redemption = {
-  id: string;       // unique per redeem
-  cardId: string;   // reward-card id
-  peso: number;     // peso value credited
-  pointsSpent: number;
-  at: number;       // epoch ms
+  id: string;
+  cardId: string;
+  peso: number;
+  coinsSpent: number;
+  at: number;
 };
 
 type RewardsState = {
-  redeemedPoints: number;
+  redeemedCoins: number;
   redemptions: Redemption[];
 };
 
 const REWARDS_KEY = "minero_rewards_v1";
-const EMPTY_STATE: RewardsState = { redeemedPoints: 0, redemptions: [] };
+const EMPTY_STATE: RewardsState = { redeemedCoins: 0, redemptions: [] };
 
 function parseRewards(raw: string | null): RewardsState {
   if (!raw) return EMPTY_STATE;
   try {
-    const parsed = JSON.parse(raw) as Partial<RewardsState>;
+    const parsed = JSON.parse(raw) as Partial<RewardsState & { redeemedPoints?: number }>;
     const redemptions = Array.isArray(parsed.redemptions)
       ? parsed.redemptions
           .map((r) => {
-            const red = r as Partial<Redemption>;
+            const red = r as Partial<Redemption & { pointsSpent?: number }>;
             return {
               id: String(red.id ?? ""),
               cardId: String(red.cardId ?? ""),
               peso: Number(red.peso) || 0,
-              pointsSpent: Number(red.pointsSpent) || 0,
+              // backward-compat: old records used pointsSpent
+              coinsSpent: Number(red.coinsSpent ?? red.pointsSpent) || 0,
               at: Number(red.at) || 0,
             };
           })
           .filter((r) => r.id && r.cardId && r.peso > 0)
       : [];
-    const redeemed = Number(parsed.redeemedPoints);
+    // backward-compat: old key was redeemedPoints
+    const redeemed = Number(parsed.redeemedCoins ?? parsed.redeemedPoints);
     return {
-      redeemedPoints: Number.isFinite(redeemed) && redeemed > 0 ? redeemed : 0,
+      redeemedCoins: Number.isFinite(redeemed) && redeemed > 0 ? redeemed : 0,
       redemptions,
     };
   } catch {
@@ -155,7 +161,7 @@ function writeRewards(next: RewardsState) {
 }
 
 /* ============================================================
-   Earned-total subscription (sums across the 6 game keys)
+   Earned-total subscription
    ============================================================ */
 
 function subscribeEarned(cb: () => void) {
@@ -206,35 +212,63 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
 
   const [confirmCard, setConfirmCard] = useState<RewardCard | null>(null);
   const [lastRedeemed, setLastRedeemed] = useState<Redemption | null>(null);
+  const [redeeming, setRedeeming] = useState(false);
+  const [redeemError, setRedeemError] = useState<string | null>(null);
 
   // Heal state if earned drops below redeemed (e.g. user cleared game data).
   useEffect(() => {
-    if (rewards.redeemedPoints > earned) {
-      writeRewards({ ...rewards, redeemedPoints: earned });
+    if (rewards.redeemedCoins > earned) {
+      writeRewards({ ...rewards, redeemedCoins: earned });
     }
   }, [earned, rewards]);
 
-  const available = Math.max(0, earned - rewards.redeemedPoints);
+  const available = Math.max(0, earned - rewards.redeemedCoins);
   const totalCashedOut = rewards.redemptions.reduce((sum, r) => sum + r.peso, 0);
   const firstName = playerName?.split(/\s+/)[0] || "Miner";
 
   const redeem = useCallback(
-    (card: RewardCard) => {
+    async (card: RewardCard) => {
       const cost = cardCost(card.peso);
       if (available < cost) return;
-      const entry: Redemption = {
-        id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-        cardId: card.id,
-        peso: card.peso,
-        pointsSpent: cost,
-        at: Date.now(),
-      };
-      writeRewards({
-        redeemedPoints: rewards.redeemedPoints + cost,
-        redemptions: [entry, ...rewards.redemptions].slice(0, 50),
-      });
-      setConfirmCard(null);
-      setLastRedeemed(entry);
+
+      setRedeeming(true);
+      setRedeemError(null);
+
+      try {
+        const res = await fetch(`${API_URL}/redeem`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ coinsSpent: cost, pesoValue: card.peso }),
+        });
+
+        const data = await res.json() as { ok?: boolean; error?: string };
+
+        if (!res.ok) {
+          setRedeemError((typeof data.error === "string" ? data.error : null) ?? "Redemption failed. Please try again.");
+          setRedeeming(false);
+          return;
+        }
+
+        // Backend credited the wallet — now record locally so coins are deducted
+        const entry: Redemption = {
+          id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+          cardId: card.id,
+          peso: card.peso,
+          coinsSpent: cost,
+          at: Date.now(),
+        };
+        writeRewards({
+          redeemedCoins: rewards.redeemedCoins + cost,
+          redemptions: [entry, ...rewards.redemptions].slice(0, 50),
+        });
+        setConfirmCard(null);
+        setLastRedeemed(entry);
+      } catch {
+        setRedeemError("Network error. Please try again.");
+      } finally {
+        setRedeeming(false);
+      }
     },
     [available, rewards],
   );
@@ -257,15 +291,22 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
     return () => clearTimeout(id);
   }, [lastRedeemed]);
 
+  // Auto-clear error after 5s
+  useEffect(() => {
+    if (!redeemError) return;
+    const id = setTimeout(() => setRedeemError(null), 5000);
+    return () => clearTimeout(id);
+  }, [redeemError]);
+
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-6 lg:px-8 lg:py-8">
       <header className="mb-6 lg:mb-8">
         <span className="section-title">Redeem</span>
         <h1 className="text-2xl lg:text-3xl font-bold tracking-tight mt-1">Rewards</h1>
         <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-          Hi {firstName} — turn your game points into peso-value cards. Flat rate:{" "}
+          Hi {firstName} — convert your game coins into pesos added directly to your wallet.{" "}
           <span className="font-semibold" style={{ color: "var(--text)" }}>
-            {formatInt(POINTS_PER_PESO)} points = ₱1
+            {formatInt(COINS_PER_PESO)} coins = ₱1
           </span>
           .
         </p>
@@ -275,28 +316,35 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
         <div className="alert alert-success mb-4" role="status">
           <IconCheck size={16} />
           <span>
-            Redeemed a {formatPeso(lastRedeemed.peso)} card for{" "}
-            {formatInt(lastRedeemed.pointsSpent)} points.
+            ₱{lastRedeemed.peso} added to your wallet for{" "}
+            {formatInt(lastRedeemed.coinsSpent)} coins!
           </span>
+        </div>
+      )}
+
+      {redeemError && (
+        <div className="alert alert-error mb-4" role="alert">
+          <IconX size={16} />
+          <span>{redeemError}</span>
         </div>
       )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         <div className="kpi">
-          <span className="kpi-label">Points available</span>
+          <span className="kpi-label">Coins available</span>
           <span className="kpi-value kpi-value-brand">{formatInt(available)}</span>
         </div>
         <div className="kpi">
-          <span className="kpi-label">Points earned (lifetime)</span>
+          <span className="kpi-label">Coins earned (lifetime)</span>
           <span className="kpi-value">{formatInt(earned)}</span>
         </div>
         <div className="kpi">
           <span className="kpi-label">Peso value available</span>
-          <span className="kpi-value">{formatPeso(Math.floor(available / POINTS_PER_PESO))}</span>
+          <span className="kpi-value">{formatPeso(Math.floor(available / COINS_PER_PESO))}</span>
         </div>
         <div className="kpi">
-          <span className="kpi-label">Redeemed so far</span>
+          <span className="kpi-label">Redeemed to wallet</span>
           <span className="kpi-value">{formatPeso(totalCashedOut)}</span>
         </div>
       </div>
@@ -304,9 +352,9 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
       {/* Reward cards */}
       <section className="mb-8">
         <div className="flex items-center justify-between mb-3">
-          <span className="section-title">Reward cards</span>
+          <span className="section-title">Redeem coins to pesos</span>
           <span className="text-xs" style={{ color: "var(--text-subtle)" }}>
-            {formatInt(POINTS_PER_PESO)} pts per ₱1 · fixed rate
+            {formatInt(COINS_PER_PESO)} coins per ₱1 · fixed rate
           </span>
         </div>
 
@@ -321,7 +369,7 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
                 cost={cost}
                 available={available}
                 canRedeem={canRedeem}
-                onSelect={() => setConfirmCard(card)}
+                onSelect={() => { setRedeemError(null); setConfirmCard(card); }}
               />
             );
           })}
@@ -346,7 +394,7 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
           >
             <IconTrophy size={18} />
             <span className="text-sm">
-              No redemptions yet. Play games to earn points, then claim a card above.
+              No redemptions yet. Play games to earn coins, then redeem a card above.
             </span>
           </div>
         ) : (
@@ -368,14 +416,14 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold">
-                      {card?.label ?? "Card"} · {formatPeso(r.peso)}
+                      {card?.label ?? "Card"} · {formatPeso(r.peso)} → wallet
                     </div>
                     <div className="text-xs" style={{ color: "var(--text-subtle)" }}>
-                      {formatInt(r.pointsSpent)} pts · {formatDate(r.at)}
+                      {formatInt(r.coinsSpent)} coins · {formatDate(r.at)}
                     </div>
                   </div>
                   <span className="badge badge-approved">
-                    <IconCheck size={12} /> Redeemed
+                    <IconCheck size={12} /> Credited
                   </span>
                 </li>
               );
@@ -389,10 +437,10 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
         className="mt-8 flex items-start gap-2 text-xs"
         style={{ color: "var(--text-subtle)" }}
       >
-        <IconCoins size={14} />
+        <IconCoin size={14} />
         <span>
-          Reward cards are tracked locally on this device. Points come from the Game
-          hub and can only be spent once.
+          Coins come from the Game hub. Redeeming converts them to pesos credited directly
+          to your wallet balance — visible on the Earnings page.
         </span>
       </div>
 
@@ -401,7 +449,7 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
         <>
           <div
             className="sheet-scrim"
-            onClick={() => setConfirmCard(null)}
+            onClick={() => !redeeming && setConfirmCard(null)}
             aria-hidden
           />
           <div
@@ -413,15 +461,16 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
             <div className="sheet-handle" aria-hidden />
             <div className="flex items-start justify-between gap-3 mb-4">
               <div>
-                <span className="section-title">Redeem</span>
+                <span className="section-title">Redeem coins</span>
                 <h2 id="reward-sheet-title" className="text-xl font-semibold mt-1">
-                  {confirmCard.label} card
+                  {confirmCard.label} — {formatPeso(confirmCard.peso)}
                 </h2>
               </div>
               <button
-                onClick={() => setConfirmCard(null)}
+                onClick={() => !redeeming && setConfirmCard(null)}
                 className="btn-icon"
                 aria-label="Close"
+                disabled={redeeming}
               >
                 <IconX size={18} />
               </button>
@@ -430,7 +479,7 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
             <div className="surface-2 p-4 mb-4">
               <div className="flex items-baseline justify-between mb-1">
                 <span className="text-sm" style={{ color: "var(--text-muted)" }}>
-                  Peso value
+                  Added to wallet
                 </span>
                 <span className="text-2xl font-bold" style={{ color: "var(--brand)" }}>
                   {formatPeso(confirmCard.peso)}
@@ -438,37 +487,49 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
               </div>
               <div className="flex items-baseline justify-between">
                 <span className="text-sm" style={{ color: "var(--text-muted)" }}>
-                  Points required
+                  Coins required
                 </span>
                 <span className="font-mono text-sm">
-                  {formatInt(cardCost(confirmCard.peso))}
+                  {formatInt(cardCost(confirmCard.peso))} coins
                 </span>
               </div>
             </div>
 
             <div className="flex items-baseline justify-between text-sm mb-4">
               <span style={{ color: "var(--text-muted)" }}>You have</span>
-              <span className="font-mono">{formatInt(available)} pts</span>
+              <span className="font-mono">{formatInt(available)} coins</span>
             </div>
+
+            {redeemError && (
+              <div className="alert alert-error mb-3 text-sm">
+                <IconX size={14} />
+                <span>{redeemError}</span>
+              </div>
+            )}
 
             <div className="flex gap-3 mt-2">
               <button
-                onClick={() => setConfirmCard(null)}
+                onClick={() => !redeeming && setConfirmCard(null)}
                 className="btn btn-secondary flex-1"
+                disabled={redeeming}
               >
                 Cancel
               </button>
               <button
                 onClick={() => redeem(confirmCard)}
-                disabled={available < cardCost(confirmCard.peso)}
+                disabled={available < cardCost(confirmCard.peso) || redeeming}
                 className="btn btn-primary flex-1"
               >
-                <IconSparkles size={16} /> Confirm redeem
+                {redeeming ? (
+                  <>Processing…</>
+                ) : (
+                  <><IconSparkles size={16} /> Confirm redeem</>
+                )}
               </button>
             </div>
             <p className="text-xs mt-3" style={{ color: "var(--text-subtle)" }}>
-              Once redeemed, the points are deducted and the card appears in your
-              history below.
+              Coins are deducted and {formatPeso(confirmCard.peso)} is credited to your
+              wallet immediately.
             </p>
           </div>
         </>
@@ -519,14 +580,14 @@ function RewardCardView({
           className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
           style={{ background: "var(--surface-2)", color: accentFg }}
         >
-          <IconGift size={22} />
+          <IconCoin size={22} />
         </span>
         <div className="flex-1 min-w-0">
           <h2 className="text-base md:text-lg font-semibold leading-snug">
             {card.label}
           </h2>
           <div className="text-xs" style={{ color: "var(--text-subtle)" }}>
-            Redeem card
+            Redeem coins → pesos
           </div>
         </div>
         <div className="text-right shrink-0">
@@ -534,7 +595,7 @@ function RewardCardView({
             ₱{card.peso}
           </div>
           <div className="text-[11px]" style={{ color: "var(--text-subtle)" }}>
-            peso value
+            to wallet
           </div>
         </div>
       </div>
@@ -542,7 +603,7 @@ function RewardCardView({
       <div className="flex items-baseline justify-between text-xs">
         <span style={{ color: "var(--text-muted)" }}>Cost</span>
         <span className="font-mono" style={{ color: "var(--text)" }}>
-          {formatInt(cost)} pts
+          {formatInt(cost)} coins
         </span>
       </div>
 
@@ -568,7 +629,7 @@ function RewardCardView({
       >
         {canRedeem ? (
           <>
-            <IconGift size={16} /> Redeem now
+            <IconCoin size={16} /> Redeem now
           </>
         ) : (
           <>

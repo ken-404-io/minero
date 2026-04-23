@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { IconTrophy } from "@/components/icons";
+import { IconCoin, IconTrophy } from "@/components/icons";
 
 /* ============================================================
    Constants
@@ -21,7 +21,7 @@ const SCORE_CAP = 20_000;
 
 type Piece = [number, number][];
 type ColoredPiece = { shape: Piece; color: string };
-type Stats = { totalPoints: number; bestScore: number; gamesPlayed: number; linesCleared: number };
+type Stats = { totalCoins: number; bestScore: number; gamesPlayed: number; linesCleared: number };
 type DailyData = { date: string; plays: number };
 type Status = "idle" | "playing" | "over";
 
@@ -72,7 +72,7 @@ const PALETTE = [
   "#f97316", // orange
 ];
 
-const EMPTY_STATS: Stats = { totalPoints: 0, bestScore: 0, gamesPlayed: 0, linesCleared: 0 };
+const EMPTY_STATS: Stats = { totalCoins: 0, bestScore: 0, gamesPlayed: 0, linesCleared: 0 };
 
 /* ============================================================
    Difficulty helpers
@@ -177,10 +177,11 @@ function place(
 
 function loadStats(): Stats {
   try {
-    const p = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as Partial<Stats> | null;
+    const p = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as Partial<Stats & { totalPoints?: number }> | null;
     if (!p) return EMPTY_STATS;
+    // support both new totalCoins and legacy totalPoints
     return {
-      totalPoints: Number(p.totalPoints) || 0,
+      totalCoins: Number(p.totalCoins) || Number(p.totalPoints) || 0,
       bestScore: Number(p.bestScore) || 0,
       gamesPlayed: Number(p.gamesPlayed) || 0,
       linesCleared: Number(p.linesCleared) || 0,
@@ -356,7 +357,7 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
     if (over) {
       setStatus("over");
       const s: Stats = {
-        totalPoints: stats.totalPoints + newScore,
+        totalCoins: stats.totalCoins + newScore,
         bestScore: Math.max(stats.bestScore, newScore),
         gamesPlayed: stats.gamesPlayed + 1,
         linesCleared: stats.linesCleared + newLines,
@@ -408,18 +409,18 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
         <span className="section-title">Play</span>
         <h1 className="text-2xl font-bold tracking-tight mt-1">Block Blast</h1>
         <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-          Place pieces to fill rows &amp; columns — clear them to score!
+          Place pieces to fill rows &amp; columns — clear them to earn coins!
         </p>
       </header>
 
       {/* KPIs */}
       <div className="grid grid-cols-3 gap-2 mb-4">
         <div className="kpi">
-          <span className="kpi-label">Score</span>
+          <span className="kpi-label">Coins</span>
           <span className="kpi-value kpi-value-brand">{score}</span>
           {status === "playing" && (
             <span style={{ fontSize: 10, fontWeight: 600, color: multColor(currentMult), marginTop: 1 }}>
-              ×{currentMult.toFixed(2)} rate
+              ×{currentMult.toFixed(2)} coin rate
             </span>
           )}
         </div>
@@ -440,8 +441,8 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
           <h2 className="text-xl font-bold">Block Blast</h2>
           <p className="text-sm max-w-xs" style={{ color: "var(--text-muted)" }}>
             Select a piece, then tap the grid to place it. Fill complete rows or
-            columns to clear them and score! Pieces get harder and points decay
-            as your score climbs — max {SCORE_CAP.toLocaleString()} pts.
+            columns to clear them and earn coins! Pieces get harder and coin
+            rewards decay as your total climbs — max {SCORE_CAP.toLocaleString()} coins.
           </p>
 
           {/* Daily plays counter */}
@@ -488,7 +489,7 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
           <div style={{ fontSize: 44 }}>💥</div>
           <h2 className="text-xl font-bold">Game Over!</h2>
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Score&nbsp;<strong>{score}</strong>&nbsp;·&nbsp;Best&nbsp;
+            Coins&nbsp;<strong>{score}</strong>&nbsp;·&nbsp;Best&nbsp;
             <strong>{stats.bestScore}</strong>
           </p>
           {canPlay ? (
@@ -525,7 +526,7 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
           {status === "playing" && (
             <div style={{ marginBottom: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                <span style={{ fontSize: 10, color: "var(--text-subtle)" }}>Score rate</span>
+                <span style={{ fontSize: 10, color: "var(--text-subtle)" }}>Coin rate</span>
                 <span style={{ fontSize: 10, fontWeight: 600, color: multColor(currentMult) }}>
                   {Math.round(currentMult * 100)}%
                 </span>
@@ -741,9 +742,9 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
       {/* Lifetime stats */}
       {stats.gamesPlayed > 0 && (
         <div className="card mt-6 flex items-center gap-3">
-          <IconTrophy size={18} style={{ color: "var(--brand)" }} className="shrink-0" />
+          <IconCoin size={18} style={{ color: "var(--brand)" }} className="shrink-0" />
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            {stats.gamesPlayed} played · Best {stats.bestScore} pts · {stats.linesCleared} lines cleared
+            {stats.gamesPlayed} played · Best {stats.bestScore} coins · {stats.linesCleared} lines cleared
           </p>
         </div>
       )}

@@ -10,6 +10,7 @@ import { earningsRoutes } from "./routes/earnings.js";
 import { plansRoutes } from "./routes/plans.js";
 import { referralsRoutes } from "./routes/referrals.js";
 import { withdrawRoutes } from "./routes/withdraw.js";
+import { redeemRoutes } from "./routes/redeem.js";
 import { adminRoutes } from "./routes/admin.js";
 import { otpRoutes } from "./routes/otp.js";
 import { paymentRoutes } from "./routes/payments.js";
@@ -70,6 +71,7 @@ app.route("/admin", adminRoutes);
 
 app.route("/claim", claimRoutes);
 app.route("/earnings", earningsRoutes);
+app.route("/redeem", redeemRoutes);
 app.route("/referrals", referralsRoutes);
 app.route("/withdraw", withdrawRoutes);
 
