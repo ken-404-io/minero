@@ -3,7 +3,7 @@ import { prisma } from "../lib/db.js";
 import { requireAuth } from "../lib/session.js";
 import { getConfig, getPlanConfig } from "../lib/config.js";
 import { raiseAlert } from "../lib/fraud.js";
-import { getClientIp, getDeviceHash } from "../lib/request.js";
+import { getClientIp, getDeviceHash, isUntrackableIp } from "../lib/request.js";
 
 export const claimRoutes = new Hono();
 
@@ -81,22 +81,26 @@ claimRoutes.post("/", async (c) => {
 
   const amount = Math.min(plan.ratePerClaim, plan.dailyCap - todayTotal);
 
-  // Same-IP another user within the last hour → block + alert
-  const recentSameIp = await prisma.claim.findFirst({
-    where: {
-      ip,
-      userId: { not: user.id },
-      claimedAt: { gte: new Date(now.getTime() - 60 * 60 * 1000) },
-    },
-  });
-  if (recentSameIp) {
-    await raiseAlert({
-      userId: user.id,
-      type: "duplicate_ip",
-      severity: "high",
-      details: { ip, otherClaimId: recentSameIp.id },
+  // Same-IP another user within the last hour → block + alert.
+  // Skip when the IP is a loopback or unresolvable address — those can't
+  // uniquely identify a device (common in local dev or behind some proxies).
+  if (!isUntrackableIp(ip)) {
+    const recentSameIp = await prisma.claim.findFirst({
+      where: {
+        ip,
+        userId: { not: user.id },
+        claimedAt: { gte: new Date(now.getTime() - 60 * 60 * 1000) },
+      },
     });
-    return c.json({ error: "Claim blocked" }, 403);
+    if (recentSameIp) {
+      await raiseAlert({
+        userId: user.id,
+        type: "duplicate_ip",
+        severity: "high",
+        details: { ip, otherClaimId: recentSameIp.id },
+      });
+      return c.json({ error: "Claim blocked" }, 403);
+    }
   }
 
   // Same-device another user within 24h → block + alert

@@ -10,7 +10,9 @@ import {
   IconChart,
   IconCheck,
   IconClock,
+  IconCoin,
   IconError,
+  IconGame,
 } from "@/components/icons";
 
 type Earning = {
@@ -31,27 +33,34 @@ type Props = {
 };
 
 type StatusFilter = "all" | "approved" | "pending" | "rejected";
-type TypeFilter = "all" | "mining" | "referral";
+type TypeFilter = "all" | "mining" | "referral" | "game_reward";
 
 function StatusBadge({ status }: { status: string }) {
   return <span className={`badge badge-${status}`}>{status}</span>;
 }
 
+function typeMeta(type: string): { bg: string; fg: string; icon: React.ReactNode; label: string } {
+  if (type === "mining")
+    return { bg: "var(--brand-weak)", fg: "var(--brand)", icon: <IconPickaxe size={14} />, label: "Mining" };
+  if (type === "referral")
+    return { bg: "var(--info-weak)", fg: "var(--info-fg)", icon: <IconUsers size={14} />, label: "Referral" };
+  if (type === "game_reward")
+    return { bg: "color-mix(in oklab, var(--warning) 18%, transparent)", fg: "var(--warning-fg)", icon: <IconCoin size={14} />, label: "Game reward" };
+  return { bg: "var(--surface-2)", fg: "var(--text-muted)", icon: <IconGame size={14} />, label: type };
+}
+
 function TypePill({ type }: { type: string }) {
-  const isMining = type === "mining";
+  const { bg, fg, icon, label } = typeMeta(type);
   return (
     <span className="inline-flex items-center gap-1.5 text-sm font-medium">
       <span
         aria-hidden
         className="inline-flex h-6 w-6 items-center justify-center rounded-md"
-        style={{
-          background: isMining ? "var(--brand-weak)" : "var(--info-weak)",
-          color: isMining ? "var(--brand)" : "var(--info-fg)",
-        }}
+        style={{ background: bg, color: fg }}
       >
-        {isMining ? <IconPickaxe size={14} /> : <IconUsers size={14} />}
+        {icon}
       </span>
-      {isMining ? "Mining" : "Referral"}
+      {label}
     </span>
   );
 }
@@ -132,6 +141,7 @@ export default function EarningsClient({
                     ["all", "All types"],
                     ["mining", "Mining"],
                     ["referral", "Referral"],
+                    ["game_reward", "Games"],
                   ] as const).map(([val, label]) => (
                     <button
                       key={val}
@@ -254,11 +264,12 @@ export default function EarningsClient({
               ["all", "All"],
               ["mining", "Mining"],
               ["referral", "Referral"],
+              ["game_reward", "Games"],
               ["pending", "Pending"],
               ["approved", "Approved"],
             ] as const).map(([val, label]) => {
               const isActive =
-                (val === "mining" || val === "referral")
+                (val === "mining" || val === "referral" || val === "game_reward")
                   ? typeFilter === val
                   : val === "all"
                   ? typeFilter === "all" && statusFilter === "all"
@@ -272,7 +283,7 @@ export default function EarningsClient({
                     if (val === "all") {
                       setTypeFilter("all");
                       setStatusFilter("all");
-                    } else if (val === "mining" || val === "referral") {
+                    } else if (val === "mining" || val === "referral" || val === "game_reward") {
                       setTypeFilter(val as TypeFilter);
                     } else {
                       setStatusFilter(val as StatusFilter);
@@ -313,17 +324,17 @@ export default function EarningsClient({
                     aria-hidden
                     className="inline-flex h-10 w-10 items-center justify-center rounded-lg shrink-0"
                     style={{
-                      background:
-                        e.type === "mining" ? "var(--brand-weak)" : "var(--info-weak)",
-                      color:
-                        e.type === "mining" ? "var(--brand)" : "var(--info-fg)",
+                      background: typeMeta(e.type).bg,
+                      color: typeMeta(e.type).fg,
                     }}
                   >
-                    {e.type === "mining" ? <IconPickaxe size={18} /> : <IconUsers size={18} />}
+                    {e.type === "mining" ? <IconPickaxe size={18} /> :
+                     e.type === "game_reward" ? <IconCoin size={18} /> :
+                     <IconUsers size={18} />}
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium">
-                      {e.type === "mining" ? "Mining reward" : "Referral commission"}
+                      {typeMeta(e.type).label}
                     </div>
                     <div
                       className="text-xs flex items-center gap-1.5"

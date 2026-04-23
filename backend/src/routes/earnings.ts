@@ -11,7 +11,7 @@ earningsRoutes.get("/", async (c) => {
   const page = Math.max(1, parseInt(c.req.query("page") ?? "1"));
   const limit = 20;
 
-  const [earnings, total] = await Promise.all([
+  const [earnings, total, approvedAgg] = await Promise.all([
     prisma.earning.findMany({
       where: { userId: session.userId },
       orderBy: { createdAt: "desc" },
@@ -19,7 +19,13 @@ earningsRoutes.get("/", async (c) => {
       take: limit,
     }),
     prisma.earning.count({ where: { userId: session.userId } }),
+    prisma.earning.aggregate({
+      where: { userId: session.userId, status: "approved" },
+      _sum: { amount: true },
+    }),
   ]);
 
-  return c.json({ earnings, total, page, pages: Math.ceil(total / limit) });
+  const approvedTotal = approvedAgg._sum.amount ?? 0;
+
+  return c.json({ earnings, total, page, pages: Math.ceil(total / limit), approvedTotal });
 });
