@@ -47,13 +47,13 @@ export default function ActivateClient({ userName, cancelled }: Props) {
   return (
     <div className="mx-auto max-w-xl px-4 lg:px-8 py-10">
       <header className="mb-6">
-        <span className="section-title">Activate</span>
+        <span className="section-title">Remove Ads</span>
         <h1 className="text-3xl font-bold tracking-tight mt-1">
-          One-time activation fee
+          Go ad-free for life
         </h1>
         <p className="text-sm mt-2" style={{ color: "var(--text-muted)" }}>
-          Hi {userName} — pay once to unlock your account. No subscriptions,
-          no recurring charges.
+          Hi {userName} — pay once to remove all ads from your account. No
+          subscriptions, no recurring charges.
         </p>
       </header>
 
@@ -70,7 +70,7 @@ export default function ActivateClient({ userName, cancelled }: Props) {
       >
         <div className="flex items-baseline justify-between mb-4">
           <span className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Amount
+            One-time fee
           </span>
           <span className="text-4xl font-bold" style={{ color: "var(--brand)" }}>
             ₱49.00
@@ -84,7 +84,7 @@ export default function ActivateClient({ userName, cancelled }: Props) {
               style={{ color: "var(--success-fg)" }}
               className="mt-0.5 shrink-0"
             />
-            <span>Lifetime account activation</span>
+            <span>Permanently removes all ads from your account</span>
           </li>
           <li className="flex items-start gap-2">
             <IconCheck
@@ -100,7 +100,7 @@ export default function ActivateClient({ userName, cancelled }: Props) {
               style={{ color: "var(--success-fg)" }}
               className="mt-0.5 shrink-0"
             />
-            <span>Instant unlock the moment payment confirms</span>
+            <span>Ads removed the moment payment confirms</span>
           </li>
         </ul>
 
@@ -120,7 +120,7 @@ export default function ActivateClient({ userName, cancelled }: Props) {
             "Redirecting to checkout…"
           ) : (
             <>
-              Pay ₱49 now
+              Remove ads for ₱49
               <IconArrowRight size={18} />
             </>
           )}
