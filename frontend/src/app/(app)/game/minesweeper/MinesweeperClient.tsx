@@ -10,6 +10,7 @@ import {
 import {
   IconArrowRight,
   IconClock,
+  IconCoin,
   IconError,
   IconFlag,
   IconMine,
@@ -62,7 +63,7 @@ const SCORE_TIME_PENALTY = 2;
 type DiffStats = { gamesWon: number; bestTimeMs: number };
 
 type MinesweeperStats = {
-  totalPoints: number;
+  totalCoins: number;
   easy: DiffStats;
   medium: DiffStats;
   hard: DiffStats;
@@ -70,7 +71,7 @@ type MinesweeperStats = {
 
 const EMPTY_DIFF: DiffStats = { gamesWon: 0, bestTimeMs: 0 };
 const EMPTY_STATS: MinesweeperStats = {
-  totalPoints: 0,
+  totalCoins: 0,
   easy: { ...EMPTY_DIFF },
   medium: { ...EMPTY_DIFF },
   hard: { ...EMPTY_DIFF },
@@ -92,7 +93,7 @@ function parseStats(raw: string | null): MinesweeperStats {
   try {
     const p = JSON.parse(raw) as Record<string, unknown>;
     return {
-      totalPoints: Number(p.totalPoints) || 0,
+      totalCoins: Number(p.totalCoins) || Number(p.totalPoints) || 0,
       easy: parseDiff(p.easy),
       medium: parseDiff(p.medium),
       hard: parseDiff(p.hard),
@@ -367,7 +368,7 @@ export default function MinesweeperClient({
       };
       writeStats({
         ...prev,
-        totalPoints: prev.totalPoints + score,
+        totalCoins: prev.totalCoins + score,
         [difficulty]: nextDiff,
       });
     },
@@ -577,7 +578,7 @@ export default function MinesweeperClient({
         <ResultBanner
           kind="won"
           title={`Swept clean, ${firstName}!`}
-          detail={`Cleared in ${formatTime(finalElapsedMs)} · +${finalScore} points`}
+          detail={<>Cleared in {formatTime(finalElapsedMs)} · <IconCoin size={13} style={{ display: "inline", verticalAlign: "middle" }} /> +{finalScore} coins</>}
           actionLabel="Play again"
           onAction={() => resetBoard(difficulty)}
         />
@@ -754,7 +755,7 @@ function ResultBanner({
 }: {
   kind: "won" | "lost";
   title: string;
-  detail: string;
+  detail: React.ReactNode;
   actionLabel: string;
   onAction: () => void;
 }) {

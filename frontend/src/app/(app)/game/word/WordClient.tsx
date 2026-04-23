@@ -8,7 +8,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { IconClock, IconError, IconTrophy } from "@/components/icons";
+import { IconClock, IconCoin, IconError, IconTrophy } from "@/components/icons";
 import { isValidGuess, utcDayIndex, wordForDay } from "./words";
 
 /* ============================================================
@@ -34,7 +34,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 type LetterState = "correct" | "present" | "absent";
 
 type Stats = {
-  totalPoints: number;
+  totalCoins: number;
   gamesPlayed: number;
   wins: number;
   currentStreak: number;
@@ -48,7 +48,7 @@ type Stats = {
 };
 
 const EMPTY_STATS: Stats = {
-  totalPoints: 0,
+  totalCoins: 0,
   gamesPlayed: 0,
   wins: 0,
   currentStreak: 0,
@@ -67,7 +67,7 @@ function parseStats(raw: string | null): Stats {
       : [];
     while (dist.length < MAX_GUESSES + 1) dist.push(0);
     return {
-      totalPoints: Number(p.totalPoints) || 0,
+      totalCoins: Number(p.totalCoins) || Number(p.totalPoints) || 0,
       gamesPlayed: Number(p.gamesPlayed) || 0,
       wins: Number(p.wins) || 0,
       currentStreak: Number(p.currentStreak) || 0,
@@ -273,7 +273,7 @@ export default function WordClient({ playerName }: { playerName: string }) {
       }
 
       writeStats({
-        totalPoints: prev.totalPoints + score,
+        totalCoins: prev.totalCoins + score,
         gamesPlayed: prev.gamesPlayed + 1,
         wins: prev.wins + (outcome === "win" ? 1 : 0),
         currentStreak: nextStreak,
@@ -421,7 +421,7 @@ export default function WordClient({ playerName }: { playerName: string }) {
           detail={
             alreadyFinishedToday && finalScore === 0
               ? `You solved today's word — come back tomorrow for a fresh one.`
-              : `Solved in ${guesses.length} ${guesses.length === 1 ? "try" : "tries"} · +${finalScore} points`
+              : <><span>Solved in {guesses.length} {guesses.length === 1 ? "try" : "tries"} · </span><IconCoin size={13} style={{ display: "inline", verticalAlign: "middle" }} /><span> +{finalScore} coins</span></>
           }
           countdownMs={msUntilTomorrow}
         />
@@ -700,7 +700,7 @@ function ResultBanner({
 }: {
   kind: "won" | "lost";
   title: string;
-  detail: string;
+  detail: React.ReactNode;
   countdownMs: number;
 }) {
   const isWin = kind === "won";

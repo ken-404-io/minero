@@ -17,6 +17,7 @@ import {
   IconChart,
   IconCheck,
   IconClock,
+  IconCoin,
   IconCoins,
   IconCopy,
   IconEye,
@@ -110,7 +111,7 @@ type DifficultyStats = {
 };
 
 type MemoryStats = {
-  totalPoints: number;
+  totalCoins: number;
   easy: DifficultyStats;
   medium: DifficultyStats;
   hard: DifficultyStats;
@@ -123,7 +124,7 @@ const EMPTY_DIFF_STATS: DifficultyStats = {
 };
 
 const EMPTY_STATS: MemoryStats = {
-  totalPoints: 0,
+  totalCoins: 0,
   easy: { ...EMPTY_DIFF_STATS },
   medium: { ...EMPTY_DIFF_STATS },
   hard: { ...EMPTY_DIFF_STATS },
@@ -146,7 +147,7 @@ function parseStats(raw: string | null): MemoryStats {
   try {
     const p = JSON.parse(raw) as Record<string, unknown>;
     return {
-      totalPoints: Number(p.totalPoints) || 0,
+      totalCoins: Number(p.totalCoins) || Number(p.totalPoints) || 0,
       easy: toDiffStats(p.easy),
       medium: toDiffStats(p.medium),
       hard: toDiffStats(p.hard),
@@ -342,7 +343,7 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
       };
       writeStats({
         ...prev,
-        totalPoints: prev.totalPoints + score,
+        totalCoins: prev.totalCoins + score,
         [difficulty]: nextDiff,
       });
     },
@@ -439,7 +440,7 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
         </h1>
         <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
           Flip two cards at a time. Match every pair with as few moves as possible
-          — the faster you finish, the more game points you earn.
+          — the faster you finish, the more game coins you earn.
         </p>
       </header>
 
@@ -745,13 +746,13 @@ function WinBanner({
       <div className="flex items-center gap-3">
         <div className="text-right">
           <div className="text-xs" style={{ color: "var(--text-subtle)" }}>
-            Points earned
+            Coins earned
           </div>
           <div
-            className="font-mono font-bold"
+            className="font-mono font-bold flex items-center gap-1"
             style={{ fontSize: "var(--fs-24)", color: "var(--brand)" }}
           >
-            +{score}
+            <IconCoin size={18} /> +{score}
           </div>
         </div>
         <button onClick={onReplay} className="btn btn-primary">

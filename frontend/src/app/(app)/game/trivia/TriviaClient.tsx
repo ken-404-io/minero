@@ -18,6 +18,7 @@ import {
   IconClock,
   IconSparkles,
   IconArrowRight,
+  IconCoin,
 } from "@/components/icons";
 import {
   TRIVIA_QUESTIONS,
@@ -30,7 +31,7 @@ type Stage = "idle" | "playing" | "reveal" | "done";
 
 type Stats = {
   bestScore: number;
-  totalPoints: number;
+  totalCoins: number;
   gamesPlayed: number;
   totalCorrect: number;
 };
@@ -48,7 +49,7 @@ const DIFFICULTY_MULT: Record<TriviaDifficulty, number> = {
 
 const EMPTY_STATS: Stats = {
   bestScore: 0,
-  totalPoints: 0,
+  totalCoins: 0,
   gamesPlayed: 0,
   totalCorrect: 0,
 };
@@ -59,7 +60,7 @@ function parseStats(raw: string | null): Stats {
     const parsed = JSON.parse(raw) as Partial<Stats>;
     return {
       bestScore: Number(parsed.bestScore) || 0,
-      totalPoints: Number(parsed.totalPoints) || 0,
+      totalCoins: Number((parsed as Record<string, unknown>).totalCoins) || Number(parsed.totalPoints) || 0,
       gamesPlayed: Number(parsed.gamesPlayed) || 0,
       totalCorrect: Number(parsed.totalCorrect) || 0,
     };
@@ -189,7 +190,7 @@ export default function TriviaClient({ playerName }: { playerName: string }) {
       const prev = getStatsSnapshot();
       writeStats({
         bestScore: Math.max(prev.bestScore, scoreRef.current),
-        totalPoints: prev.totalPoints + scoreRef.current,
+        totalCoins: prev.totalCoins + scoreRef.current,
         gamesPlayed: prev.gamesPlayed + 1,
         totalCorrect: prev.totalCorrect + correctRef.current,
       });
@@ -329,7 +330,7 @@ function IdleView({
         <span className="section-title">Play</span>
         <h1 className="text-2xl lg:text-3xl font-bold tracking-tight mt-1">Trivia Quiz</h1>
         <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-          10 questions. 15 seconds each. Answer fast, build streaks, rack up game points.
+          10 questions. 15 seconds each. Answer fast, build streaks, rack up game coins.
         </p>
       </header>
 
@@ -340,8 +341,11 @@ function IdleView({
           <span className="kpi-value kpi-value-brand">{stats.bestScore}</span>
         </div>
         <div className="kpi">
-          <span className="kpi-label">Total points</span>
-          <span className="kpi-value">{stats.totalPoints}</span>
+          <span className="kpi-label">Total coins</span>
+          <span className="kpi-value flex items-center gap-1">
+            <IconCoin size={14} />
+            {stats.totalCoins}
+          </span>
         </div>
         <div className="kpi">
           <span className="kpi-label">Games played</span>
@@ -374,7 +378,7 @@ function IdleView({
               <div className="text-sm" style={{ color: "var(--text-muted)" }}>
                 Ready, {firstName}?
               </div>
-              <div className="font-semibold text-lg">Earn game points by answering fast</div>
+              <div className="font-semibold text-lg">Earn game coins by answering fast</div>
             </div>
           </div>
           <ul className="text-sm flex flex-col gap-2 mb-4" style={{ color: "var(--text-muted)" }}>
@@ -404,7 +408,7 @@ function IdleView({
           <div className="section-title mb-3">How scoring works</div>
           <ol className="flex flex-col gap-3 text-sm">
             {[
-              `Base ${BASE_POINTS} points per correct answer.`,
+              `Base ${BASE_POINTS} coins per correct answer.`,
               "Easy ×1 · Medium ×1.5 · Hard ×2 difficulty multiplier.",
               "Speed bonus — up to +100% for instant answers.",
               "+5 per streak step beyond 3 in a row.",
@@ -629,8 +633,8 @@ function PlayingView({
         <div className="text-xs" style={{ color: "var(--text-subtle)" }}>
           {revealed ? (
             isCorrectAnswer ? (
-              <span style={{ color: "var(--success-fg)" }}>
-                +{lastDelta} points {streak >= 3 ? `· ${streak}× streak 🔥` : ""}
+              <span style={{ color: "var(--success-fg)" }} className="inline-flex items-center gap-1">
+                <IconCoin size={12} /> +{lastDelta} coins {streak >= 3 ? `· ${streak}× streak 🔥` : ""}
               </span>
             ) : missed ? (
               <span style={{ color: "var(--warning-fg)" }}>Time&rsquo;s up — no points.</span>
@@ -707,13 +711,14 @@ function DoneView({
         </p>
 
         <div
-          className="font-mono font-bold mt-5"
+          className="font-mono font-bold mt-5 flex items-center justify-center gap-2"
           style={{ fontSize: "var(--fs-48)", color: "var(--brand)", lineHeight: 1 }}
         >
+          <IconCoin size={32} />
           {score}
         </div>
         <div className="text-xs mb-4" style={{ color: "var(--text-subtle)" }}>
-          points earned{isNewBest ? " · new personal best!" : ""}
+          coins earned{isNewBest ? " · new personal best!" : ""}
         </div>
 
         <div className="grid grid-cols-3 gap-2 mb-5">
