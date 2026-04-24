@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -17,6 +18,11 @@ import {
   IconSparkles,
   IconTrophy,
 } from "@/components/icons";
+import {
+  startGameSession,
+  finishGameSession,
+  emitBalanceChange,
+} from "@/lib/game-session";
 
 /* ============================================================
    Difficulty config
@@ -141,6 +147,7 @@ function writeStats(next: MinesweeperStats) {
     cachedRaw = window.localStorage.getItem(STORAGE_KEY);
     cachedStats = parseStats(cachedRaw);
     listeners.forEach((cb) => cb());
+    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
   } catch {
     /* quota / private mode */
   }
@@ -306,6 +313,7 @@ export default function MinesweeperClient({
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const spec = DIFFICULTIES[difficulty];
 
+  const sessionIdRef = useRef<string | null>(null);
   const [board, setBoard] = useState<Cell[]>(() => emptyBoard(spec));
   const [status, setStatus] = useState<Status>("idle");
   const [flagMode, setFlagMode] = useState(false);
@@ -371,6 +379,13 @@ export default function MinesweeperClient({
         totalCoins: prev.totalCoins + score,
         [difficulty]: nextDiff,
       });
+      if (sessionIdRef.current) {
+        const sid = sessionIdRef.current;
+        sessionIdRef.current = null;
+        finishGameSession(sid, score).then((r) => {
+          if (r.ok) emitBalanceChange();
+        });
+      }
     },
     [difficulty, spec],
   );
@@ -388,7 +403,7 @@ export default function MinesweeperClient({
       const cell = board[index];
       if (cell.flagged || cell.revealed) return;
 
-      // First reveal seeds the mines and starts the timer.
+      // First reveal seeds the mines, starts the timer, and opens a server session.
       let boardNow = board;
       let startMs = startedAt ?? Date.now();
       if (status === "idle") {
@@ -397,6 +412,10 @@ export default function MinesweeperClient({
         setStartedAt(startMs);
         setNow(startMs);
         setStatus("playing");
+        sessionIdRef.current = null;
+        startGameSession("minesweeper").then((r) => {
+          if (r.ok) sessionIdRef.current = r.sessionId;
+        });
       }
 
       const target = boardNow[index];

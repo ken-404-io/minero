@@ -129,6 +129,7 @@ function writeStats(next: SpinStats) {
     cachedRaw = window.localStorage.getItem(STORAGE_KEY);
     cachedStats = parseStats(cachedRaw);
     listeners.forEach((cb) => cb());
+    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
   } catch {
     /* quota / private mode */
   }

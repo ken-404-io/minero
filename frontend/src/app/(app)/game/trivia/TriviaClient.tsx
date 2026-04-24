@@ -26,6 +26,11 @@ import {
   type TriviaDifficulty,
   type TriviaQuestion,
 } from "./questions";
+import {
+  startGameSession,
+  finishGameSession,
+  emitBalanceChange,
+} from "@/lib/game-session";
 
 type Stage = "idle" | "playing" | "reveal" | "done";
 
@@ -108,6 +113,7 @@ function writeStats(next: Stats) {
     cachedRaw = window.localStorage.getItem(STORAGE_KEY);
     cachedStats = parseStats(cachedRaw);
     statsListeners.forEach((cb) => cb());
+    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
   } catch {
     /* quota / private mode */
   }
@@ -143,6 +149,7 @@ export default function TriviaClient({ playerName }: { playerName: string }) {
   const [secondsLeft, setSecondsLeft] = useState(SECONDS_PER_QUESTION);
   const [lastDelta, setLastDelta] = useState(0);
 
+  const sessionIdRef = useRef<string | null>(null);
   const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tickTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -172,6 +179,10 @@ export default function TriviaClient({ playerName }: { playerName: string }) {
     setSecondsLeft(SECONDS_PER_QUESTION);
     setLastDelta(0);
     setStage("playing");
+    sessionIdRef.current = null;
+    startGameSession("trivia").then((r) => {
+      if (r.ok) sessionIdRef.current = r.sessionId;
+    });
   }, [clearTimers]);
 
   const scoreRef = useRef(0);
@@ -194,6 +205,13 @@ export default function TriviaClient({ playerName }: { playerName: string }) {
         gamesPlayed: prev.gamesPlayed + 1,
         totalCorrect: prev.totalCorrect + correctRef.current,
       });
+      if (sessionIdRef.current) {
+        const sid = sessionIdRef.current;
+        sessionIdRef.current = null;
+        finishGameSession(sid, scoreRef.current).then((r) => {
+          if (r.ok) emitBalanceChange();
+        });
+      }
       setStage("done");
       return;
     }
