@@ -9,6 +9,46 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname),
   },
+
+  async headers() {
+    const isProd = process.env.NODE_ENV === "production";
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          // Prevent clickjacking — this page must never be embedded in an iframe.
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          // Stop browsers from MIME-sniffing the response type.
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          // Don't leak the full URL in Referer headers to third parties.
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          // Deny unnecessary browser features.
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          // HSTS: once loaded over HTTPS, always use HTTPS (prod only).
+          ...(isProd
+            ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" }]
+            : []),
+          // Content Security Policy.
+          // 'unsafe-inline' is needed for Next.js inline scripts and CSS-in-JS.
+          {
+            key: "Content-Security-Policy",
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              "style-src 'self' 'unsafe-inline'",
+              "img-src 'self' data: blob: https:",
+              "font-src 'self' data:",
+              // Allow XHR/fetch to the API (local dev + production).
+              "connect-src 'self' http://localhost:4000 https:",
+              "frame-ancestors 'none'",
+              "base-uri 'self'",
+              "form-action 'self'",
+            ].join("; "),
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
