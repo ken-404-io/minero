@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
 
 const secretString = process.env.JWT_SECRET;
@@ -29,5 +30,6 @@ export async function verifySession(token: string): Promise<SessionPayload | nul
 }
 
 export function generateReferralCode(): string {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
+  // 4 crypto-random bytes → 8 uppercase hex chars (~4 billion combinations).
+  return crypto.randomBytes(4).toString("hex").toUpperCase();
 }

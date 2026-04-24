@@ -19,6 +19,7 @@ import {
 import { getConfig } from "../lib/config.js";
 import { getClientIp, getDeviceHash } from "../lib/request.js";
 import { raiseAlert } from "../lib/fraud.js";
+import { rateLimit } from "../lib/rateLimit.js";
 
 export const authRoutes = new Hono();
 
@@ -28,6 +29,14 @@ const loginSchema = z.object({
 });
 
 authRoutes.post("/login", async (c) => {
+  const ip = getClientIp(c);
+  // 10 login attempts per IP per 15 minutes to stop brute-force.
+  const rl = rateLimit(`login:${ip}`, 10, 15 * 60 * 1000);
+  if (!rl.ok) {
+    c.header("Retry-After", String(Math.ceil(rl.retryAfterMs / 1000)));
+    return c.json({ error: "Too many login attempts. Try again later." }, 429);
+  }
+
   let body: unknown;
   try {
     body = await c.req.json();
@@ -61,7 +70,7 @@ authRoutes.post("/login", async (c) => {
 
   const refresh = await issueRefreshToken({
     userId: user.id,
-    ip: getClientIp(c),
+    ip,
     userAgent: c.req.header("user-agent") ?? null,
   });
   setRefreshCookie(c, refresh.token);
@@ -87,6 +96,14 @@ const registerSchema = z.object({
 });
 
 authRoutes.post("/register", async (c) => {
+  const ip = getClientIp(c);
+  // 5 registrations per IP per hour to prevent mass account creation.
+  const rl = rateLimit(`register:${ip}`, 5, 60 * 60 * 1000);
+  if (!rl.ok) {
+    c.header("Retry-After", String(Math.ceil(rl.retryAfterMs / 1000)));
+    return c.json({ error: "Too many accounts created from this IP. Try again later." }, 429);
+  }
+
   let body: unknown;
   try {
     body = await c.req.json();
@@ -100,7 +117,6 @@ authRoutes.post("/register", async (c) => {
   }
 
   const { name, email, password, referralCode } = parsed.data;
-  const ip = getClientIp(c);
   const deviceHash = getDeviceHash(c);
 
   const existing = await prisma.user.findUnique({ where: { email } });

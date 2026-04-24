@@ -71,7 +71,13 @@ export async function verifyOtp(params: {
   });
   if (!row) return { ok: false, reason: "no_code" };
   if (row.expiresAt.getTime() < Date.now()) return { ok: false, reason: "expired" };
-  if (row.code !== params.code) return { ok: false, reason: "mismatch" };
+  // Constant-time comparison prevents timing-based enumeration of OTP codes.
+  const expected = Buffer.from(row.code, "utf8");
+  const provided = Buffer.from(params.code, "utf8");
+  const codeOk =
+    expected.length === provided.length &&
+    crypto.timingSafeEqual(expected, provided);
+  if (!codeOk) return { ok: false, reason: "mismatch" };
 
   await prisma.otpCode.update({ where: { id: row.id }, data: { usedAt: new Date() } });
   return { ok: true };

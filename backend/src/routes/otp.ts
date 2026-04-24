@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/db.js";
 import { requireAuth } from "../lib/session.js";
 import { issueOtp } from "../lib/otp.js";
+import { rateLimit } from "../lib/rateLimit.js";
 
 export const otpRoutes = new Hono();
 
@@ -17,6 +18,13 @@ const sendSchema = z.object({
 otpRoutes.post("/send", async (c) => {
   const session = requireAuth(c);
   if (session instanceof Response) return session;
+
+  // 5 OTP sends per user per hour — SMS costs real money.
+  const rl = rateLimit(`otp:${session.userId}`, 5, 60 * 60 * 1000);
+  if (!rl.ok) {
+    c.header("Retry-After", String(Math.ceil(rl.retryAfterMs / 1000)));
+    return c.json({ error: "Too many verification codes sent. Try again later." }, 429);
+  }
 
   let body: unknown;
   try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON" }, 400); }

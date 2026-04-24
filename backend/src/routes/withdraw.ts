@@ -4,6 +4,7 @@ import { prisma } from "../lib/db.js";
 import { requireAuth } from "../lib/session.js";
 import { getConfig } from "../lib/config.js";
 import { verifyOtp } from "../lib/otp.js";
+import { rateLimit } from "../lib/rateLimit.js";
 
 export const withdrawRoutes = new Hono();
 
@@ -17,6 +18,13 @@ const schema = z.object({
 withdrawRoutes.post("/", async (c) => {
   const session = requireAuth(c);
   if (session instanceof Response) return session;
+
+  // 3 withdrawal requests per user per hour.
+  const rl = rateLimit(`withdraw:${session.userId}`, 3, 60 * 60 * 1000);
+  if (!rl.ok) {
+    c.header("Retry-After", String(Math.ceil(rl.retryAfterMs / 1000)));
+    return c.json({ error: "Too many withdrawal requests. Try again later." }, 429);
+  }
 
   const user = await prisma.user.findUnique({ where: { id: session.userId } });
   if (!user) return c.json({ error: "Unauthorized" }, 401);
