@@ -17,6 +17,7 @@ import { paymentRoutes } from "./routes/payments.js";
 import { oauthRoutes } from "./routes/oauth.js";
 import { leaderboardRoutes } from "./routes/leaderboard.js";
 import { achievementRoutes } from "./routes/achievements.js";
+import { gameRoutes } from "./routes/game.js";
 import { prisma } from "./lib/db.js";
 import { DEFAULT_PLANS, invalidateConfigCache } from "./lib/config.js";
 
@@ -88,6 +89,7 @@ app.route("/referrals", referralsRoutes);
 app.route("/withdraw", withdrawRoutes);
 app.route("/leaderboard", leaderboardRoutes);
 app.route("/achievements", achievementRoutes);
+app.route("/game", gameRoutes);
 
 app.onError((err, c) => {
   console.error(err);

@@ -27,6 +27,7 @@ model User {
   avatarUrl      String?
   streakCount    Int      @default(0)
   lastStreakDate DateTime?
+  gameCoinsBalance Int    @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -43,6 +44,7 @@ model User {
   otpCodes         OtpCode[]
   refreshTokens    RefreshToken[]
   adImpressions    AdImpression[]
+  gameSessions     GameSession[]
 }
 
 model Earning {
@@ -202,6 +204,30 @@ model RefreshToken {
   user User @relation(fields: [userId], references: [id])
 
   @@index([userId, revokedAt])
+}
+
+/// Server-authoritative game play session. Games call /game/session/start
+/// at the top of a play, then /game/session/finish with their score. The
+/// server computes coinsEarned from a server-side reward table, enforces
+/// min-duration / daily caps / cooldowns, and credits User.gameCoinsBalance.
+/// Redemptions deduct from that balance — the client never tells the server
+/// how many coins it has.
+model GameSession {
+  id          String    @id @default(cuid())
+  userId      String
+  gameKey     String    // "trivia" | "spin" | "memory" | "minesweeper" | "word" | "snake" | "blockblast"
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  score       Int?
+  coinsEarned Int       @default(0)
+  meta        String?   // JSON-encoded game-specific payload (e.g. difficulty)
+  ip          String?
+  deviceHash  String?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, gameKey, startedAt])
+  @@index([userId, finishedAt])
 }
 
 /// Live-tunable platform configuration — rates, caps, windows, minimums.

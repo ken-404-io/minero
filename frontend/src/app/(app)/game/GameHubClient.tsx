@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { getGameBalance, GAME_BALANCE_CHANGED } from "@/lib/game-session";
 import {
   IconArrowRight,
   IconBrain,
@@ -481,6 +482,24 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     return () => clearInterval(id);
   }, []);
 
+  // Server-authoritative game-coin balance. Falls back to local sum until
+  // the first fetch resolves, so the KPI never shows an empty skeleton.
+  const [serverBalance, setServerBalance] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      const b = await getGameBalance();
+      if (!cancelled) setServerBalance(b ? b.balance : 0);
+    };
+    refresh();
+    const onChange = () => { void refresh(); };
+    window.addEventListener(GAME_BALANCE_CHANGED, onChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(GAME_BALANCE_CHANGED, onChange);
+    };
+  }, []);
+
   const spinCooldown = spin.lastSpinAt
     ? Math.max(0, spin.lastSpinAt + SPIN_COOLDOWN_MS - now)
     : 0;
@@ -506,7 +525,9 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     word.totalCoins +
     snake.totalCoins +
     blockblast.totalCoins;
-  const availableCoins = Math.max(0, totalGameCoins - redeemedCoins);
+  // Server balance is authoritative once loaded. Local totals stay visible
+  // per-game but the Hub KPI shows the server truth.
+  const availableCoins = serverBalance ?? Math.max(0, totalGameCoins - redeemedCoins);
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-6 lg:px-8 lg:py-8">
@@ -710,7 +731,7 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
         style={{ color: "var(--text-subtle)" }}
       >
         <IconCoin size={14} />
-        Game coins are tracked locally on this device.
+        Your balance is server-tracked — play on any device and it follows you.
       </div>
     </div>
   );

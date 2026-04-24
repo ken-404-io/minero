@@ -11,6 +11,7 @@ import {
   IconX,
 } from "@/components/icons";
 import { API_URL } from "@/lib/api-url";
+import { getGameBalance, GAME_BALANCE_CHANGED, emitBalanceChange } from "@/lib/game-session";
 
 /* ============================================================
    Conversion config
@@ -215,6 +216,24 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
   const [redeeming, setRedeeming] = useState(false);
   const [redeemError, setRedeemError] = useState<string | null>(null);
 
+  // Server-authoritative game coin balance. Rewards redemption checks against
+  // this — legacy localStorage `earned` is shown for transparency only.
+  const [serverBalance, setServerBalance] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      const b = await getGameBalance();
+      if (!cancelled) setServerBalance(b ? b.balance : 0);
+    };
+    refresh();
+    const onChange = () => { void refresh(); };
+    window.addEventListener(GAME_BALANCE_CHANGED, onChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(GAME_BALANCE_CHANGED, onChange);
+    };
+  }, []);
+
   // Heal state if earned drops below redeemed (e.g. user cleared game data).
   useEffect(() => {
     if (rewards.redeemedCoins > earned) {
@@ -222,7 +241,9 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
     }
   }, [earned, rewards]);
 
-  const available = Math.max(0, earned - rewards.redeemedCoins);
+  // The authoritative redeemable balance is the server balance. The local
+  // "earned - redeemed" calc stays for display of legacy coin activity.
+  const available = serverBalance ?? 0;
   const totalCashedOut = rewards.redemptions.reduce((sum, r) => sum + r.peso, 0);
   const firstName = playerName?.split(/\s+/)[0] || "Miner";
 
@@ -239,10 +260,15 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ coinsSpent: cost, pesoValue: card.peso }),
+          body: JSON.stringify({ pesoValue: card.peso }),
         });
 
-        const data = await res.json() as { ok?: boolean; error?: string };
+        const data = (await res.json()) as {
+          ok?: boolean;
+          error?: string;
+          coinsSpent?: number;
+          gameCoinsBalance?: number;
+        };
 
         if (!res.ok) {
           setRedeemError((typeof data.error === "string" ? data.error : null) ?? "Redemption failed. Please try again.");
@@ -250,12 +276,14 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
           return;
         }
 
-        // Backend credited the wallet — now record locally so coins are deducted
+        // Server deducted authoritative game-coin balance. Refresh it, and
+        // keep a local redemption log for display.
+        emitBalanceChange();
         const entry: Redemption = {
           id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
           cardId: card.id,
           peso: card.peso,
-          coinsSpent: cost,
+          coinsSpent: data.coinsSpent ?? cost,
           at: Date.now(),
         };
         writeRewards({
