@@ -489,7 +489,10 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     let cancelled = false;
     const refresh = async () => {
       const b = await getGameBalance();
-      if (!cancelled) setServerBalance(b ? b.balance : 0);
+      // Only update when the API call succeeds. On failure (null), keep the
+      // previous value so the localStorage-based fallback stays visible
+      // rather than snapping to 0.
+      if (!cancelled && b !== null) setServerBalance(b.balance);
     };
     refresh();
     const onChange = () => { void refresh(); };

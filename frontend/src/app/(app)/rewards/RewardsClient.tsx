@@ -223,7 +223,7 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
     let cancelled = false;
     const refresh = async () => {
       const b = await getGameBalance();
-      if (!cancelled) setServerBalance(b ? b.balance : 0);
+      if (!cancelled && b !== null) setServerBalance(b.balance);
     };
     refresh();
     const onChange = () => { void refresh(); };
