@@ -17,7 +17,7 @@ class ResendProvider implements EmailProvider {
         Authorization: `Bearer ${this.apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ from: this.from, to: params.to, ...params }),
+      body: JSON.stringify({ ...params, from: this.from, to: params.to }),
     });
     if (!res.ok) {
       const text = await res.text();
