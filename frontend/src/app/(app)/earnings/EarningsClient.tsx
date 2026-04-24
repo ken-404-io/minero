@@ -13,6 +13,7 @@ import {
   IconCoin,
   IconError,
   IconGame,
+  IconBoltSmall,
 } from "@/components/icons";
 
 type Earning = {
@@ -33,7 +34,7 @@ type Props = {
 };
 
 type StatusFilter = "all" | "approved" | "pending" | "rejected";
-type TypeFilter = "all" | "mining" | "referral" | "game_reward";
+type TypeFilter = "all" | "mining" | "referral" | "game_reward" | "streak";
 
 function StatusBadge({ status }: { status: string }) {
   return <span className={`badge badge-${status}`}>{status}</span>;
@@ -46,6 +47,8 @@ function typeMeta(type: string): { bg: string; fg: string; icon: React.ReactNode
     return { bg: "var(--info-weak)", fg: "var(--info-fg)", icon: <IconUsers size={14} />, label: "Referral" };
   if (type === "game_reward")
     return { bg: "color-mix(in oklab, var(--warning) 18%, transparent)", fg: "var(--warning-fg)", icon: <IconCoin size={14} />, label: "Game reward" };
+  if (type === "streak")
+    return { bg: "color-mix(in oklab, var(--success) 15%, transparent)", fg: "var(--success-fg)", icon: <IconBoltSmall size={14} />, label: "Daily streak" };
   return { bg: "var(--surface-2)", fg: "var(--text-muted)", icon: <IconGame size={14} />, label: type };
 }
 
@@ -142,6 +145,7 @@ export default function EarningsClient({
                     ["mining", "Mining"],
                     ["referral", "Referral"],
                     ["game_reward", "Games"],
+                    ["streak", "Streak"],
                   ] as const).map(([val, label]) => (
                     <button
                       key={val}
@@ -265,11 +269,12 @@ export default function EarningsClient({
               ["mining", "Mining"],
               ["referral", "Referral"],
               ["game_reward", "Games"],
+              ["streak", "Streak"],
               ["pending", "Pending"],
               ["approved", "Approved"],
             ] as const).map(([val, label]) => {
               const isActive =
-                (val === "mining" || val === "referral" || val === "game_reward")
+                (val === "mining" || val === "referral" || val === "game_reward" || val === "streak")
                   ? typeFilter === val
                   : val === "all"
                   ? typeFilter === "all" && statusFilter === "all"
@@ -283,7 +288,7 @@ export default function EarningsClient({
                     if (val === "all") {
                       setTypeFilter("all");
                       setStatusFilter("all");
-                    } else if (val === "mining" || val === "referral" || val === "game_reward") {
+                    } else if (val === "mining" || val === "referral" || val === "game_reward" || val === "streak") {
                       setTypeFilter(val as TypeFilter);
                     } else {
                       setStatusFilter(val as StatusFilter);

@@ -15,8 +15,13 @@ type Me = {
   };
 };
 
+type LastClaimResp = { lastClaimAt: string | null; nextClaimAt: string | null };
+
 export default async function MePage() {
-  const me = await apiJson<Me>("/auth/me");
+  const [me, lastClaimData] = await Promise.all([
+    apiJson<Me>("/auth/me"),
+    apiJson<LastClaimResp>("/claim/last"),
+  ]);
   if (!me) redirect("/login");
 
   const plan = getPlanConfig(me.user.plan);
@@ -32,6 +37,7 @@ export default async function MePage() {
         createdAt: me.user.createdAt,
       }}
       planLabel={plan.label}
+      lastClaimAt={lastClaimData?.lastClaimAt ?? null}
     />
   );
 }
