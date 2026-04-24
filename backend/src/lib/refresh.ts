@@ -62,6 +62,28 @@ export async function revokeRefreshToken(token: string) {
   });
 }
 
+export async function listActiveSessions(userId: string) {
+  return prisma.refreshToken.findMany({
+    where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, ip: true, userAgent: true, createdAt: true },
+  });
+}
+
+export async function revokeSessionById(id: string, userId: string) {
+  await prisma.refreshToken.updateMany({
+    where: { id, userId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+}
+
+export async function revokeAllOtherSessions(userId: string, currentToken: string) {
+  await prisma.refreshToken.updateMany({
+    where: { userId, token: { not: currentToken }, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+}
+
 export async function rotateRefreshToken(params: {
   token: string;
   ip?: string | null;
