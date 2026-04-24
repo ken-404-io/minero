@@ -103,8 +103,10 @@ claimRoutes.post("/", async (c) => {
     }
   }
 
-  // Same-device another user within 24h → block + alert
-  if (deviceHash) {
+  // Same-device another user within 24h → block + alert.
+  // Skip when IP is untrackable (loopback/dev) — same browser fingerprint is
+  // shared by all accounts on the same machine, so the check produces false positives.
+  if (deviceHash && !isUntrackableIp(ip)) {
     const recentSameDevice = await prisma.claim.findFirst({
       where: {
         deviceHash,
