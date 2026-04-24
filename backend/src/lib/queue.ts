@@ -16,8 +16,8 @@ import { smsProvider } from "./sms.js";
 // on long-lived connections for LISTEN/NOTIFY and advisory locks, which
 // don't work reliably through pgbouncer transaction-mode poolers.
 
-export const QUEUE_EMAIL = "email:send";
-export const QUEUE_SMS = "sms:send";
+export const QUEUE_EMAIL = "email/send";
+export const QUEUE_SMS = "sms/send";
 
 type EmailJob = { to: string; subject: string; html: string };
 type SmsJob = { to: string; message: string };
