@@ -11,6 +11,7 @@ type Me = {
     pendingBalance: number;
     plan: string;
     referralCode: string;
+    streakCount: number;
   };
 };
 
@@ -80,6 +81,7 @@ export default async function DashboardPage() {
         pendingBalance: user.pendingBalance,
         plan: user.plan,
         referralCode: user.referralCode,
+        streakCount: user.streakCount ?? 0,
       }}
       plan={plan}
       lastClaimAt={lastClaimAt}

@@ -23,6 +23,7 @@ import { getConfig } from "../lib/config.js";
 import { getClientIp, getDeviceHash } from "../lib/request.js";
 import { raiseAlert } from "../lib/fraud.js";
 import { rateLimit } from "../lib/rateLimit.js";
+import { processStreak } from "../lib/streak.js";
 
 export const authRoutes = new Hono();
 
@@ -86,8 +87,11 @@ authRoutes.post("/login", async (c) => {
     });
   }
 
+  const streak = await processStreak(user.id);
+
   return c.json({
     user: { id: user.id, name: user.name, email: user.email, role: user.role },
+    streak,
   });
 });
 
@@ -264,6 +268,7 @@ authRoutes.get("/me", async (c) => {
       referralCode: true,
       role: true,
       frozen: true,
+      streakCount: true,
       createdAt: true,
     },
   });

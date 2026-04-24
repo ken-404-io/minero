@@ -14,6 +14,7 @@ import {
   IconGift,
   IconUser,
   IconSparkles,
+  IconTrophy,
 } from "@/components/icons";
 
 type NavItem = {
@@ -30,8 +31,9 @@ const PRIMARY: NavItem[] = [
   { href: "/game",      label: "Game",     Icon: IconGame,    shortcut: "g g" },
   { href: "/rewards",   label: "Rewards",  shortLabel: "Reward", Icon: IconGift,    shortcut: "g x" },
   { href: "/referral",  label: "Invite",   Icon: IconUsers,   shortcut: "g r" },
-  { href: "/withdraw",  label: "Cash Out", shortLabel: "Cash",   Icon: IconWallet,  shortcut: "g w" },
-  { href: "/me",        label: "Me",       Icon: IconUser,    shortcut: "g m" },
+  { href: "/withdraw",     label: "Cash Out",    shortLabel: "Cash",   Icon: IconWallet,  shortcut: "g w" },
+  { href: "/leaderboard", label: "Leaderboard", shortLabel: "Ranks",  Icon: IconTrophy,  shortcut: "g l" },
+  { href: "/me",           label: "Me",          Icon: IconUser,    shortcut: "g m" },
 ];
 
 function isActive(pathname: string, href: string) {

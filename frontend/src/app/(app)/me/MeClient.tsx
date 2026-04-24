@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { API_URL } from "@/lib/api-url";
+import { CLAIM_INTERVAL_MS } from "@/lib/mining";
 import AuthOverlay from "@/components/AuthOverlay";
 import {
   IconChart,
@@ -14,6 +15,8 @@ import {
   IconLock,
   IconLogout,
   IconShield,
+  IconSparkles,
+  IconTrophy,
   IconUsers,
   IconWallet,
 } from "@/components/icons";
@@ -30,6 +33,7 @@ type User = {
 type Props = {
   user: User;
   planLabel: string;
+  lastClaimAt: string | null;
 };
 
 function maskEmail(email: string) {
@@ -48,9 +52,28 @@ function formatJoined(iso: string) {
   }
 }
 
-export default function MeClient({ user, planLabel }: Props) {
+export default function MeClient({ user, planLabel, lastClaimAt }: Props) {
   const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [mineCountdown, setMineCountdown] = useState("");
+
+  useEffect(() => {
+    const lastClaim = lastClaimAt ? new Date(lastClaimAt) : null;
+    function update() {
+      if (!lastClaim) { setMineCountdown("Ready to mine!"); return; }
+      const remaining = Math.max(0, CLAIM_INTERVAL_MS - (Date.now() - lastClaim.getTime()));
+      if (remaining === 0) {
+        setMineCountdown("Ready to mine!");
+      } else {
+        const m = Math.floor(remaining / 60000).toString().padStart(2, "0");
+        const s = Math.floor((remaining % 60000) / 1000).toString().padStart(2, "0");
+        setMineCountdown(`Mine again in ${m}:${s}`);
+      }
+    }
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [lastClaimAt]);
 
   async function logout() {
     setLoggingOut(true);
@@ -125,6 +148,17 @@ export default function MeClient({ user, planLabel }: Props) {
               >
                 Member since {formatJoined(user.createdAt)}
               </span>
+              {mineCountdown && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums"
+                  style={{
+                    background: "color-mix(in oklab, var(--brand-fg) 20%, transparent)",
+                    color: mineCountdown === "Ready to mine!" ? "var(--brand-fg)" : "color-mix(in oklab, var(--brand-fg) 80%, transparent)",
+                  }}
+                >
+                  ⛏️ {mineCountdown}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -161,6 +195,18 @@ export default function MeClient({ user, planLabel }: Props) {
             icon={<IconUsers size={20} />}
             label="Refer & Earn"
             caption={user.referralCode ? `Code ${user.referralCode}` : "Invite friends"}
+          />
+          <MenuRow
+            href="/leaderboard"
+            icon={<IconTrophy size={20} />}
+            label="Leaderboard"
+            caption="Top miners & recruiters"
+          />
+          <MenuRow
+            href="/achievements"
+            icon={<IconSparkles size={20} />}
+            label="Achievements"
+            caption="Badges & milestones"
           />
           <MenuRow
             href="/me/security"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import ClaimButton from "@/components/ClaimButton";
 import {
@@ -12,6 +12,7 @@ import {
   IconShare,
   IconTrend,
 } from "@/components/icons";
+import { CLAIM_INTERVAL_MS } from "@/lib/mining";
 
 type PlanConfig = { label: string; ratePerClaim: number; dailyCap: number; price: number };
 
@@ -23,6 +24,7 @@ type Props = {
     pendingBalance: number;
     plan: string;
     referralCode: string;
+    streakCount: number;
   };
   plan: PlanConfig;
   lastClaimAt: string | Date | null;
@@ -43,6 +45,29 @@ export default function DashboardClient({
     lastClaimAt ? new Date(lastClaimAt) : null
   );
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    function update() {
+      if (!lastClaim) {
+        document.title = "⛏️ Ready to mine! — Minero";
+        return;
+      }
+      const remaining = Math.max(0, CLAIM_INTERVAL_MS - (Date.now() - lastClaim.getTime()));
+      if (remaining === 0) {
+        document.title = "⛏️ Ready to mine! — Minero";
+      } else {
+        const m = Math.floor(remaining / 60000).toString().padStart(2, "0");
+        const s = Math.floor((remaining % 60000) / 1000).toString().padStart(2, "0");
+        document.title = `⛏️ ${m}:${s} — Minero`;
+      }
+    }
+    update();
+    const id = setInterval(update, 1000);
+    return () => {
+      clearInterval(id);
+      document.title = "Minero";
+    };
+  }, [lastClaim]);
 
   function handleClaim(amount: number, nextClaimAt: Date) {
     setBalance((b) => parseFloat((b + amount).toFixed(4)));
@@ -77,8 +102,16 @@ export default function DashboardClient({
               <h1 className="text-3xl font-bold tracking-tight mt-1">
                 Welcome back, {firstName}
               </h1>
-              <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
+              <p className="text-sm mt-1 flex items-center gap-2" style={{ color: "var(--text-muted)" }}>
                 {plan.label} · ₱{plan.ratePerClaim}/claim · ₱{plan.dailyCap} daily cap
+                {user.streakCount > 0 && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
+                    style={{ background: "var(--warning-weak)", color: "var(--warning-fg)" }}
+                  >
+                    🔥 {user.streakCount}-day streak
+                  </span>
+                )}
               </p>
             </div>
             <div className="flex gap-2">
@@ -204,6 +237,12 @@ export default function DashboardClient({
               <span>Pending ₱{user.pendingBalance.toFixed(2)}</span>
               <span aria-hidden>·</span>
               <span>{plan.label}</span>
+              {user.streakCount > 0 && (
+                <>
+                  <span aria-hidden>·</span>
+                  <span style={{ color: "var(--warning-fg)" }}>🔥 {user.streakCount}d streak</span>
+                </>
+              )}
             </div>
           </section>
 

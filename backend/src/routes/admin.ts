@@ -3,6 +3,11 @@ import { z } from "zod";
 import { prisma } from "../lib/db.js";
 import { requireAdmin } from "../lib/session.js";
 import {
+  emailProvider,
+  withdrawalApprovedHtml,
+  withdrawalRejectedHtml,
+} from "../lib/email.js";
+import {
   getConfig,
   setConfigValue,
   DEFAULTS,
@@ -238,7 +243,10 @@ adminRoutes.patch("/withdrawals/:id", async (c) => {
 
   const { action, adminNote } = parsed.data;
 
-  const withdrawal = await prisma.withdrawal.findUnique({ where: { id } });
+  const withdrawal = await prisma.withdrawal.findUnique({
+    where: { id },
+    include: { user: { select: { email: true, name: true } } },
+  });
   if (!withdrawal) return c.json({ error: "Not found" }, 404);
   if (withdrawal.status !== "pending") {
     return c.json({ error: "Withdrawal already processed" }, 409);
@@ -249,6 +257,18 @@ adminRoutes.patch("/withdrawals/:id", async (c) => {
       where: { id },
       data: { status: "approved", processedAt: new Date(), adminNote },
     });
+    emailProvider
+      .send({
+        to: withdrawal.user.email,
+        subject: "Withdrawal Approved — Minero",
+        html: withdrawalApprovedHtml({
+          name: withdrawal.user.name,
+          amount: withdrawal.amount,
+          method: withdrawal.method,
+          accountNumber: withdrawal.accountNumber,
+        }),
+      })
+      .catch((err) => console.error("[email] withdrawal approved:", err));
   } else {
     await prisma.$transaction([
       prisma.withdrawal.update({
@@ -260,6 +280,17 @@ adminRoutes.patch("/withdrawals/:id", async (c) => {
         data: { balance: { increment: withdrawal.amount } },
       }),
     ]);
+    emailProvider
+      .send({
+        to: withdrawal.user.email,
+        subject: "Withdrawal Update — Minero",
+        html: withdrawalRejectedHtml({
+          name: withdrawal.user.name,
+          amount: withdrawal.amount,
+          adminNote,
+        }),
+      })
+      .catch((err) => console.error("[email] withdrawal rejected:", err));
   }
 
   return c.json({ ok: true });

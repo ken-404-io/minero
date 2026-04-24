@@ -25,6 +25,8 @@ model User {
   authProvider   String?  // "google" | "facebook" | null (email/password)
   authProviderId String?  // provider's stable user id (sub / id)
   avatarUrl      String?
+  streakCount    Int      @default(0)
+  lastStreakDate DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
