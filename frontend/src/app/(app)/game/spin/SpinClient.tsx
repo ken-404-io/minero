@@ -16,6 +16,11 @@ import {
   IconCheck,
   IconCoin,
 } from "@/components/icons";
+import {
+  startGameSession,
+  finishGameSession,
+  emitBalanceChange,
+} from "@/lib/game-session";
 
 /* ============================================================
    Wheel config
@@ -176,6 +181,7 @@ export default function SpinClient({ playerName }: { playerName: string }) {
 
   const wheelRef = useRef<SVGGElement | null>(null);
   const pendingWedge = useRef<number | null>(null);
+  const pendingPrize = useRef<number | null>(null);
   const transitionTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // tick clock so countdown updates live
@@ -191,10 +197,11 @@ export default function SpinClient({ playerName }: { playerName: string }) {
 
   const firstName = playerName?.split(/\s+/)[0] || "Miner";
 
+  const [spinError, setSpinError] = useState<string | null>(null);
+
   const landPrize = useCallback(
-    (wedge: number) => {
+    (wedge: number, prize: number) => {
       const prev = getSnapshot();
-      const prize = PRIZES[wedge];
       writeStats({
         lastSpinAt: Date.now(),
         lastPrize: prize,
@@ -203,6 +210,7 @@ export default function SpinClient({ playerName }: { playerName: string }) {
       });
       setLastResult({ prize, wedge });
       setSpinning(false);
+      emitBalanceChange();
 
       // Normalize rotation to avoid unbounded growth.
       setSuppressTransition(true);
@@ -215,16 +223,51 @@ export default function SpinClient({ playerName }: { playerName: string }) {
     [],
   );
 
-  const spin = useCallback(() => {
-    if (spinning || cooldownActive) return;
-    const wedge = Math.floor(Math.random() * WEDGE_COUNT);
-    pendingWedge.current = wedge;
+  // Pick a wedge index whose prize matches the server-rolled value, so the
+  // animation lands under the correct coin amount. If the prize isn't on the
+  // wheel for some reason, fall back to any wedge.
+  const pickWedgeFor = useCallback((prize: number): number => {
+    const candidates: number[] = [];
+    for (let i = 0; i < PRIZES.length; i++) {
+      if (PRIZES[i] === prize) candidates.push(i);
+    }
+    if (candidates.length === 0) return Math.floor(Math.random() * WEDGE_COUNT);
+    return candidates[Math.floor(Math.random() * candidates.length)];
+  }, []);
 
-    // The pointer sits at the top (0°). Wedge k is centered at k*WEDGE_DEG
-    // (clockwise from top) before any rotation. After rotating the wheel by R
-    // degrees clockwise, that wedge is at (k*WEDGE_DEG + R) mod 360. To land
-    // wedge k under the pointer we want that to equal 0, i.e. R ≡ -k*WEDGE_DEG.
-    // Add a small jitter so the pointer doesn't always hit the exact center.
+  const spin = useCallback(async () => {
+    if (spinning || cooldownActive) return;
+
+    setSpinError(null);
+    setLastResult(null);
+
+    // Server rolls the prize. We open a session, immediately finish it, and
+    // the server returns the authoritative coinsEarned. Only then do we
+    // start the wheel animation so it lands on the matching wedge.
+    const start = await startGameSession("spin");
+    if (!start.ok) {
+      setSpinError(start.error);
+      // Sync local cooldown with the server's view when we're told to wait.
+      if (start.retryAfterMs && start.retryAfterMs > 0) {
+        const prev = getSnapshot();
+        writeStats({ ...prev, lastSpinAt: Date.now() - (COOLDOWN_MS - start.retryAfterMs) });
+      }
+      return;
+    }
+
+    const finish = await finishGameSession(start.sessionId, 0);
+    if (!finish.ok) {
+      setSpinError(finish.error);
+      return;
+    }
+
+    const wedge = pickWedgeFor(finish.coinsEarned);
+    pendingWedge.current = wedge;
+    // Stash the server prize so the land handler writes the exact amount
+    // (rather than re-reading PRIZES[wedge], which could drift if we ever
+    // change the wheel layout).
+    pendingPrize.current = finish.coinsEarned;
+
     const jitter = Math.random() * (WEDGE_DEG - 12) - (WEDGE_DEG - 12) / 2;
     const targetMod =
       ((-wedge * WEDGE_DEG + jitter) % 360 + 360) % 360;
@@ -232,19 +275,18 @@ export default function SpinClient({ playerName }: { playerName: string }) {
     const delta = ((targetMod - currentMod) + 360) % 360;
     const nextRotation = rotation + 360 * 5 + delta;
 
-    setLastResult(null);
     setSpinning(true);
     setRotation(nextRotation);
 
-    // Fallback timer in case transitionend doesn't fire (e.g. reduced motion).
     if (transitionTimeout.current) clearTimeout(transitionTimeout.current);
     transitionTimeout.current = setTimeout(() => {
       if (pendingWedge.current !== null) {
-        landPrize(pendingWedge.current);
+        landPrize(pendingWedge.current, pendingPrize.current ?? PRIZES[pendingWedge.current]);
         pendingWedge.current = null;
+        pendingPrize.current = null;
       }
     }, SPIN_DURATION_MS + 250);
-  }, [cooldownActive, landPrize, rotation, spinning]);
+  }, [cooldownActive, landPrize, pickWedgeFor, rotation, spinning]);
 
   const handleTransitionEnd = useCallback(() => {
     if (!spinning || pendingWedge.current === null) return;
@@ -253,8 +295,10 @@ export default function SpinClient({ playerName }: { playerName: string }) {
       transitionTimeout.current = null;
     }
     const wedge = pendingWedge.current;
+    const prize = pendingPrize.current ?? PRIZES[wedge];
     pendingWedge.current = null;
-    landPrize(wedge);
+    pendingPrize.current = null;
+    landPrize(wedge, prize);
   }, [landPrize, spinning]);
 
   useEffect(
@@ -358,6 +402,12 @@ export default function SpinClient({ playerName }: { playerName: string }) {
                     {formatCountdown(cooldownMs)}
                   </strong>
                 </span>
+              </div>
+            ) : null}
+
+            {spinError && !spinning ? (
+              <div role="alert" className="alert alert-danger w-full text-center">
+                <span>{spinError}</span>
               </div>
             ) : null}
 

@@ -17,6 +17,8 @@ import { paymentRoutes } from "./routes/payments.js";
 import { oauthRoutes } from "./routes/oauth.js";
 import { leaderboardRoutes } from "./routes/leaderboard.js";
 import { achievementRoutes } from "./routes/achievements.js";
+import { gameRoutes } from "./routes/game.js";
+import { startQueue, stopQueue } from "./lib/queue.js";
 import { prisma } from "./lib/db.js";
 import { DEFAULT_PLANS, invalidateConfigCache } from "./lib/config.js";
 
@@ -88,6 +90,7 @@ app.route("/referrals", referralsRoutes);
 app.route("/withdraw", withdrawRoutes);
 app.route("/leaderboard", leaderboardRoutes);
 app.route("/achievements", achievementRoutes);
+app.route("/game", gameRoutes);
 
 app.onError((err, c) => {
   console.error(err);
@@ -100,4 +103,14 @@ const port = Number(process.env.PORT ?? 4000);
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`minero-backend listening on http://localhost:${info.port}`);
   migratePlanConfig();
+  // Fire-and-forget; enqueue() lazy-starts on first use if this hasn't
+  // finished yet, and falls back to sync if it never does.
+  startQueue().catch((err) => console.warn("[queue] initial start failed:", err));
 });
+
+for (const sig of ["SIGINT", "SIGTERM"] as const) {
+  process.on(sig, async () => {
+    await stopQueue();
+    process.exit(0);
+  });
+}

@@ -1,30 +1,35 @@
 import crypto from "node:crypto";
 import { prisma } from "./db.js";
 import { getConfig } from "./config.js";
+import { enqueue, QUEUE_EMAIL, QUEUE_SMS } from "./queue.js";
+import { smsProvider } from "./sms.js";
 
 export type OtpPurpose = "withdraw" | "login" | "change_password";
 
-// SMS provider interface. Real providers (Twilio, Semaphore, Movider)
-// implement send() with their SDK. Dev provider logs to console.
+// Destination channel. Email lands in the inbox via the email provider;
+// sms goes through one of the SMS providers (see sms.ts).
+export type OtpChannel = "sms" | "email" | "console";
 
-export interface SmsProvider {
-  readonly name: string;
-  send(input: { to: string; message: string }): Promise<void>;
-}
-
-class ConsoleSmsProvider implements SmsProvider {
-  readonly name = "console";
-  async send(input: { to: string; message: string }) {
-    // eslint-disable-next-line no-console
-    console.log(`[otp:sms ${this.name}] → ${input.to}: ${input.message}`);
-  }
-}
-
-export const smsProvider: SmsProvider = new ConsoleSmsProvider();
+// ── OTP issue / verify ──────────────────────────────────────────────────────
 
 function generateCode(digits: number): string {
   const max = 10 ** digits;
   return crypto.randomInt(0, max).toString().padStart(digits, "0");
+}
+
+function looksLikeEmail(d: string): boolean {
+  return d.includes("@") && d.includes(".");
+}
+
+function otpEmailHtml(code: string, ttlMinutes: number): string {
+  return `<!DOCTYPE html><html><body style="font-family:sans-serif;max-width:520px;margin:40px auto;color:#111">
+<h2 style="color:#16a34a">Your verification code</h2>
+<p>Use this code to continue:</p>
+<p style="font-size:28px;letter-spacing:6px;font-weight:700;font-family:ui-monospace,Menlo,monospace;background:#f3f4f6;padding:12px 16px;border-radius:8px;display:inline-block">${code}</p>
+<p style="color:#6b7280">This code expires in ${ttlMinutes} minute${ttlMinutes === 1 ? "" : "s"}. If you didn't request it, you can safely ignore this message.</p>
+<hr style="margin-top:32px;border:none;border-top:1px solid #e5e7eb"/>
+<p style="color:#6b7280;font-size:13px">— The Minero Team</p>
+</body></html>`;
 }
 
 export async function issueOtp(params: {
@@ -35,6 +40,12 @@ export async function issueOtp(params: {
   const cfg = await getConfig();
   const code = generateCode(cfg.otpDigits);
   const expiresAt = new Date(Date.now() + cfg.otpTtlMs);
+  const ttlMinutes = Math.floor(cfg.otpTtlMs / 60_000);
+
+  // Route by destination shape: email → email provider, phone → SMS provider.
+  const channel: OtpChannel = looksLikeEmail(params.destination)
+    ? "email"
+    : (smsProvider.name === "console" ? "console" : "sms");
 
   // Invalidate any existing codes for same user+purpose so only the latest works.
   await prisma.otpCode.updateMany({
@@ -47,17 +58,25 @@ export async function issueOtp(params: {
       userId: params.userId,
       purpose: params.purpose,
       code,
-      channel: smsProvider.name,
+      channel,
       expiresAt,
     },
   });
 
-  await smsProvider.send({
-    to: params.destination,
-    message: `Your Minero verification code is ${code}. Expires in ${Math.floor(cfg.otpTtlMs / 60000)} minutes.`,
-  });
+  if (channel === "email") {
+    await enqueue(QUEUE_EMAIL, {
+      to: params.destination,
+      subject: `Your Minero verification code: ${code}`,
+      html: otpEmailHtml(code, ttlMinutes),
+    });
+  } else {
+    await enqueue(QUEUE_SMS, {
+      to: params.destination,
+      message: `Your Minero verification code is ${code}. Expires in ${ttlMinutes} minutes.`,
+    });
+  }
 
-  return { expiresAt };
+  return { expiresAt, channel };
 }
 
 export async function verifyOtp(params: {

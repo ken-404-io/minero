@@ -5,7 +5,8 @@ import { requireAuth } from "../lib/session.js";
 import { getConfig } from "../lib/config.js";
 import { verifyOtp } from "../lib/otp.js";
 import { rateLimit } from "../lib/rateLimit.js";
-import { emailProvider, withdrawalSubmittedHtml } from "../lib/email.js";
+import { withdrawalSubmittedHtml } from "../lib/email.js";
+import { enqueue, QUEUE_EMAIL } from "../lib/queue.js";
 
 export const withdrawRoutes = new Hono();
 
@@ -71,14 +72,11 @@ withdrawRoutes.post("/", async (c) => {
     }),
   ]);
 
-  // Fire-and-forget — don't let email failure block the response.
-  emailProvider
-    .send({
-      to: user.email,
-      subject: "Withdrawal Request Received — Minero",
-      html: withdrawalSubmittedHtml({ name: user.name, amount, method }),
-    })
-    .catch((err) => console.error("[email] withdrawal submitted:", err));
+  await enqueue(QUEUE_EMAIL, {
+    to: user.email,
+    subject: "Withdrawal Request Received — Minero",
+    html: withdrawalSubmittedHtml({ name: user.name, amount, method }),
+  });
 
   return c.json({ ok: true });
 });

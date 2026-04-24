@@ -24,6 +24,8 @@ import { getClientIp, getDeviceHash } from "../lib/request.js";
 import { raiseAlert } from "../lib/fraud.js";
 import { rateLimit } from "../lib/rateLimit.js";
 import { processStreak } from "../lib/streak.js";
+import { welcomeHtml } from "../lib/email.js";
+import { enqueue, QUEUE_EMAIL } from "../lib/queue.js";
 
 export const authRoutes = new Hono();
 
@@ -206,6 +208,15 @@ authRoutes.post("/register", async (c) => {
   if (referrerId) {
     await prisma.referral.create({ data: { referrerId, referralId: user.id } });
   }
+
+  // Welcome email — queued so registration latency isn't tied to the email
+  // provider. The queue retries on transient failures.
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  await enqueue(QUEUE_EMAIL, {
+    to: user.email,
+    subject: "Welcome to Minero",
+    html: welcomeHtml({ name: user.name, referralCode: user.referralCode, appUrl }),
+  });
 
   const token = await createSession({ userId: user.id, role: user.role });
   setSessionCookie(c, token);
@@ -447,6 +458,7 @@ authRoutes.delete("/account", async (c) => {
     prisma.refreshToken.deleteMany({ where: { userId: user.id } }),
     prisma.adToken.deleteMany({ where: { userId: user.id } }),
     prisma.adImpression.deleteMany({ where: { userId: user.id } }),
+    prisma.gameSession.deleteMany({ where: { userId: user.id } }),
     prisma.claim.deleteMany({ where: { userId: user.id } }),
     prisma.earning.deleteMany({ where: { userId: user.id } }),
     prisma.planLog.deleteMany({ where: { userId: user.id } }),
