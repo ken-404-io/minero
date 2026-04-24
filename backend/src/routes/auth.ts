@@ -24,7 +24,8 @@ import { getClientIp, getDeviceHash } from "../lib/request.js";
 import { raiseAlert } from "../lib/fraud.js";
 import { rateLimit } from "../lib/rateLimit.js";
 import { processStreak } from "../lib/streak.js";
-import { emailProvider, welcomeHtml } from "../lib/email.js";
+import { welcomeHtml } from "../lib/email.js";
+import { enqueue, QUEUE_EMAIL } from "../lib/queue.js";
 
 export const authRoutes = new Hono();
 
@@ -208,16 +209,14 @@ authRoutes.post("/register", async (c) => {
     await prisma.referral.create({ data: { referrerId, referralId: user.id } });
   }
 
-  // Welcome email — fire-and-forget so registration latency isn't tied to
-  // the email provider. Any failure is logged inside the provider.
+  // Welcome email — queued so registration latency isn't tied to the email
+  // provider. The queue retries on transient failures.
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  emailProvider
-    .send({
-      to: user.email,
-      subject: "Welcome to Minero",
-      html: welcomeHtml({ name: user.name, referralCode: user.referralCode, appUrl }),
-    })
-    .catch((err) => console.warn("[email] welcome send failed:", err));
+  await enqueue(QUEUE_EMAIL, {
+    to: user.email,
+    subject: "Welcome to Minero",
+    html: welcomeHtml({ name: user.name, referralCode: user.referralCode, appUrl }),
+  });
 
   const token = await createSession({ userId: user.id, role: user.role });
   setSessionCookie(c, token);

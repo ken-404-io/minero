@@ -3,10 +3,10 @@ import { z } from "zod";
 import { prisma } from "../lib/db.js";
 import { requireAdmin } from "../lib/session.js";
 import {
-  emailProvider,
   withdrawalApprovedHtml,
   withdrawalRejectedHtml,
 } from "../lib/email.js";
+import { enqueue, QUEUE_EMAIL } from "../lib/queue.js";
 import {
   getConfig,
   setConfigValue,
@@ -257,18 +257,16 @@ adminRoutes.patch("/withdrawals/:id", async (c) => {
       where: { id },
       data: { status: "approved", processedAt: new Date(), adminNote },
     });
-    emailProvider
-      .send({
-        to: withdrawal.user.email,
-        subject: "Withdrawal Approved — Minero",
-        html: withdrawalApprovedHtml({
-          name: withdrawal.user.name,
-          amount: withdrawal.amount,
-          method: withdrawal.method,
-          accountNumber: withdrawal.accountNumber,
-        }),
-      })
-      .catch((err) => console.error("[email] withdrawal approved:", err));
+    await enqueue(QUEUE_EMAIL, {
+      to: withdrawal.user.email,
+      subject: "Withdrawal Approved — Minero",
+      html: withdrawalApprovedHtml({
+        name: withdrawal.user.name,
+        amount: withdrawal.amount,
+        method: withdrawal.method,
+        accountNumber: withdrawal.accountNumber,
+      }),
+    });
   } else {
     await prisma.$transaction([
       prisma.withdrawal.update({
@@ -280,17 +278,15 @@ adminRoutes.patch("/withdrawals/:id", async (c) => {
         data: { balance: { increment: withdrawal.amount } },
       }),
     ]);
-    emailProvider
-      .send({
-        to: withdrawal.user.email,
-        subject: "Withdrawal Update — Minero",
-        html: withdrawalRejectedHtml({
-          name: withdrawal.user.name,
-          amount: withdrawal.amount,
-          adminNote,
-        }),
-      })
-      .catch((err) => console.error("[email] withdrawal rejected:", err));
+    await enqueue(QUEUE_EMAIL, {
+      to: withdrawal.user.email,
+      subject: "Withdrawal Update — Minero",
+      html: withdrawalRejectedHtml({
+        name: withdrawal.user.name,
+        amount: withdrawal.amount,
+        adminNote,
+      }),
+    });
   }
 
   return c.json({ ok: true });
