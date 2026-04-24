@@ -15,6 +15,9 @@ import {
   clearRefreshCookie,
   setRefreshCookie,
   readRefreshCookie,
+  listActiveSessions,
+  revokeSessionById,
+  revokeAllOtherSessions,
 } from "../lib/refresh.js";
 import { getConfig } from "../lib/config.js";
 import { getClientIp, getDeviceHash } from "../lib/request.js";
@@ -266,4 +269,101 @@ authRoutes.get("/me", async (c) => {
   });
   if (!user) return c.json({ error: "Unauthorized" }, 401);
   return c.json({ user });
+});
+
+// ── Sessions ────────────────────────────────────────────────────────────────
+
+authRoutes.get("/sessions", async (c) => {
+  const session = requireAuth(c);
+  if (session instanceof Response) return session;
+
+  const currentToken = readRefreshCookie(c);
+  const [sessions, currentRecord, user] = await Promise.all([
+    listActiveSessions(session.userId),
+    currentToken
+      ? prisma.refreshToken.findUnique({
+          where: { token: currentToken },
+          select: { id: true },
+        })
+      : null,
+    prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { passwordHash: true },
+    }),
+  ]);
+
+  return c.json({
+    hasPassword: !!user?.passwordHash,
+    sessions: sessions.map((s) => ({
+      ...s,
+      isCurrent: s.id === currentRecord?.id,
+    })),
+  });
+});
+
+authRoutes.delete("/sessions", async (c) => {
+  const session = requireAuth(c);
+  if (session instanceof Response) return session;
+
+  const currentToken = readRefreshCookie(c);
+  if (currentToken) await revokeAllOtherSessions(session.userId, currentToken);
+  return c.json({ ok: true });
+});
+
+authRoutes.delete("/sessions/:id", async (c) => {
+  const session = requireAuth(c);
+  if (session instanceof Response) return session;
+
+  await revokeSessionById(c.req.param("id"), session.userId);
+  return c.json({ ok: true });
+});
+
+// ── Change password ──────────────────────────────────────────────────────────
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8).max(100),
+});
+
+authRoutes.post("/change-password", async (c) => {
+  const session = requireAuth(c);
+  if (session instanceof Response) return session;
+
+  const rl = rateLimit(`change-password:${session.userId}`, 5, 60 * 60 * 1000);
+  if (!rl.ok) {
+    c.header("Retry-After", String(Math.ceil(rl.retryAfterMs / 1000)));
+    return c.json({ error: "Too many attempts. Try again later." }, 429);
+  }
+
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON" }, 400); }
+
+  const parsed = changePasswordSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.flatten().fieldErrors }, 400);
+
+  const user = await prisma.user.findUnique({ where: { id: session.userId } });
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  if (!user.passwordHash) {
+    return c.json({ error: "This account uses social sign-in and has no password." }, 400);
+  }
+
+  const valid = await bcrypt.compare(parsed.data.currentPassword, user.passwordHash);
+  if (!valid) return c.json({ error: "Current password is incorrect." }, 400);
+
+  const newHash = await bcrypt.hash(parsed.data.newPassword, 12);
+  const currentToken = readRefreshCookie(c);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: user.id }, data: { passwordHash: newHash } });
+    // Invalidate all other sessions so a compromised session can't persist.
+    if (currentToken) {
+      await tx.refreshToken.updateMany({
+        where: { userId: user.id, token: { not: currentToken }, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    }
+  });
+
+  return c.json({ ok: true });
 });

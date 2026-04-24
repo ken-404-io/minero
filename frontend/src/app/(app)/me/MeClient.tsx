@@ -11,6 +11,7 @@ import {
   IconFileText,
   IconGift,
   IconInfo,
+  IconLock,
   IconLogout,
   IconShield,
   IconUsers,
@@ -160,6 +161,12 @@ export default function MeClient({ user, planLabel }: Props) {
             icon={<IconUsers size={20} />}
             label="Refer & Earn"
             caption={user.referralCode ? `Code ${user.referralCode}` : "Invite friends"}
+          />
+          <MenuRow
+            href="/me/security"
+            icon={<IconLock size={20} />}
+            label="Account Security"
+            caption="Sessions · password"
           />
           <MenuRow
             href="/terms"
