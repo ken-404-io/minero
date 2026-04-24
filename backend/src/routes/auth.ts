@@ -288,12 +288,13 @@ authRoutes.get("/sessions", async (c) => {
       : null,
     prisma.user.findUnique({
       where: { id: session.userId },
-      select: { passwordHash: true },
+      select: { passwordHash: true, email: true },
     }),
   ]);
 
   return c.json({
     hasPassword: !!user?.passwordHash,
+    userEmail: user?.email ?? "",
     sessions: sessions.map((s) => ({
       ...s,
       isCurrent: s.id === currentRecord?.id,
@@ -365,5 +366,94 @@ authRoutes.post("/change-password", async (c) => {
     }
   });
 
+  return c.json({ ok: true });
+});
+
+// ── Login history ────────────────────────────────────────────────────────────
+
+authRoutes.get("/login-history", async (c) => {
+  const session = requireAuth(c);
+  if (session instanceof Response) return session;
+
+  const history = await prisma.refreshToken.findMany({
+    where: { userId: session.userId },
+    orderBy: { createdAt: "desc" },
+    take: 30,
+    select: {
+      id: true,
+      ip: true,
+      userAgent: true,
+      createdAt: true,
+      revokedAt: true,
+      expiresAt: true,
+    },
+  });
+
+  return c.json({ history });
+});
+
+// ── Delete account ───────────────────────────────────────────────────────────
+
+const deleteAccountSchema = z.object({
+  currentPassword: z.string().optional(),
+  confirmEmail: z.string().optional(),
+});
+
+authRoutes.delete("/account", async (c) => {
+  const session = requireAuth(c);
+  if (session instanceof Response) return session;
+
+  const rl = rateLimit(`delete-account:${session.userId}`, 3, 60 * 60 * 1000);
+  if (!rl.ok) {
+    c.header("Retry-After", String(Math.ceil(rl.retryAfterMs / 1000)));
+    return c.json({ error: "Too many attempts. Try again later." }, 429);
+  }
+
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON" }, 400); }
+
+  const parsed = deleteAccountSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.flatten().fieldErrors }, 400);
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { id: true, email: true, passwordHash: true },
+  });
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  if (user.passwordHash) {
+    if (!parsed.data.currentPassword) {
+      return c.json({ error: "Enter your password to confirm deletion." }, 400);
+    }
+    const valid = await bcrypt.compare(parsed.data.currentPassword, user.passwordHash);
+    if (!valid) return c.json({ error: "Incorrect password." }, 400);
+  } else {
+    if (!parsed.data.confirmEmail) {
+      return c.json({ error: "Enter your email address to confirm deletion." }, 400);
+    }
+    if (parsed.data.confirmEmail.trim().toLowerCase() !== user.email.toLowerCase()) {
+      return c.json({ error: "Email address does not match." }, 400);
+    }
+  }
+
+  // Cascade-delete all user data in order (no DB-level cascades in schema).
+  await prisma.$transaction([
+    prisma.otpCode.deleteMany({ where: { userId: user.id } }),
+    prisma.refreshToken.deleteMany({ where: { userId: user.id } }),
+    prisma.adToken.deleteMany({ where: { userId: user.id } }),
+    prisma.adImpression.deleteMany({ where: { userId: user.id } }),
+    prisma.claim.deleteMany({ where: { userId: user.id } }),
+    prisma.earning.deleteMany({ where: { userId: user.id } }),
+    prisma.planLog.deleteMany({ where: { userId: user.id } }),
+    prisma.withdrawal.deleteMany({ where: { userId: user.id } }),
+    prisma.fraudAlert.deleteMany({ where: { userId: user.id } }),
+    prisma.referral.deleteMany({
+      where: { OR: [{ referrerId: user.id }, { referralId: user.id }] },
+    }),
+    prisma.user.delete({ where: { id: user.id } }),
+  ]);
+
+  clearSessionCookie(c);
+  clearRefreshCookie(c);
   return c.json({ ok: true });
 });
