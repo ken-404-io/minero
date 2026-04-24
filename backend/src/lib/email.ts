@@ -78,3 +78,41 @@ ${params.adminNote ? `<p><strong>Reason:</strong> ${params.adminNote}</p>` : ""}
 <p>Your balance has been fully refunded. If you believe this is an error, please contact support.</p>`,
   );
 }
+
+export function welcomeHtml(params: { name: string; referralCode: string; appUrl: string }): string {
+  return layout(
+    "Welcome to Minero 🎉",
+    `<p>Hi ${escapeHtml(params.name)},</p>
+<p>Your account is ready. A few things to get you started:</p>
+<ul>
+  <li><strong>Mine</strong> — claim your mining reward every 10 minutes.</li>
+  <li><strong>Play</strong> — earn game coins and redeem them for peso.</li>
+  <li><strong>Refer</strong> — share your code <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;font-family:ui-monospace,Menlo,monospace">${escapeHtml(params.referralCode)}</code> and earn a 10% commission on every friend who signs up.</li>
+</ul>
+<p style="margin-top:24px"><a href="${params.appUrl}" style="background:#16a34a;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block;font-weight:600">Go to your dashboard</a></p>`,
+  );
+}
+
+export function planUpgradedHtml(params: { name: string; amountPaid: number }): string {
+  return layout(
+    "Upgrade Confirmed — Welcome to Ad-Free",
+    `<p>Hi ${escapeHtml(params.name)},</p>
+<p>We've received your payment of <strong>₱${params.amountPaid.toFixed(2)}</strong>. Your account is now on the <strong>Ad-Free</strong> plan.</p>
+<p>What changes:</p>
+<ul>
+  <li>No more ads before claiming.</li>
+  <li>Same claim rate and daily cap — you're just not watching ads anymore.</li>
+</ul>
+<p>Thanks for supporting Minero.</p>`,
+  );
+}
+
+// Minimal HTML escaper for names / codes that flow into email bodies.
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}

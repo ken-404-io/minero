@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { prisma } from "../lib/db.js";
 import { paymentProvider } from "../lib/payments.js";
+import { emailProvider, planUpgradedHtml } from "../lib/email.js";
 
 export const paymentRoutes = new Hono();
 
@@ -50,6 +51,15 @@ paymentRoutes.post("/webhook", async (c) => {
         data: { status: "approved", reviewedAt: new Date(), reviewedBy: "webhook" },
       }),
     ]);
+
+    emailProvider
+      .send({
+        to: user.email,
+        subject: "Upgrade confirmed — ad-free activated",
+        html: planUpgradedHtml({ name: user.name, amountPaid: log.amountPaid }),
+      })
+      .catch((err) => console.warn("[email] upgrade send failed:", err));
+
     return c.json({ ok: true, applied: true });
   }
 
