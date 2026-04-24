@@ -8,6 +8,11 @@ import {
   useSyncExternalStore,
 } from "react";
 import { IconArrowRight, IconCoin, IconError, IconTrophy } from "@/components/icons";
+import {
+  startGameSession,
+  finishGameSession,
+  emitBalanceChange,
+} from "@/lib/game-session";
 
 /* ============================================================
    Config
@@ -106,6 +111,7 @@ function writeStats(next: Stats) {
     cachedRaw = window.localStorage.getItem(STORAGE_KEY);
     cachedStats = parseStats(cachedRaw);
     listeners.forEach((cb) => cb());
+    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
   } catch {
     /* quota / private mode */
   }
@@ -158,6 +164,7 @@ export default function SnakeClient({ playerName }: { playerName: string }) {
   const nextDirRef = useRef<Dir>("right");
   const applesEatenRef = useRef<number>(0);
 
+  const sessionIdRef = useRef<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const tickTimerRef = useRef<number | null>(null);
@@ -314,6 +321,13 @@ export default function SnakeClient({ playerName }: { playerName: string }) {
       gamesPlayed: prev.gamesPlayed + 1,
       applesEaten: prev.applesEaten + applesEatenRef.current,
     });
+    if (sessionIdRef.current) {
+      const sid = sessionIdRef.current;
+      sessionIdRef.current = null;
+      finishGameSession(sid, runScore).then((r) => {
+        if (r.ok) emitBalanceChange();
+      });
+    }
   }, []);
 
   const tick = useCallback(() => {
@@ -380,6 +394,10 @@ export default function SnakeClient({ playerName }: { playerName: string }) {
       window.clearInterval(tickTimerRef.current);
     }
     tickTimerRef.current = window.setInterval(tick, stepMs());
+    sessionIdRef.current = null;
+    startGameSession("snake").then((r) => {
+      if (r.ok) sessionIdRef.current = r.sessionId;
+    });
   }, [draw, stepMs, tick]);
 
   const pauseRun = useCallback(() => {

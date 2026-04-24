@@ -37,6 +37,11 @@ import {
   IconUsers,
   IconWallet,
 } from "@/components/icons";
+import {
+  startGameSession,
+  finishGameSession,
+  emitBalanceChange,
+} from "@/lib/game-session";
 
 /* ============================================================
    Config
@@ -195,6 +200,7 @@ function writeStats(next: MemoryStats) {
     cachedRaw = window.localStorage.getItem(STORAGE_KEY);
     cachedStats = parseStats(cachedRaw);
     listeners.forEach((cb) => cb());
+    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
   } catch {
     /* quota / private mode */
   }
@@ -275,6 +281,7 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
   const [finalElapsedMs, setFinalElapsedMs] = useState<number>(0);
   const [hydrated, setHydrated] = useState(false);
 
+  const sessionIdRef = useRef<string | null>(null);
   const flipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearFlipTimer = useCallback(() => {
@@ -296,6 +303,7 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
   const resetBoard = useCallback(
     (targetDiff: Difficulty) => {
       clearFlipTimer();
+      sessionIdRef.current = null;
       const next = DIFFICULTIES[targetDiff];
       setDifficulty(targetDiff);
       setCards(buildDeck(next.pairs));
@@ -346,6 +354,13 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
         totalCoins: prev.totalCoins + score,
         [difficulty]: nextDiff,
       });
+      if (sessionIdRef.current) {
+        const sid = sessionIdRef.current;
+        sessionIdRef.current = null;
+        finishGameSession(sid, score).then((r) => {
+          if (r.ok) emitBalanceChange();
+        });
+      }
     },
     [difficulty, spec],
   );
@@ -356,11 +371,14 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
       const card = cards.find((c) => c.id === cardId);
       if (!card || card.flipped || card.matched) return;
 
-      // First interaction starts the timer.
+      // First interaction starts the timer and the server session.
       if (status === "idle") {
         setStartedAt(Date.now());
         setNow(Date.now());
         setStatus("playing");
+        startGameSession("memory").then((r) => {
+          if (r.ok) sessionIdRef.current = r.sessionId;
+        });
       }
 
       // Reveal the card.

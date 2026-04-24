@@ -10,6 +10,11 @@ import {
 } from "react";
 import { IconClock, IconCoin, IconError, IconTrophy } from "@/components/icons";
 import { isValidGuess, utcDayIndex, wordForDay } from "./words";
+import {
+  startGameSession,
+  finishGameSession,
+  emitBalanceChange,
+} from "@/lib/game-session";
 
 /* ============================================================
    Config
@@ -120,6 +125,7 @@ function writeStats(next: Stats) {
     cachedRaw = window.localStorage.getItem(STORAGE_KEY);
     cachedStats = parseStats(cachedRaw);
     listeners.forEach((cb) => cb());
+    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
   } catch {
     /* quota / private mode */
   }
@@ -207,6 +213,9 @@ export default function WordClient({ playerName }: { playerName: string }) {
     answer: wordForDay(Date.now()),
   }));
 
+  const sessionIdRef = useRef<string | null>(null);
+  const sessionStartedRef = useRef(false);
+
   const [guesses, setGuesses] = useState<string[]>([]);
   const [current, setCurrent] = useState<string>("");
   const [status, setStatus] = useState<Status>("playing");
@@ -282,6 +291,13 @@ export default function WordClient({ playerName }: { playerName: string }) {
         lastResult: outcome,
         distribution: nextDistribution,
       });
+      if (sessionIdRef.current) {
+        const sid = sessionIdRef.current;
+        sessionIdRef.current = null;
+        finishGameSession(sid, score).then((r) => {
+          if (r.ok) emitBalanceChange();
+        });
+      }
     },
     [today.dayIndex],
   );
@@ -296,6 +312,13 @@ export default function WordClient({ playerName }: { playerName: string }) {
     if (!isValidGuess(current)) {
       flashError("Not in word list");
       return;
+    }
+    // Start server session on the first valid guess.
+    if (!sessionStartedRef.current) {
+      sessionStartedRef.current = true;
+      startGameSession("word").then((r) => {
+        if (r.ok) sessionIdRef.current = r.sessionId;
+      });
     }
     const next = [...guesses, current];
     setGuesses(next);

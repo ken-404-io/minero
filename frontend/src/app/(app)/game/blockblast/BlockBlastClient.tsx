@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconCoin, IconTrophy } from "@/components/icons";
+import {
+  startGameSession,
+  finishGameSession,
+  emitBalanceChange,
+} from "@/lib/game-session";
 
 /* ============================================================
    Constants
@@ -257,6 +262,7 @@ let _popId = 0;
 type ScorePop = { id: number; pts: number };
 
 export default function BlockBlastClient({ playerName: _ }: { playerName: string }) {
+  const sessionIdRef = useRef<string | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [grid, setGrid] = useState<(string | null)[][]>(emptyGrid);
   const [pieces, setPieces] = useState<[ColoredPiece | null, ColoredPiece | null, ColoredPiece | null]>([null, null, null]);
@@ -295,6 +301,10 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
     setClearingCells(new Map());
     setScorePops([]);
     setStatus("playing");
+    sessionIdRef.current = null;
+    startGameSession("blockblast").then((r) => {
+      if (r.ok) sessionIdRef.current = r.sessionId;
+    });
   }
 
   function holdPiece() {
@@ -364,6 +374,13 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
       };
       setStats(s);
       saveStats(s);
+      if (sessionIdRef.current) {
+        const sid = sessionIdRef.current;
+        sessionIdRef.current = null;
+        finishGameSession(sid, newScore).then((r) => {
+          if (r.ok) emitBalanceChange();
+        });
+      }
     }
   }
 
