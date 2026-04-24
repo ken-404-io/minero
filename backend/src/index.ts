@@ -22,6 +22,39 @@ import { startQueue, stopQueue } from "./lib/queue.js";
 import { prisma } from "./lib/db.js";
 import { DEFAULT_PLANS, invalidateConfigCache } from "./lib/config.js";
 
+/**
+ * One-time backfill: when gameCoinsBalance was added via prisma db push, existing
+ * GameSession rows already had coinsEarned > 0 but User.gameCoinsBalance stayed 0.
+ * For every user whose balance is still 0 but has finished sessions with coins,
+ * set their balance to the historical sum so the Game Hub KPI shows the correct value.
+ */
+async function backfillGameCoinsBalance() {
+  try {
+    const usersWithSessions = await prisma.gameSession.groupBy({
+      by: ["userId"],
+      where: { finishedAt: { not: null }, coinsEarned: { gt: 0 } },
+      _sum: { coinsEarned: true },
+    });
+
+    let backfilled = 0;
+    for (const row of usersWithSessions) {
+      const total = row._sum.coinsEarned ?? 0;
+      if (total <= 0) continue;
+      const updated = await prisma.user.updateMany({
+        where: { id: row.userId, gameCoinsBalance: 0 },
+        data: { gameCoinsBalance: total },
+      });
+      if (updated.count > 0) backfilled++;
+    }
+
+    if (backfilled > 0) {
+      console.log(`[startup] Backfilled gameCoinsBalance for ${backfilled} user(s)`);
+    }
+  } catch (err) {
+    console.warn("[startup] Could not backfill gameCoinsBalance:", err);
+  }
+}
+
 async function migratePlanConfig() {
   try {
     const row = await prisma.platformConfig.findUnique({ where: { key: "plans" } });
@@ -103,6 +136,7 @@ const port = Number(process.env.PORT ?? 4000);
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`minero-backend listening on http://localhost:${info.port}`);
   migratePlanConfig();
+  backfillGameCoinsBalance();
   // Fire-and-forget; enqueue() lazy-starts on first use if this hasn't
   // finished yet, and falls back to sync if it never does.
   startQueue().catch((err) => console.warn("[queue] initial start failed:", err));
