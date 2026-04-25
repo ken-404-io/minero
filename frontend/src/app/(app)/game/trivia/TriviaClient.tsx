@@ -62,10 +62,10 @@ const EMPTY_STATS: Stats = {
 function parseStats(raw: string | null): Stats {
   if (!raw) return EMPTY_STATS;
   try {
-    const parsed = JSON.parse(raw) as Partial<Stats>;
+    const parsed = JSON.parse(raw) as Partial<Stats> & { totalPoints?: number };
     return {
       bestScore: Number(parsed.bestScore) || 0,
-      totalCoins: Number((parsed as Record<string, unknown>).totalCoins) || Number(parsed.totalPoints) || 0,
+      totalCoins: Number(parsed.totalCoins) || Number(parsed.totalPoints) || 0,
       gamesPlayed: Number(parsed.gamesPlayed) || 0,
       totalCorrect: Number(parsed.totalCorrect) || 0,
     };
