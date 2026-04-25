@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
 
   async headers() {
     const isProd = process.env.NODE_ENV === "production";
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
     return [
       {
         source: "/(.*)",
@@ -38,8 +39,8 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https:",
               "font-src 'self' data:",
-              // Allow XHR/fetch to the API (local dev + production).
-              "connect-src 'self' http://localhost:4000 https:",
+              // Allow XHR/fetch to the API — uses the configured API URL.
+              `connect-src 'self' ${apiUrl} https:`,
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
