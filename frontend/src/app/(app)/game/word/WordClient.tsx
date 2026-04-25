@@ -66,7 +66,7 @@ const EMPTY_STATS: Stats = {
 function parseStats(raw: string | null): Stats {
   if (!raw) return EMPTY_STATS;
   try {
-    const p = JSON.parse(raw) as Partial<Stats>;
+    const p = JSON.parse(raw) as Partial<Stats> & { totalPoints?: number };
     const dist = Array.isArray(p.distribution)
       ? p.distribution.slice(0, MAX_GUESSES + 1).map((n) => Number(n) || 0)
       : [];

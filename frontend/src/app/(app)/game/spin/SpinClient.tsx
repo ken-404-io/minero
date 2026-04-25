@@ -79,11 +79,11 @@ const STORAGE_KEY = "minero_spin_stats_v1";
 function parseStats(raw: string | null): SpinStats {
   if (!raw) return EMPTY_STATS;
   try {
-    const parsed = JSON.parse(raw) as Partial<SpinStats>;
+    const parsed = JSON.parse(raw) as Partial<SpinStats> & { totalPoints?: number };
     return {
       lastSpinAt: Number(parsed.lastSpinAt) || 0,
       lastPrize: Number(parsed.lastPrize) || 0,
-      totalCoins: Number((parsed as Record<string, unknown>).totalCoins) || Number(parsed.totalPoints) || 0,
+      totalCoins: Number(parsed.totalCoins) || Number(parsed.totalPoints) || 0,
       spinsCompleted: Number(parsed.spinsCompleted) || 0,
     };
   } catch {
