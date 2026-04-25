@@ -528,9 +528,13 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     word.totalCoins +
     snake.totalCoins +
     blockblast.totalCoins;
-  // Server balance is authoritative once loaded. Local totals stay visible
-  // per-game but the Hub KPI shows the server truth.
-  const availableCoins = serverBalance ?? Math.max(0, totalGameCoins - redeemedCoins);
+  // Pre-migration users (and anyone whose finishGameSession() was cut short
+  // by a navigation before the request resolved) have localStorage stats
+  // that aren't reflected on the server. Showing whichever total is higher
+  // keeps their progress visible. Redemption still validates against the
+  // authoritative serverBalance in /redeem, so this only affects display.
+  const localAvailable = Math.max(0, totalGameCoins - redeemedCoins);
+  const availableCoins = Math.max(serverBalance ?? 0, localAvailable);
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-6 lg:px-8 lg:py-8">
