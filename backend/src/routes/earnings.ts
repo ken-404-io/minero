@@ -11,7 +11,10 @@ earningsRoutes.get("/", async (c) => {
   const page = Math.max(1, parseInt(c.req.query("page") ?? "1"));
   const limit = 20;
 
-  const [earnings, total, approvedAgg] = await Promise.all([
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const [earnings, total, approvedAgg, todayMiningAgg] = await Promise.all([
     prisma.earning.findMany({
       where: { userId: session.userId },
       orderBy: { createdAt: "desc" },
@@ -23,9 +26,28 @@ earningsRoutes.get("/", async (c) => {
       where: { userId: session.userId, status: "approved" },
       _sum: { amount: true },
     }),
+    // Server-side aggregation so paginated callers (dashboard) can show
+    // an accurate "earned today" without scanning the full ledger client-side.
+    prisma.earning.aggregate({
+      where: {
+        userId: session.userId,
+        type: "mining",
+        status: { not: "rejected" },
+        createdAt: { gte: startOfDay },
+      },
+      _sum: { amount: true },
+    }),
   ]);
 
   const approvedTotal = approvedAgg._sum.amount ?? 0;
+  const todayMiningTotal = todayMiningAgg._sum.amount ?? 0;
 
-  return c.json({ earnings, total, page, pages: Math.ceil(total / limit), approvedTotal });
+  return c.json({
+    earnings,
+    total,
+    page,
+    pages: Math.ceil(total / limit),
+    approvedTotal,
+    todayMiningTotal,
+  });
 });
