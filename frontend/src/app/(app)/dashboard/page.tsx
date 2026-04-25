@@ -28,6 +28,7 @@ type EarningsResp = {
   total: number;
   page: number;
   pages: number;
+  todayMiningTotal: number;
 };
 
 type Referral = { id: string };
@@ -56,18 +57,9 @@ export default async function DashboardPage() {
     apiJson<LastClaimResp>("/claim/last"),
   ]);
 
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-
-  const dailyEarned =
-    earningsData?.earnings
-      .filter(
-        (e) =>
-          e.type === "mining" &&
-          e.status !== "rejected" &&
-          new Date(e.createdAt).getTime() >= startOfDay.getTime()
-      )
-      .reduce((sum, e) => sum + e.amount, 0) ?? 0;
+  // Backend aggregates today's mining server-side so the dashboard tile is
+  // correct even when paginated /earnings page 1 doesn't contain every row.
+  const dailyEarned = earningsData?.todayMiningTotal ?? 0;
 
   const referralCount = referralsData?.referrals.length ?? 0;
   const lastClaimAt: string | null = lastClaimData?.lastClaimAt ?? null;
