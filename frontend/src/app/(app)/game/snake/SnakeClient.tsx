@@ -65,7 +65,7 @@ const STORAGE_KEY = "minero_snake_stats_v1";
 function parseStats(raw: string | null): Stats {
   if (!raw) return EMPTY_STATS;
   try {
-    const p = JSON.parse(raw) as Partial<Stats>;
+    const p = JSON.parse(raw) as Partial<Stats> & { totalPoints?: number };
     return {
       totalCoins: Number(p.totalCoins) || Number(p.totalPoints) || 0,
       bestScore: Number(p.bestScore) || 0,
