@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { getGameBalance, GAME_BALANCE_CHANGED } from "@/lib/game-session";
+import { getGameBalance, GAME_BALANCE_CHANGED, importLegacyCoinsOnce } from "@/lib/game-session";
 import {
   IconArrowRight,
   IconBrain,
@@ -494,7 +494,13 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
       // rather than snapping to 0.
       if (!cancelled && b !== null) setServerBalance(b.balance);
     };
-    refresh();
+    // Run the one-time legacy localStorage → server import before the first
+    // balance fetch, so users see their migrated coins on first load. The
+    // helper is idempotent (server flag + local flag), so it's safe to call
+    // on every mount.
+    importLegacyCoinsOnce().finally(() => {
+      if (!cancelled) void refresh();
+    });
     const onChange = () => { void refresh(); };
     window.addEventListener(GAME_BALANCE_CHANGED, onChange);
     return () => {

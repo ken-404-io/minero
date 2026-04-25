@@ -129,6 +129,90 @@ gameRoutes.post("/session/start", async (c) => {
   return c.json({ sessionId: created.id, startedAt: created.startedAt });
 });
 
+/**
+ * One-time migration: users who played games before the server-authoritative
+ * session flow had their stats only in localStorage. This endpoint accepts
+ * those per-game-key totals, caps them, and credits gameCoinsBalance. It
+ * flips User.legacyImported so the import can't be replayed.
+ *
+ * Caps: each game's contribution is clamped to dailyCoinCap × 2 (≈ "a couple
+ * days of play"), and the grand total is clamped to LEGACY_TOTAL_CAP.
+ */
+const LEGACY_PER_GAME_CAP_MULT = 2;
+const LEGACY_TOTAL_CAP = 10_000;
+
+gameRoutes.post("/import-legacy", async (c) => {
+  const session = requireAuth(c);
+  if (session instanceof Response) return session;
+
+  const body = (await c.req.json().catch(() => ({}))) as {
+    totals?: Record<string, unknown>;
+  };
+  const totalsIn = body.totals;
+  if (!totalsIn || typeof totalsIn !== "object") {
+    return c.json({ error: "Invalid totals" }, 400);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { legacyImported: true, gameCoinsBalance: true, frozen: true },
+  });
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+  if (user.frozen) return c.json({ error: "Account suspended" }, 403);
+  if (user.legacyImported) {
+    return c.json({
+      ok: true,
+      alreadyImported: true,
+      credited: 0,
+      balance: user.gameCoinsBalance,
+    });
+  }
+
+  let credited = 0;
+  for (const key of VALID_GAME_KEYS) {
+    const raw = Number((totalsIn as Record<string, unknown>)[key]);
+    if (!Number.isFinite(raw) || raw <= 0) continue;
+    const perGameCap = GAME_CONFIG[key].dailyCoinCap * LEGACY_PER_GAME_CAP_MULT;
+    credited += Math.min(Math.floor(raw), perGameCap);
+  }
+  credited = Math.min(credited, LEGACY_TOTAL_CAP);
+
+  // Race-safe: only update when legacyImported is still false. If two
+  // requests arrive concurrently, the second sees count: 0 and treats it
+  // as already-imported.
+  const updated = await prisma.user.updateMany({
+    where: { id: session.userId, legacyImported: false },
+    data: {
+      legacyImported: true,
+      gameCoinsBalance: { increment: credited },
+    },
+  });
+
+  if (updated.count === 0) {
+    const fresh = await prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { gameCoinsBalance: true },
+    });
+    return c.json({
+      ok: true,
+      alreadyImported: true,
+      credited: 0,
+      balance: fresh?.gameCoinsBalance ?? 0,
+    });
+  }
+
+  const fresh = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { gameCoinsBalance: true },
+  });
+  return c.json({
+    ok: true,
+    alreadyImported: false,
+    credited,
+    balance: fresh?.gameCoinsBalance ?? 0,
+  });
+});
+
 /** Finish a game session. Server computes and credits coinsEarned. */
 gameRoutes.post("/session/finish", async (c) => {
   const session = requireAuth(c);

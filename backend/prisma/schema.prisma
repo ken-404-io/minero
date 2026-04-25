@@ -28,6 +28,10 @@ model User {
   streakCount    Int      @default(0)
   lastStreakDate DateTime?
   gameCoinsBalance Int    @default(0)
+  // One-time migration flag for users who accumulated game stats in
+  // localStorage before the server-authoritative session flow shipped.
+  // /game/import-legacy flips this true after crediting their totals.
+  legacyImported Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
