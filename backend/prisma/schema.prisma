@@ -31,7 +31,11 @@ model User {
   // One-time migration flag for users who accumulated game stats in
   // localStorage before the server-authoritative session flow shipped.
   // /game/import-legacy flips this true after crediting their totals.
-  legacyImported Boolean  @default(false)
+  legacyImported     Boolean @default(false)
+  // Coins credited via the legacy localStorage import, kept separately so
+  // admins can audit how much value the migration recovered. Already
+  // included in gameCoinsBalance — this column is for reporting only.
+  legacyImportedCoins Int    @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

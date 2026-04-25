@@ -43,6 +43,8 @@ adminRoutes.get("/stats", async (c) => {
     monthImpressions,
     todayRevenue,
     monthRevenue,
+    legacyImportedUsers,
+    legacyImportedCoinsAgg,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { frozen: true } }),
@@ -69,6 +71,8 @@ adminRoutes.get("/stats", async (c) => {
       where: { createdAt: { gte: startOfMonth } },
       _sum: { estimatedRevenue: true },
     }),
+    prisma.user.count({ where: { legacyImported: true } }),
+    prisma.user.aggregate({ _sum: { legacyImportedCoins: true } }),
   ]);
 
   const activeTodayGroups = await prisma.claim.groupBy({
@@ -107,6 +111,8 @@ adminRoutes.get("/stats", async (c) => {
     todayRevenueToPayoutRatio:
       todayPayoutTotal > 0 ? todayRevenueTotal / todayPayoutTotal : null,
     planDistribution,
+    legacyImportedUsers,
+    legacyImportedCoinsTotal: legacyImportedCoinsAgg._sum.legacyImportedCoins ?? 0,
   });
 });
 

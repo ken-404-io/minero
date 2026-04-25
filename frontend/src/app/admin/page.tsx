@@ -34,6 +34,8 @@ type Stats = {
   todayMargin: number;
   todayRevenueToPayoutRatio: number | null;
   planDistribution: PlanDist[];
+  legacyImportedUsers: number;
+  legacyImportedCoinsTotal: number;
 };
 
 type PendingWithdrawal = {
@@ -72,6 +74,8 @@ export default async function AdminDashboard() {
   const ratio = stats?.todayRevenueToPayoutRatio;
   const openAlerts = stats?.openAlerts ?? 0;
   const pendingPlans = stats?.pendingPlans ?? 0;
+  const legacyImportedUsers = stats?.legacyImportedUsers ?? 0;
+  const legacyImportedCoinsTotal = stats?.legacyImportedCoinsTotal ?? 0;
 
   const totalPlanUsers = planDist.reduce((s, p) => s + p._count.id, 0) || 1;
 
@@ -116,6 +120,40 @@ export default async function AdminDashboard() {
               </span>
             </div>
           ))}
+        </section>
+
+        {/* Legacy localStorage → server migration audit. Read-only summary
+            of the one-time /game/import-legacy migration: how many users
+            were converted and how many coins (gameCoinsBalance) were
+            credited from their pre-server-authoritative localStorage stats. */}
+        <section className="card mb-6">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <h2 className="font-semibold">Legacy game-coin import</h2>
+            <span className="text-xs" style={{ color: "var(--text-subtle)" }}>
+              One-time migration · audit-only
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <div className="text-xs" style={{ color: "var(--text-subtle)" }}>
+                Users migrated
+              </div>
+              <div className="text-xl font-bold font-mono">
+                {legacyImportedUsers.toLocaleString()}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs" style={{ color: "var(--text-subtle)" }}>
+                Coins credited
+              </div>
+              <div className="text-xl font-bold font-mono" style={{ color: "var(--brand)" }}>
+                {legacyImportedCoinsTotal.toLocaleString()}
+              </div>
+              <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                ≈ ₱{(legacyImportedCoinsTotal / 2499).toFixed(2)} of redemption value
+              </div>
+            </div>
+          </div>
         </section>
 
         {/* Revenue vs payouts */}
