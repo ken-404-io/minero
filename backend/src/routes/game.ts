@@ -145,6 +145,16 @@ gameRoutes.post("/import-legacy", async (c) => {
   const session = requireAuth(c);
   if (session instanceof Response) return session;
 
+  // 5 attempts per user per hour. The endpoint is idempotent via
+  // legacyImported, so legitimate clients only need one successful call —
+  // this just blunts brute-force attempts at finding values that slip past
+  // the per-game / total caps.
+  const rl = rateLimit(`legacy-import:${session.userId}`, 5, 60 * 60 * 1000);
+  if (!rl.ok) {
+    c.header("Retry-After", String(Math.ceil(rl.retryAfterMs / 1000)));
+    return c.json({ error: "Too many attempts. Try again later." }, 429);
+  }
+
   const body = (await c.req.json().catch(() => ({}))) as {
     totals?: Record<string, unknown>;
   };
@@ -184,6 +194,7 @@ gameRoutes.post("/import-legacy", async (c) => {
     where: { id: session.userId, legacyImported: false },
     data: {
       legacyImported: true,
+      legacyImportedCoins: credited,
       gameCoinsBalance: { increment: credited },
     },
   });

@@ -218,6 +218,10 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
 
   // Server-authoritative game coin balance. Rewards redemption checks against
   // this — legacy localStorage `earned` is shown for transparency only.
+  // `null` means the first fetch hasn't resolved yet (loading); a number
+  // means the API responded. We never fall back to local on this page —
+  // /redeem validates server-side, so showing local would let users click
+  // a redeem button that's guaranteed to fail.
   const [serverBalance, setServerBalance] = useState<number | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -241,6 +245,7 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
     }
   }, [earned, rewards]);
 
+  const balanceLoading = serverBalance === null;
   // The authoritative redeemable balance is the server balance. The local
   // "earned - redeemed" calc stays for display of legacy coin activity.
   const available = serverBalance ?? 0;
@@ -250,6 +255,7 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
   const redeem = useCallback(
     async (card: RewardCard) => {
       const cost = cardCost(card.peso);
+      if (balanceLoading) return;
       if (available < cost) return;
 
       setRedeeming(true);
@@ -298,7 +304,7 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
         setRedeeming(false);
       }
     },
-    [available, rewards],
+    [available, balanceLoading, rewards],
   );
 
   // Lock body scroll while confirm sheet open
@@ -361,7 +367,13 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         <div className="kpi">
           <span className="kpi-label">Coins available</span>
-          <span className="kpi-value kpi-value-brand">{formatInt(available)}</span>
+          <span
+            className="kpi-value kpi-value-brand"
+            aria-busy={balanceLoading || undefined}
+            aria-live="polite"
+          >
+            {balanceLoading ? <KpiSkeleton /> : formatInt(available)}
+          </span>
         </div>
         <div className="kpi">
           <span className="kpi-label">Coins earned (lifetime)</span>
@@ -369,7 +381,9 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
         </div>
         <div className="kpi">
           <span className="kpi-label">Peso value available</span>
-          <span className="kpi-value">{formatPeso(Math.floor(available / COINS_PER_PESO))}</span>
+          <span className="kpi-value" aria-busy={balanceLoading || undefined}>
+            {balanceLoading ? <KpiSkeleton /> : formatPeso(Math.floor(available / COINS_PER_PESO))}
+          </span>
         </div>
         <div className="kpi">
           <span className="kpi-label">Redeemed to wallet</span>
@@ -389,7 +403,10 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 lg:grid-cols-3">
           {CARDS.map((card) => {
             const cost = cardCost(card.peso);
-            const canRedeem = available >= cost;
+            // Disable every card until the server reports balance — clicking
+            // a card whose cost we haven't validated against the authoritative
+            // balance only leads to a redeem call that 400s.
+            const canRedeem = !balanceLoading && available >= cost;
             return (
               <RewardCardView
                 key={card.id}
@@ -397,6 +414,7 @@ export default function RewardsClient({ playerName }: { playerName: string }) {
                 cost={cost}
                 available={available}
                 canRedeem={canRedeem}
+                loading={balanceLoading}
                 onSelect={() => { setRedeemError(null); setConfirmCard(card); }}
               />
             );
@@ -575,12 +593,14 @@ function RewardCardView({
   cost,
   available,
   canRedeem,
+  loading,
   onSelect,
 }: {
   card: RewardCard;
   cost: number;
   available: number;
   canRedeem: boolean;
+  loading: boolean;
   onSelect: () => void;
 }) {
   const pct = Math.min(100, Math.round((available / cost) * 100));
@@ -653,9 +673,12 @@ function RewardCardView({
       <button
         onClick={onSelect}
         disabled={!canRedeem}
+        aria-busy={loading || undefined}
         className={canRedeem ? "btn btn-primary" : "btn btn-ghost"}
       >
-        {canRedeem ? (
+        {loading ? (
+          <>Loading…</>
+        ) : canRedeem ? (
           <>
             <IconCoin size={16} /> Redeem now
           </>
@@ -666,5 +689,22 @@ function RewardCardView({
         )}
       </button>
     </div>
+  );
+}
+
+/* Inline loading skeleton for KPI numbers — single-line, fits the kpi-value
+   container so the row height doesn't jump when the real value lands. Reuses
+   the existing global `.skeleton` rule (see app/globals.css). */
+function KpiSkeleton() {
+  return (
+    <span
+      aria-hidden
+      className="skeleton inline-block"
+      style={{
+        width: "3.5ch",
+        height: "1em",
+        verticalAlign: "middle",
+      }}
+    />
   );
 }
