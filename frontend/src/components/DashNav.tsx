@@ -180,15 +180,17 @@ export default function DashNav({ name, role, plan }: { name: string; role: stri
           preserveAspectRatio="none"
           xmlns="http://www.w3.org/2000/svg"
         >
+          {/* Filled background — rounded top corners, smooth wave notch at center */}
           <path
             fill="var(--surface)"
-            d="M0,0 L135,0 C150,0 160,22 187.5,22 C215,22 225,0 240,0 L375,0 L375,64 L0,64 Z"
+            d="M20,0 L120,0 C147,0 165,28 187.5,28 C210,28 228,0 255,0 L355,0 Q375,0 375,20 L375,64 L0,64 L0,20 Q0,0 20,0 Z"
           />
+          {/* Border — traces only the top edge (sides are screen-flush) */}
           <path
             fill="none"
             stroke="var(--border)"
             strokeWidth="1"
-            d="M0,0 L135,0 C150,0 160,22 187.5,22 C215,22 225,0 240,0 L375,0"
+            d="M0,20 Q0,0 20,0 L120,0 C147,0 165,28 187.5,28 C210,28 228,0 255,0 L355,0 Q375,0 375,20"
           />
         </svg>
 
