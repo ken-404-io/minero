@@ -141,8 +141,27 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
   }
 
   useEffect(() => {
-    setStats(loadStats());
-    setDaily(loadDailyData());
+    const loadedStats = loadStats();
+    const loadedDaily = loadDailyData();
+    setStats(loadedStats);
+    setDaily(loadedDaily);
+
+    // Auto-start the game on mount so the player lands directly on the board.
+    // Daily plays decrement now (same cost model as the old "Start Game" button).
+    if (MAX_DAILY_PLAYS - loadedDaily.plays > 0) {
+      const newDaily: DailyData = { date: todayStr(), plays: loadedDaily.plays + 1 };
+      setDaily(newDaily);
+      saveDailyData(newDaily);
+      setPieces(threeNew(0));
+      setStatus("playing");
+      sessionIdRef.current = null;
+      startGameSession("blockblast").then((r) => {
+        if (r.ok) sessionIdRef.current = r.sessionId;
+      });
+    } else {
+      // No plays left today — go straight to the limit-reached banner.
+      setStatus("over");
+    }
   }, []);
 
   const playsLeft = MAX_DAILY_PLAYS - daily.plays;
@@ -367,14 +386,6 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
         }
       `}</style>
 
-      <header className="mb-4">
-        <span className="section-title">Play</span>
-        <h1 className="text-2xl font-bold tracking-tight mt-1">Block Blast</h1>
-        <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-          Place pieces to fill rows &amp; columns — clear them to earn coins!
-        </p>
-      </header>
-
       {/* KPIs */}
       <div
         style={{
@@ -459,55 +470,6 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
           </span>
         </div>
       </div>
-
-      {/* Idle splash */}
-      {status === "idle" && (
-        <div className="card flex flex-col items-center gap-4 py-10 text-center">
-          <div style={{ fontSize: 52 }}>🟨</div>
-          <h2 className="text-xl font-bold">Block Blast</h2>
-          <p className="text-sm max-w-xs" style={{ color: "var(--text-muted)" }}>
-            Select a piece, then tap the grid to place it. Fill complete rows or
-            columns to clear them and earn coins! Pieces get harder and coin
-            rewards decay as your total climbs — max {SCORE_CAP.toLocaleString()} coins.
-          </p>
-
-          {/* Daily plays counter */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "6px 14px",
-              borderRadius: 20,
-              background: canPlay
-                ? "color-mix(in oklab,var(--brand) 12%,var(--surface))"
-                : "color-mix(in oklab,#ef4444 12%,var(--surface))",
-              border: `1px solid ${canPlay ? "var(--brand)" : "#ef4444"}`,
-            }}
-          >
-            <span style={{ fontSize: 13, fontWeight: 600, color: canPlay ? "var(--brand)" : "#ef4444" }}>
-              {canPlay
-                ? `${playsLeft} of ${MAX_DAILY_PLAYS} plays left today`
-                : `Daily limit reached`}
-            </span>
-          </div>
-
-          {canPlay ? (
-            <button className="btn btn-primary btn-lg" onClick={startGame}>
-              Start Game
-            </button>
-          ) : (
-            <div style={{ textAlign: "center" }}>
-              <p className="text-sm" style={{ color: "var(--text-muted)", marginBottom: 8 }}>
-                Resets in ~{hoursUntilReset()} hour{hoursUntilReset() !== 1 ? "s" : ""}
-              </p>
-              <button className="btn btn-primary btn-lg" disabled style={{ opacity: 0.4, cursor: "not-allowed" }}>
-                Come Back Tomorrow
-              </button>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Game over banner */}
       {status === "over" && (
