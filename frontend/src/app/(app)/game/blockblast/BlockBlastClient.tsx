@@ -27,6 +27,7 @@ import {
   todayStr,
   hoursUntilReset,
 } from "./storage";
+import { useDrag, type DragState } from "./useDrag";
 
 const CELL = 34;
 const GAP = 2;
@@ -76,6 +77,18 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
   const [scorePops, setScorePops] = useState<ScorePop[]>([]);
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
   const [daily, setDaily] = useState<DailyData>({ date: todayStr(), plays: 0 });
+
+  // Drag-and-drop wiring (filled in by edit 4 — handleDrop body is a stub for now).
+  const boardRef = useRef<HTMLDivElement | null>(null);
+  const holdRef = useRef<HTMLButtonElement | null>(null);
+  const [invalidReturn, setInvalidReturn] = useState<{
+    id: number;
+    piece: ColoredPiece;
+    from: { x: number; y: number };
+    to: { x: number; y: number };
+  } | null>(null);
+  const handleDropRef = useRef<(s: DragState) => void>(() => {});
+  const { drag, startDrag } = useDrag((s) => handleDropRef.current(s));
 
   useEffect(() => {
     setStats(loadStats());
