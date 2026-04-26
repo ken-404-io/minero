@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { IconCoin, IconTrophy } from "@/components/icons";
 import {
   startGameSession,
@@ -115,6 +116,25 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
   const handleDropRef = useRef<(s: DragState) => void>(() => {});
   const { drag, startDrag } = useDrag((s) => handleDropRef.current(s));
 
+  const router = useRouter();
+  // Game-over flow: status flips to "over" instantly; we run a grayout sweep
+  // first, then show the modal, and on Quit we fire an explosion before
+  // navigating away.
+  const [gameOverShown, setGameOverShown] = useState(false);
+  const [exploding, setExploding] = useState(false);
+  const [gameInAnim, setGameInAnim] = useState(false);
+
+  useEffect(() => {
+    if (status === "over") {
+      // Grayout completes after the diagonal sweep + cell duration; then reveal modal.
+      const totalGrayoutMs = (G + G) * 40 + 300;
+      const t = setTimeout(() => setGameOverShown(true), totalGrayoutMs);
+      return () => clearTimeout(t);
+    }
+    setGameOverShown(false);
+    setExploding(false);
+  }, [status]);
+
   // Snap a live drag's pointer to a board cell anchor (top-left cell of the piece).
   // Returns null when the pointer is outside the board's bounding box.
   function boardAnchorAt(d: DragState): { row: number; col: number } | null {
@@ -189,6 +209,21 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
     startGameSession("blockblast").then((r) => {
       if (r.ok) sessionIdRef.current = r.sessionId;
     });
+  }
+
+  function handlePlayAgain() {
+    setGameOverShown(false);
+    setExploding(false);
+    setGameInAnim(true);
+    startGame();
+    setTimeout(() => setGameInAnim(false), 480);
+  }
+
+  function handleQuit() {
+    setGameOverShown(false);
+    setExploding(true);
+    // Let the explosion play, then leave.
+    setTimeout(() => router.push("/game"), 700);
   }
 
   function handleDrop(d: DragState) {
@@ -384,6 +419,29 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
           85%  { transform: translate(-50%, -52px) scale(1.0);  opacity: 1; }
           100% { transform: translate(-50%, -78px) scale(0.85); opacity: 0; }
         }
+        @keyframes bb-grayout {
+          0%   { filter: grayscale(0) brightness(1); }
+          100% { filter: grayscale(1) brightness(0.55); }
+        }
+        @keyframes bb-explode {
+          0%   { transform: scale(1)    rotate(0deg);   opacity: 1; }
+          40%  { transform: scale(1.45) rotate(12deg);  opacity: 1; }
+          100% { transform: scale(0.05) rotate(40deg);  opacity: 0; }
+        }
+        @keyframes bb-modalin {
+          0%   { transform: translateY(18px) scale(0.92); opacity: 0; }
+          60%  { transform: translateY(-2px) scale(1.02); opacity: 1; }
+          100% { transform: translateY(0)    scale(1);    opacity: 1; }
+        }
+        @keyframes bb-backdropin {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes bb-gamein {
+          0%   { transform: scale(0.85); opacity: 0; }
+          60%  { transform: scale(1.04); opacity: 1; }
+          100% { transform: scale(1);    opacity: 1; }
+        }
       `}</style>
 
       {/* KPIs */}
@@ -471,42 +529,6 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
         </div>
       </div>
 
-      {/* Game over banner */}
-      {status === "over" && (
-        <div className="card flex flex-col items-center gap-3 py-8 mb-4 text-center">
-          <div style={{ fontSize: 44 }}>💥</div>
-          <h2 className="text-xl font-bold">Game Over!</h2>
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Coins&nbsp;<strong>{score}</strong>&nbsp;·&nbsp;Best&nbsp;
-            <strong>{stats.bestScore}</strong>
-          </p>
-          {canPlay ? (
-            <>
-              <p className="text-xs" style={{ color: "var(--text-subtle)" }}>
-                {playsLeft} of {MAX_DAILY_PLAYS} plays left today
-              </p>
-              <button className="btn btn-primary" onClick={startGame}>Play Again</button>
-            </>
-          ) : (
-            <>
-              <p
-                className="text-sm"
-                style={{
-                  color: "#ef4444",
-                  fontWeight: 600,
-                  animation: "bb-limitblink 1.4s ease-in-out infinite",
-                }}
-              >
-                Daily limit reached — resets in ~{hoursUntilReset()}h
-              </p>
-              <button className="btn btn-primary" disabled style={{ opacity: 0.4, cursor: "not-allowed" }}>
-                No Plays Left
-              </button>
-            </>
-          )}
-        </div>
-      )}
-
       {/* Board + pieces */}
       {status !== "idle" && (
         <>
@@ -545,6 +567,8 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                 border: "1px solid var(--border)",
                 boxShadow:
                   "0 8px 22px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.04)",
+                animation: gameInAnim ? "bb-gamein 0.48s cubic-bezier(0.34,1.56,0.64,1)" : undefined,
+                transformOrigin: "center",
               }}
             >
             <div style={{ position: "relative", width: gridWidth, margin: "0 auto" }}>
@@ -613,6 +637,20 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                     animCss = { animation: "bb-clearpulse 0.9s ease-in-out infinite" };
                   } else if (clearColor === undefined && settleCells.has(key)) {
                     animCss = { animation: "bb-settle 0.32s cubic-bezier(0.34,1.56,0.64,1) forwards" };
+                  }
+
+                  // Quit explosion: every filled cell scales out and rotates.
+                  if (exploding && cellColor) {
+                    animCss = {
+                      animation: "bb-explode 0.6s cubic-bezier(0.5,0,0.75,0) forwards",
+                      animationDelay: `${((r + c) % 5) * 30}ms`,
+                    };
+                  } else if (status === "over" && cellColor && clearColor === undefined) {
+                    // Game-over grayout sweep — diagonal stagger.
+                    animCss = {
+                      animation: "bb-grayout 0.42s ease forwards",
+                      animationDelay: `${(r + c) * 40}ms`,
+                    };
                   }
 
                   return (
@@ -839,6 +877,155 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
             </>
           )}
         </>
+      )}
+
+      {/* Centered Game Over modal — shown after the grayout sweep finishes. */}
+      {gameOverShown && status === "over" && !exploding && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            background: "rgba(0,0,0,0.66)",
+            backdropFilter: "blur(2px)",
+            zIndex: 100,
+            animation: "bb-backdropin 200ms ease forwards",
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 340,
+              padding: "26px 22px",
+              borderRadius: 18,
+              background: "var(--surface)",
+              border: "1px solid var(--border-strong)",
+              boxShadow: "0 22px 50px rgba(0,0,0,0.55)",
+              textAlign: "center",
+              animation: "bb-modalin 320ms cubic-bezier(0.34,1.56,0.64,1) forwards",
+            }}
+          >
+            <div style={{ fontSize: 46, lineHeight: 1, marginBottom: 6 }}>💥</div>
+            <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Game Over!</h2>
+            <p style={{ fontSize: 14, color: "var(--text-muted)", margin: "8px 0 0" }}>
+              Coins <strong style={{ color: "var(--brand)" }}>{score}</strong> · Best <strong>{stats.bestScore}</strong>
+            </p>
+            {canPlay ? (
+              <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: "8px 0 0" }}>
+                {playsLeft} of {MAX_DAILY_PLAYS} plays left today
+              </p>
+            ) : (
+              <p
+                style={{
+                  fontSize: 13,
+                  color: "#ef4444",
+                  fontWeight: 600,
+                  margin: "10px 0 0",
+                  animation: "bb-limitblink 1.4s ease-in-out infinite",
+                }}
+              >
+                Daily limit reached — resets in ~{hoursUntilReset()}h
+              </p>
+            )}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 18 }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleQuit}
+                style={{
+                  padding: "12px 16px",
+                  borderRadius: 12,
+                  border: "1px solid var(--border-strong)",
+                  background: "var(--surface-2)",
+                  color: "var(--text)",
+                  fontWeight: 700,
+                  fontSize: 15,
+                  cursor: "pointer",
+                  minHeight: 46,
+                }}
+              >
+                Quit Game
+              </button>
+              <button
+                type="button"
+                onClick={canPlay ? handlePlayAgain : undefined}
+                disabled={!canPlay}
+                style={{
+                  padding: "12px 16px",
+                  borderRadius: 12,
+                  border: "none",
+                  background: canPlay ? "var(--brand)" : "var(--surface-2)",
+                  color: canPlay ? "var(--brand-fg)" : "var(--text-subtle)",
+                  fontWeight: 800,
+                  fontSize: 15,
+                  cursor: canPlay ? "pointer" : "not-allowed",
+                  opacity: canPlay ? 1 : 0.5,
+                  minHeight: 46,
+                }}
+              >
+                Play Again
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quit explosion — wide particle burst from every filled cell, then route. */}
+      {exploding && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            pointerEvents: "none",
+            zIndex: 99,
+          }}
+        >
+          {(() => {
+            const board = boardRef.current?.getBoundingClientRect();
+            if (!board) return null;
+            const pitch = CELL + GAP;
+            const dirs: [number, number][] = [
+              [60, 0], [-60, 0], [0, 60], [0, -60],
+              [42, 42], [-42, 42], [42, -42], [-42, -42],
+            ];
+            const out: React.ReactNode[] = [];
+            for (let r = 0; r < G; r++) {
+              for (let c = 0; c < G; c++) {
+                const color = grid[r][c];
+                if (!color) continue;
+                const cx = board.left + c * pitch + CELL / 2;
+                const cy = board.top + r * pitch + CELL / 2;
+                dirs.forEach(([dx, dy], i) => {
+                  out.push(
+                    <div
+                      key={`ex-${r}-${c}-${i}`}
+                      style={{
+                        position: "fixed",
+                        left: cx - 4,
+                        top: cy - 4,
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background: color,
+                        boxShadow: `0 0 12px 2px ${color}`,
+                        animation: "bb-particle 0.7s ease-out forwards",
+                        ["--bb-px" as string]: `${dx}px`,
+                        ["--bb-py" as string]: `${dy}px`,
+                      } as React.CSSProperties}
+                    />
+                  );
+                });
+              }
+            }
+            return out;
+          })()}
+        </div>
       )}
 
       {/* Lifetime stats */}
