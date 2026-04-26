@@ -177,6 +177,19 @@ export function puzzleForDay(ts: number): Puzzle {
   return PUZZLES[idx];
 }
 
+/**
+ * Puzzle for a given level number. Level 0 is always the easiest puzzle
+ * in the curated pool; higher levels walk forward through PUZZLES so the
+ * difficulty ramps the further the player goes. dayIndex is intentionally
+ * NOT mixed in here — daily rotation made the starting puzzle change every
+ * day, which left players stuck if they couldn't clear today's seed.
+ */
+export function puzzleForLevel(level: number): Puzzle {
+  const len = PUZZLES.length;
+  const idx = (((level % len) + len) % len);
+  return PUZZLES[idx];
+}
+
 /* ============================================================
    Helpers
    ============================================================ */
