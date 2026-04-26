@@ -12,7 +12,6 @@ export type GameKey =
   | "memory"
   | "minesweeper"
   | "word"
-  | "snake"
   | "blockblast";
 
 export type GameRewardConfig = {
@@ -72,14 +71,6 @@ export const GAME_CONFIG: Record<GameKey, GameRewardConfig> = {
     cooldownMs: 24 * 60 * 60 * 1000,
     maxScore: 500,
     coinsPerScore: 1,
-  },
-  snake: {
-    maxCoinsPerSession: 400,
-    minDurationMs: 10_000,
-    dailyCoinCap: 2_000,
-    cooldownMs: 15_000,
-    maxScore: 2_000,
-    coinsPerScore: 0.2,
   },
   blockblast: {
     maxCoinsPerSession: 500,

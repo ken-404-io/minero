@@ -11,7 +11,6 @@ export const VALID_GAME_KEYS = [
   "memory",
   "minesweeper",
   "word",
-  "snake",
   "blockblast",
 ] as const;
 
@@ -159,7 +158,6 @@ const LEGACY_GAME_STORAGE_KEYS: Record<GameKey, string> = {
   memory: "minero_memory_stats_v1",
   minesweeper: "minero_minesweeper_stats_v1",
   word: "minero_word_stats_v1",
-  snake: "minero_snake_stats_v1",
   blockblast: "minero_blockblast_stats_v1",
 };
 

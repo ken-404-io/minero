@@ -223,7 +223,7 @@ model RefreshToken {
 model GameSession {
   id          String    @id @default(cuid())
   userId      String
-  gameKey     String    // "trivia" | "spin" | "memory" | "minesweeper" | "word" | "snake" | "blockblast"
+  gameKey     String    // "trivia" | "spin" | "memory" | "minesweeper" | "word" | "blockblast"
   startedAt   DateTime  @default(now())
   finishedAt  DateTime?
   score       Int?
