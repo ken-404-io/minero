@@ -7,226 +7,31 @@ import {
   finishGameSession,
   emitBalanceChange,
 } from "@/lib/game-session";
+import {
+  type ColoredPiece,
+  threeNew,
+  scoreMultiplier,
+  multColor,
+  SCORE_CAP,
+} from "./pieces";
+import { G, emptyGrid, fits, fitsAnywhere, place } from "./grid";
+import {
+  type Stats,
+  type DailyData,
+  EMPTY_STATS,
+  MAX_DAILY_PLAYS,
+  loadStats,
+  saveStats,
+  loadDailyData,
+  saveDailyData,
+  todayStr,
+  hoursUntilReset,
+} from "./storage";
 
-/* ============================================================
-   Constants
-   ============================================================ */
-
-const G = 8;
-const STORAGE_KEY = "minero_blockblast_stats_v1";
-const DAILY_KEY = "minero_blockblast_daily_v1";
 const CELL = 34;
 const GAP = 2;
-const MAX_DAILY_PLAYS = 20;
-const SCORE_CAP = 20_000;
 
-/* ============================================================
-   Types
-   ============================================================ */
-
-type Piece = [number, number][];
-type ColoredPiece = { shape: Piece; color: string };
-type Stats = { totalCoins: number; bestScore: number; gamesPlayed: number; linesCleared: number };
-type DailyData = { date: string; plays: number };
 type Status = "idle" | "playing" | "over";
-
-/* ============================================================
-   Piece library — grouped by difficulty
-   ============================================================ */
-
-const EASY_PIECES: Piece[] = [
-  [[0, 0]],                             // 1×1
-  [[0, 0], [0, 1]],                     // 1×2 H
-  [[0, 0], [1, 0]],                     // 1×2 V
-  [[0, 0], [0, 1], [1, 0], [1, 1]],    // 2×2
-];
-
-const MEDIUM_PIECES: Piece[] = [
-  [[0, 0], [0, 1], [0, 2]],                         // 1×3 H
-  [[0, 0], [1, 0], [2, 0]],                         // 1×3 V
-  [[0, 0], [0, 1], [0, 2], [0, 3]],                 // 1×4 H
-  [[0, 0], [1, 0], [2, 0], [3, 0]],                 // 1×4 V
-  [[0, 0], [0, 1], [1, 0]],                         // small-L 1
-  [[0, 0], [1, 0], [1, 1]],                         // small-L 2
-  [[0, 1], [1, 0], [1, 1]],                         // small-L 3
-  [[0, 0], [0, 1], [1, 1]],                         // small-L 4
-  [[0, 0], [0, 1], [0, 2], [1, 1]],                 // T-H
-  [[0, 0], [1, 0], [2, 0], [1, 1]],                 // T-V
-];
-
-const HARD_PIECES: Piece[] = [
-  [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]],         // 1×5 H
-  [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]],         // 1×5 V
-  [[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [2, 0], [2, 1], [2, 2]], // 3×3
-  [[0, 0], [0, 1], [0, 2], [1, 0]],                 // long-L 1
-  [[0, 0], [0, 1], [0, 2], [1, 2]],                 // long-L 2
-  [[0, 0], [1, 0], [2, 0], [2, 1]],                 // long-L 3
-  [[0, 1], [1, 1], [2, 0], [2, 1]],                 // long-L 4
-  [[0, 0], [1, 0], [1, 1], [2, 1]],                 // S
-  [[0, 1], [1, 0], [1, 1], [2, 0]],                 // Z
-];
-
-const PALETTE = [
-  "#f59e0b", // amber
-  "#3b82f6", // blue
-  "#10b981", // emerald
-  "#a855f7", // purple
-  "#ef4444", // red
-  "#ec4899", // pink
-  "#06b6d4", // cyan
-  "#f97316", // orange
-];
-
-const EMPTY_STATS: Stats = { totalCoins: 0, bestScore: 0, gamesPlayed: 0, linesCleared: 0 };
-
-/* ============================================================
-   Difficulty helpers
-   ============================================================ */
-
-function diffWeights(score: number): [number, number, number] {
-  // [easy%, medium%, hard%]
-  if (score < 1_000) return [50, 35, 15];
-  if (score < 3_000) return [30, 42, 28];
-  if (score < 6_000) return [15, 38, 47];
-  if (score < 10_000) return [8,  28, 64];
-  return [2, 15, 83];
-}
-
-function pickPiece(score: number): Piece {
-  const [we, wm, wh] = diffWeights(score);
-  const r = Math.random() * (we + wm + wh);
-  let pool: Piece[];
-  if (r < we)       pool = EASY_PIECES;
-  else if (r < we + wm) pool = MEDIUM_PIECES;
-  else              pool = HARD_PIECES;
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-
-function rndColoredPiece(score: number): ColoredPiece {
-  return {
-    shape: pickPiece(score),
-    color: PALETTE[Math.floor(Math.random() * PALETTE.length)],
-  };
-}
-
-function threeNew(score: number): [ColoredPiece, ColoredPiece, ColoredPiece] {
-  return [rndColoredPiece(score), rndColoredPiece(score), rndColoredPiece(score)];
-}
-
-/* ============================================================
-   Score decay
-   ============================================================ */
-
-function scoreMultiplier(current: number): number {
-  return Math.max(0.05, (SCORE_CAP - current) / SCORE_CAP);
-}
-
-function multColor(m: number): string {
-  if (m > 0.7) return "#10b981"; // green
-  if (m > 0.45) return "#f59e0b"; // amber
-  if (m > 0.2) return "#f97316"; // orange
-  return "#ef4444"; // red
-}
-
-/* ============================================================
-   Grid helpers
-   ============================================================ */
-
-function emptyGrid(): (string | null)[][] {
-  return Array.from({ length: G }, () => Array<string | null>(G).fill(null));
-}
-
-function fits(grid: (string | null)[][], piece: Piece, r: number, c: number) {
-  return piece.every(([dr, dc]) => {
-    const nr = r + dr, nc = c + dc;
-    return nr >= 0 && nr < G && nc >= 0 && nc < G && grid[nr][nc] === null;
-  });
-}
-
-function fitsAnywhere(grid: (string | null)[][], piece: Piece) {
-  for (let r = 0; r < G; r++)
-    for (let c = 0; c < G; c++)
-      if (fits(grid, piece, r, c)) return true;
-  return false;
-}
-
-function place(
-  grid: (string | null)[][],
-  piece: Piece,
-  color: string,
-  row: number,
-  col: number,
-): { grid: (string | null)[][]; cleared: Map<string, string>; lines: number } {
-  const g = grid.map((r) => [...r]);
-  for (const [dr, dc] of piece) g[row + dr][col + dc] = color;
-
-  const fullRows = new Set<number>();
-  const fullCols = new Set<number>();
-  for (let r = 0; r < G; r++) if (g[r].every((v) => v !== null)) fullRows.add(r);
-  for (let c = 0; c < G; c++) if (g.every((row) => row[c] !== null)) fullCols.add(c);
-
-  const cleared = new Map<string, string>();
-  for (let r = 0; r < G; r++)
-    for (let c = 0; c < G; c++)
-      if (fullRows.has(r) || fullCols.has(c)) {
-        cleared.set(`${r}-${c}`, g[r][c] as string);
-        g[r][c] = null;
-      }
-
-  return { grid: g, cleared, lines: fullRows.size + fullCols.size };
-}
-
-/* ============================================================
-   Persistence helpers
-   ============================================================ */
-
-function loadStats(): Stats {
-  try {
-    const p = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as Partial<Stats & { totalPoints?: number }> | null;
-    if (!p) return EMPTY_STATS;
-    // support both new totalCoins and legacy totalPoints
-    return {
-      totalCoins: Number(p.totalCoins) || Number(p.totalPoints) || 0,
-      bestScore: Number(p.bestScore) || 0,
-      gamesPlayed: Number(p.gamesPlayed) || 0,
-      linesCleared: Number(p.linesCleared) || 0,
-    };
-  } catch { return EMPTY_STATS; }
-}
-
-function saveStats(s: Stats) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
-    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
-  } catch {}
-}
-
-function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function loadDailyData(): DailyData {
-  try {
-    const d = JSON.parse(localStorage.getItem(DAILY_KEY) ?? "null") as DailyData | null;
-    if (!d || d.date !== todayStr()) return { date: todayStr(), plays: 0 };
-    return d;
-  } catch { return { date: todayStr(), plays: 0 }; }
-}
-
-function saveDailyData(d: DailyData) {
-  try { localStorage.setItem(DAILY_KEY, JSON.stringify(d)); } catch {}
-}
-
-function hoursUntilReset(): number {
-  const now = new Date();
-  const midnight = new Date(now);
-  midnight.setHours(24, 0, 0, 0);
-  return Math.ceil((midnight.getTime() - now.getTime()) / 3_600_000);
-}
-
-/* ============================================================
-   Sub-components
-   ============================================================ */
 
 function PieceMini({ piece }: { piece: ColoredPiece }) {
   const { shape, color } = piece;
@@ -253,10 +58,6 @@ function PieceMini({ piece }: { piece: ColoredPiece }) {
     </div>
   );
 }
-
-/* ============================================================
-   Main component
-   ============================================================ */
 
 let _popId = 0;
 type ScorePop = { id: number; pts: number };
