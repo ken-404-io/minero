@@ -53,7 +53,20 @@ function PieceMini({ piece }: { piece: ColoredPiece }) {
         const pc = j % (maxC + 1);
         const on = shape.some(([r, c]) => r === pr && c === pc);
         return (
-          <div key={j} style={{ width: csz, height: csz, background: on ? color : "transparent", borderRadius: 2 }} />
+          <div
+            key={j}
+            style={{
+              width: csz,
+              height: csz,
+              background: on
+                ? `linear-gradient(180deg, color-mix(in oklab,${color} 78%,white), ${color} 55%, color-mix(in oklab,${color} 78%,black))`
+                : "transparent",
+              borderRadius: on ? 3 : 2,
+              boxShadow: on
+                ? "inset 0 1px 0 rgba(255,255,255,0.4), inset 0 -2px 0 rgba(0,0,0,0.3)"
+                : "none",
+            }}
+          />
         );
       })}
     </div>
@@ -363,23 +376,87 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
       </header>
 
       {/* KPIs */}
-      <div className="grid grid-cols-3 gap-2 mb-4">
-        <div className="kpi">
-          <span className="kpi-label">Coins</span>
-          <span className="kpi-value kpi-value-brand">{score}</span>
-          {status === "playing" && (
-            <span style={{ fontSize: 10, fontWeight: 600, color: multColor(currentMult), marginTop: 1 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 10,
+          marginBottom: 14,
+          alignItems: "stretch",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            padding: "12px 14px",
+            borderRadius: 14,
+            background: "var(--surface-2)",
+            border: "1px solid var(--border)",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.14em",
+              color: "var(--text-subtle)",
+              textTransform: "uppercase",
+            }}
+          >
+            Score
+          </span>
+          <span style={{ fontSize: 30, fontWeight: 900, lineHeight: 1.05, color: "var(--text)" }}>
+            {score}
+          </span>
+          {status === "playing" ? (
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                color: multColor(currentMult),
+                marginTop: 4,
+              }}
+            >
               ×{currentMult.toFixed(2)} coin rate
+            </span>
+          ) : (
+            <span style={{ fontSize: 11, color: "var(--text-subtle)", marginTop: 4 }}>
+              {lines} lines
             </span>
           )}
         </div>
-        <div className="kpi">
-          <span className="kpi-label">Best</span>
-          <span className="kpi-value">{Math.max(stats.bestScore, score)}</span>
-        </div>
-        <div className="kpi">
-          <span className="kpi-label">Lines</span>
-          <span className="kpi-value">{lines}</span>
+
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            padding: "12px 14px",
+            borderRadius: 14,
+            background: "color-mix(in oklab, var(--brand) 12%, var(--surface-2))",
+            border: "1px solid color-mix(in oklab, var(--brand) 38%, var(--border))",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.14em",
+              color: "color-mix(in oklab, var(--brand) 78%, var(--text-subtle))",
+              textTransform: "uppercase",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+            }}
+          >
+            <IconTrophy size={11} /> Best
+          </span>
+          <span style={{ fontSize: 30, fontWeight: 900, lineHeight: 1.05, color: "var(--brand)" }}>
+            {Math.max(stats.bestScore, score)}
+          </span>
+          <span style={{ fontSize: 11, color: "var(--text-subtle)", marginTop: 4 }}>
+            {status === "playing" ? `${lines} lines · combo ${combo}` : `${stats.linesCleared} cleared`}
+          </span>
         </div>
       </div>
 
@@ -496,7 +573,19 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
 
           {/* Grid */}
           <div style={{ overflowX: "auto" }}>
-            <div style={{ position: "relative", width: gridWidth, margin: "0 auto 20px" }}>
+            <div
+              style={{
+                width: gridWidth + 20,
+                margin: "0 auto 20px",
+                padding: 10,
+                background: "color-mix(in oklab, var(--bg) 65%, var(--surface))",
+                borderRadius: 16,
+                border: "1px solid var(--border)",
+                boxShadow:
+                  "0 8px 22px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.04)",
+              }}
+            >
+            <div style={{ position: "relative", width: gridWidth, margin: "0 auto" }}>
               <div
                 ref={boardRef}
                 style={{
@@ -514,17 +603,23 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                   const isPrev = preview.has(key);
                   const clearColor = clearingCells.get(key);
 
-                  let bg: string = "var(--surface-2)";
-                  let border = "var(--border)";
-                  let extra: React.CSSProperties = {};
+                  // Empty cells: dark inset "well" so filled blocks pop above them.
+                  let bg: string = "rgba(0,0,0,0.32)";
+                  let border = "transparent";
+                  let extra: React.CSSProperties = {
+                    boxShadow:
+                      "inset 0 2px 3px rgba(0,0,0,0.55), " +
+                      "inset 0 -1px 0 rgba(255,255,255,0.04)",
+                  };
                   let animCss: React.CSSProperties = {};
 
-                  // 2.5D extrusion shared by filled and preview cells.
+                  // Stronger 2.5D extrusion for filled / clearing / preview cells.
                   const extrudeShadow =
-                    "inset 0 2px 0 rgba(255,255,255,0.32), " +
-                    "inset 0 -3px 0 rgba(0,0,0,0.32), " +
-                    "inset -2px 0 0 rgba(0,0,0,0.18), " +
-                    "0 3px 5px rgba(0,0,0,0.35)";
+                    "inset 0 3px 0 rgba(255,255,255,0.42), " +
+                    "inset 3px 0 0 rgba(255,255,255,0.10), " +
+                    "inset 0 -4px 0 rgba(0,0,0,0.42), " +
+                    "inset -3px 0 0 rgba(0,0,0,0.22), " +
+                    "0 4px 6px rgba(0,0,0,0.40)";
 
                   if (clearColor !== undefined) {
                     bg = `linear-gradient(180deg, color-mix(in oklab,${clearColor} 78%,white), ${clearColor} 55%, color-mix(in oklab,${clearColor} 78%,black))`;
@@ -565,8 +660,8 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                         width: CELL,
                         height: CELL,
                         background: bg,
-                        border: `1px solid ${border}`,
-                        borderRadius: 5,
+                        border: border === "transparent" ? "none" : `1px solid ${border}`,
+                        borderRadius: 7,
                         transition: clearColor !== undefined ? "none" : "background 80ms",
                         ...extra,
                         ...animCss,
@@ -654,6 +749,7 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                 </div>
               ))}
             </div>
+            </div>
           </div>
 
           {/* Pieces + Hold */}
@@ -727,17 +823,15 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          padding: 8,
-                          borderRadius: 10,
-                          border: `2px solid var(--border)`,
-                          background: "var(--surface)",
-                          cursor: "grab",
+                          padding: 4,
                           minWidth: 82,
                           minHeight: 82,
+                          cursor: "grab",
                           touchAction: "none",
                           userSelect: "none",
                           opacity: isDragging ? 0.3 : 1,
-                          transition: "opacity 120ms",
+                          transform: isDragging ? "scale(0.95)" : "scale(1)",
+                          transition: "opacity 120ms, transform 120ms",
                         }}
                       >
                         <div
@@ -754,7 +848,20 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                             const pc = j % (maxC + 1);
                             const on = shape.some(([r, c]) => r === pr && c === pc);
                             return (
-                              <div key={j} style={{ width: csz, height: csz, background: on ? color : "transparent", borderRadius: 2 }} />
+                              <div
+                                key={j}
+                                style={{
+                                  width: csz,
+                                  height: csz,
+                                  background: on
+                                    ? `linear-gradient(180deg, color-mix(in oklab,${color} 78%,white), ${color} 55%, color-mix(in oklab,${color} 78%,black))`
+                                    : "transparent",
+                                  borderRadius: on ? 4 : 2,
+                                  boxShadow: on
+                                    ? "inset 0 1px 0 rgba(255,255,255,0.40), inset 0 -2px 0 rgba(0,0,0,0.32), 0 2px 3px rgba(0,0,0,0.32)"
+                                    : "none",
+                                }}
+                              />
                             );
                           })}
                         </div>
