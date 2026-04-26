@@ -505,13 +505,16 @@ function CrossTile({
   phase: Phase;
   cellOrder: number;
 }) {
-  // Drive the per-cell fall stagger from grid order. `both` keeps the final
-  // (faded-out) state once the keyframes complete so the screen stays
-  // empty until step 5 swaps in the next level's tiles.
-  const exiting = phase === "exiting";
-  const animation = exiting
-    ? `wordTileFallOut ${EXIT_DURATION_MS}ms cubic-bezier(0.55, 0.06, 0.68, 0.19) ${cellOrder * EXIT_PER_CELL_MS}ms both`
-    : undefined;
+  // Drive per-cell stagger off grid order. `both` keeps the start/end
+  // state held so a tile is invisible before its turn (entering) or stays
+  // fallen after its turn (exiting). When phase flips back to "playing",
+  // the animation property clears and the tile snaps to its idle look.
+  const animation =
+    phase === "exiting"
+      ? `wordTileFallOut ${EXIT_DURATION_MS}ms cubic-bezier(0.55, 0.06, 0.68, 0.19) ${cellOrder * EXIT_PER_CELL_MS}ms both`
+      : phase === "entering"
+        ? `wordTileFallIn ${ENTER_DURATION_MS}ms cubic-bezier(0.34, 1.56, 0.64, 1) ${cellOrder * ENTER_PER_CELL_MS}ms both`
+        : undefined;
 
   return (
     <div
@@ -1120,12 +1123,18 @@ export default function WordClient({ playerName }: { playerName: string }) {
     }
   }, [allFound, finalize]);
 
-  /* ----- level-clear fall-down ----- */
+  /* ----- level transitions: exit → swap puzzle → enter → play ----- */
+
+  // Total cells in the current grid drives the longest stagger so we know
+  // when each phase's animation has fully finished.
+  const cellCount = useMemo(() => {
+    const { rows, cols } = gridBounds(puzzle);
+    return rows * cols;
+  }, [puzzle]);
 
   // Once every grid word is found AND every fly-in has landed, hold for a
   // beat so the player can read the last reveal, then flip to "exiting"
-  // which drives the per-cell fall-down animation in CrossTile. Step 5
-  // hooks the post-exit transition to the next level.
+  // which drives the per-cell fall-down animation in CrossTile.
   useEffect(() => {
     if (phase !== "playing") return;
     if (!allFound) return;
@@ -1134,10 +1143,43 @@ export default function WordClient({ playerName }: { playerName: string }) {
     return () => window.clearTimeout(t);
   }, [phase, allFound, flights.length]);
 
-  // Step-3 unused-binding silencers — setLevel still lands in step 5 when
-  // the next-level transition wires up.
+  // Phase "exiting" — once the last cell has finished falling out, advance
+  // the level, reset per-puzzle state, reshuffle the wheel for the new
+  // letter set, and flip to "entering" so the new tiles fall in from above.
+  useEffect(() => {
+    if (phase !== "exiting") return;
+    const totalMs =
+      Math.max(0, cellCount - 1) * EXIT_PER_CELL_MS +
+      EXIT_DURATION_MS +
+      LEVEL_INTERLUDE_MS;
+    const t = window.setTimeout(() => {
+      const nextLevel = level + 1;
+      const nextPuzzle = puzzleFor(today.dayIndex, nextLevel);
+      setLevel(nextLevel);
+      setWheelLetters(shuffle(nextPuzzle.letters));
+      setFoundWords(new Set());
+      setFoundBonus(new Set());
+      setRevealedWords(new Set());
+      setSelection([]);
+      setFlash(null);
+      setFlights([]);
+      // The server session has already been finalized for today on the
+      // first all-found; subsequent levels are local-only.
+      setPhase("entering");
+    }, totalMs);
+    return () => window.clearTimeout(t);
+  }, [phase, cellCount, level, today.dayIndex]);
+
+  // Phase "entering" — return to playing once every cell has landed.
+  useEffect(() => {
+    if (phase !== "entering") return;
+    const totalMs =
+      Math.max(0, cellCount - 1) * ENTER_PER_CELL_MS + ENTER_DURATION_MS + 50;
+    const t = window.setTimeout(() => setPhase("playing"), totalMs);
+    return () => window.clearTimeout(t);
+  }, [phase, cellCount]);
+
   void stats;
-  void setLevel;
   void playerName;
 
   return (
@@ -1257,6 +1299,11 @@ export default function WordClient({ playerName }: { playerName: string }) {
           flexDirection: "column",
           alignItems: "center",
           gap: 12,
+          // Lock interaction while cells are mid-fall so a stray drag
+          // doesn't queue a flight on tiles that aren't really there yet.
+          pointerEvents: phase === "playing" ? "auto" : "none",
+          opacity: phase === "playing" ? 1 : 0.7,
+          transition: "opacity 200ms ease",
         }}
         aria-label="Letter wheel"
       >
@@ -1325,6 +1372,13 @@ export default function WordClient({ playerName }: { playerName: string }) {
           0%   { opacity: 1; transform: translateY(0) rotate(0deg); }
           20%  { opacity: 1; transform: translateY(-4px) rotate(-2deg); }
           100% { opacity: 0; transform: translateY(220px) rotate(8deg); }
+        }
+        /* Reverse drop for the next level entering. Cells start above
+           and out of view, then fall into place with a tiny overshoot. */
+        @keyframes wordTileFallIn {
+          0%   { opacity: 0; transform: translateY(-220px) rotate(-8deg); }
+          70%  { opacity: 1; transform: translateY(8px) rotate(2deg); }
+          100% { opacity: 1; transform: translateY(0) rotate(0deg); }
         }
       `}</style>
     </div>
