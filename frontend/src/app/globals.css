@@ -122,6 +122,8 @@
 html {
   -webkit-text-size-adjust: 100%;
   font-feature-settings: "cv02", "cv03", "cv11", "ss01";
+  touch-action: manipulation;
+  overflow-x: hidden;
 }
 
 body {
