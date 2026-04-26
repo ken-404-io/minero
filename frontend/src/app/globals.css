@@ -658,14 +658,71 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 56px;
+  height: 60px;
   padding: 0 1rem;
-  background: color-mix(in oklab, var(--surface) 94%, transparent);
+  background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
-  backdrop-filter: saturate(1.2) blur(10px);
+  overflow: hidden;
 }
 @media (min-width: 1024px) {
   .mobile-topbar { display: none; }
+}
+
+/* Amber radial glow — emanates from top-right corner */
+.mobile-topbar-glow {
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  width: 220px;
+  height: 140px;
+  background: radial-gradient(
+    ellipse at center,
+    color-mix(in oklab, var(--brand) 50%, transparent) 0%,
+    color-mix(in oklab, var(--brand-pressed) 20%, transparent) 45%,
+    transparent 70%
+  );
+  pointer-events: none;
+}
+
+/* Gem + coin count pill */
+.mobile-topbar-coins {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  font-size: var(--fs-14);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* Bell button */
+.mobile-topbar-bell {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Orange notification dot */
+.mobile-topbar-bell-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand);
+  border: 2px solid var(--bg-elevated);
 }
 
 /* Bottom sheet */

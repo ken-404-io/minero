@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import { API_URL } from "@/lib/api-url";
+import { getGameBalance, GAME_BALANCE_CHANGED } from "@/lib/game-session";
 import {
   IconPickaxe,
   IconChart,
@@ -15,6 +17,8 @@ import {
   IconUser,
   IconSparkles,
   IconTrophy,
+  IconBell,
+  IconDiamond,
 } from "@/components/icons";
 
 type NavItem = {
@@ -52,6 +56,17 @@ function isActive(pathname: string, href: string) {
 export default function DashNav({ name, role, plan }: { name: string; role: string; plan: string }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [coins, setCoins] = useState(0);
+
+  useEffect(() => {
+    async function fetchCoins() {
+      const bal = await getGameBalance();
+      if (bal !== null) setCoins(bal.balance);
+    }
+    fetchCoins();
+    window.addEventListener(GAME_BALANCE_CHANGED, fetchCoins);
+    return () => window.removeEventListener(GAME_BALANCE_CHANGED, fetchCoins);
+  }, []);
 
   async function logout() {
     await fetch(`${API_URL}/auth/logout`, { method: "POST", credentials: "include" });
@@ -63,18 +78,34 @@ export default function DashNav({ name, role, plan }: { name: string; role: stri
 
   return (
     <>
-      {/* ===================== Mobile: top bar (brand only) ===================== */}
+      {/* ===================== Mobile: top bar ===================== */}
       <header className="mobile-topbar" role="banner">
-        <Link href="/dashboard" className="flex items-center gap-2" aria-label="Minero home">
+        {/* Amber gradient glow — top-right corner */}
+        <span className="mobile-topbar-glow" aria-hidden />
+
+        {/* Brand */}
+        <Link href="/dashboard" className="flex items-center gap-2 relative z-10" aria-label="Minero home">
           <span
             aria-hidden
-            className="inline-flex items-center justify-center rounded-md"
-            style={{ background: "var(--brand-weak)", color: "var(--brand)", width: 32, height: 32 }}
+            className="inline-flex items-center justify-center rounded-lg"
+            style={{ background: "var(--brand-weak)", color: "var(--brand)", width: 40, height: 40 }}
           >
-            <IconPickaxe size={18} />
+            <IconPickaxe size={20} />
           </span>
-          <span className="font-semibold tracking-tight">Minero</span>
+          <span className="font-bold tracking-tight text-base">Minero</span>
         </Link>
+
+        {/* Right controls */}
+        <div className="flex items-center gap-2 relative z-10">
+          <Link href="/game" className="mobile-topbar-coins" aria-label={`${coins} game coins`}>
+            <IconDiamond size={14} style={{ color: "#60a5fa" }} />
+            <span className="font-semibold tabular-nums">{coins.toLocaleString()}</span>
+          </Link>
+          <button className="mobile-topbar-bell" aria-label="Notifications">
+            <IconBell size={20} />
+            <span className="mobile-topbar-bell-dot" aria-hidden />
+          </button>
+        </div>
       </header>
 
       {/* ===================== Desktop: persistent side nav ===================== */}
