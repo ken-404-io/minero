@@ -10,6 +10,6 @@ export default defineConfig({
   // lives here for CLI commands (migrate, db push, studio). The runtime
   // PrismaClient gets its connection via the adapter in src/lib/db.ts.
   datasource: {
-    url: process.env.DATABASE_URL,
+    url: process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL,
   },
 });
