@@ -661,7 +661,10 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                         key={idx}
                         role="button"
                         tabIndex={0}
-                        onPointerDown={(e) => startDrag(e, { kind: "tray", slot: idx }, piece, csz + 2)}
+                        onPointerDown={(e) => {
+                          const gridEl = e.currentTarget.firstElementChild as HTMLElement | null;
+                          startDrag(e, { kind: "tray", slot: idx }, piece, csz + 2, gridEl);
+                        }}
                         style={{
                           display: "flex",
                           alignItems: "center",
