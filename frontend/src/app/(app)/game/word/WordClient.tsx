@@ -9,21 +9,15 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { IconArrowLeft, IconCoin, IconError, IconSparkles } from "@/components/icons";
 import {
-  IconClock,
-  IconCoin,
-  IconError,
-  IconSparkles,
-  IconTrophy,
-} from "@/components/icons";
-import {
+  PUZZLES,
   Puzzle,
   canFormWord,
   gridBounds,
   gridCells,
   isBonusWord,
   isPuzzleWord,
-  puzzleForDay,
   utcDayIndex,
 } from "./words";
 import {
@@ -35,10 +29,9 @@ import {
 /* ============================================================
    Config
    ------------------------------------------------------------
-   Score per word, plus a finishing bonus when every grid word
-   is found. Server clamps to the per-session and per-day caps
-   defined in backend/src/lib/games.ts so tweaks here can't
-   blow past the daily cap.
+   Coin values, storage keys, and animation timings (ms). The
+   server clamps coin awards via its per-game cap, so tweaks
+   here are display-only above the daily cap.
    ============================================================ */
 
 const COINS_PER_PUZZLE_WORD = 30;
@@ -47,16 +40,74 @@ const COINS_FULL_CLEAR_BONUS = 100;
 
 const STATS_KEY = "minero_word_stats_v1";
 const PROGRESS_KEY = "minero_word_progress_v1";
-const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Letter-fly animation: how long each letter takes to fly from the wheel
+// to its grid cell, and how long to wait between sequential letters.
+export const FLY_PER_LETTER_MS = 90;
+export const FLY_DURATION_MS = 420;
+
+// Level-complete fall-out: each cell falls with a stagger so the grid
+// "shatters" downward. New-level fall-in mirrors this.
+export const EXIT_PER_CELL_MS = 30;
+export const EXIT_DURATION_MS = 480;
+export const ENTER_PER_CELL_MS = 30;
+export const ENTER_DURATION_MS = 480;
+
+// Beats between phases so transitions feel paced rather than instant.
+export const LEVEL_HOLD_MS = 360;       // win pause before exit starts
+export const LEVEL_INTERLUDE_MS = 220;  // pause between exit ending and enter starting
 
 /* ============================================================
-   Lifetime stats (localStorage)
+   Wordscapes-style local palette
+   ------------------------------------------------------------
+   The app's brand token is amber; the reference uses a violet
+   tile + white wheel. We keep these inline so they don't fight
+   with theme tokens elsewhere.
    ============================================================ */
+
+const TILE_FILLED_BG = "linear-gradient(180deg, #7665e3 0%, #4a3fb0 100%)";
+const TILE_FILLED_BORDER = "#3c318f";
+const TILE_EMPTY_BG = "rgba(255,255,255,0.94)";
+const TILE_EMPTY_BORDER = "rgba(0,0,0,0.10)";
+const TILE_TEXT = "#ffffff";
+const WHEEL_HUB_BG = "rgba(255,255,255,0.96)";
+const WHEEL_HUB_STROKE = "rgba(0,0,0,0.08)";
+const WHEEL_LETTER_BG = "#ffffff";
+const WHEEL_LETTER_STROKE = "rgba(0,0,0,0.10)";
+const WHEEL_LETTER_TEXT = "#1c1340";
+const WHEEL_LETTER_SELECTED_BG = "#5a4ed4";
+const WHEEL_LETTER_SELECTED_TEXT = "#ffffff";
+const WHEEL_LINE = "#5a4ed4";
+const BONUS_DOT_FILLED = "#f5a623";
+const BONUS_DOT_EMPTY = "rgba(255,255,255,0.55)";
+
+/* ============================================================
+   Types
+   ============================================================ */
+
+type Phase = "playing" | "exiting" | "entering";
+
+type FlashKind = "found" | "bonus" | "duplicate" | "invalid" | "tooshort";
+type Flash = { id: number; kind: FlashKind; word: string; coins?: number };
+
+/** A single letter mid-flight from the wheel into its grid cell. */
+type Flight = {
+  id: string;
+  ch: string;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  delayMs: number;
+  /** Word the flight belongs to, so we can reveal that grid word once
+   *  every letter in the flight batch has landed. */
+  word: string;
+};
 
 type Stats = {
   totalCoins: number;
   gamesPlayed: number;
-  puzzlesSolved: number;     // puzzles where every grid word was found
+  puzzlesSolved: number;
   currentStreak: number;
   bestStreak: number;
   lastPlayedDay: number;
@@ -72,6 +123,18 @@ const EMPTY_STATS: Stats = {
   lastPlayedDay: -1,
   lastResult: null,
 };
+
+type Progress = {
+  dayIndex: number;
+  level: number;            // levels completed beyond the daily seed
+  found: string[];          // puzzle words found in current level
+  bonus: string[];          // bonus words found in current level
+  finalized: boolean;       // server session has been finalized today
+};
+
+/* ============================================================
+   Lifetime stats (localStorage, useSyncExternalStore-shaped)
+   ============================================================ */
 
 function parseStats(raw: string | null): Stats {
   if (!raw) return EMPTY_STATS;
@@ -142,39 +205,29 @@ function writeStats(next: Stats) {
 }
 
 /* ============================================================
-   Per-day puzzle progress (localStorage)
-   ------------------------------------------------------------
-   Holds the words found so far for today's puzzle so a refresh
-   doesn't reset progress mid-session. Cleared automatically
-   when the day rolls over.
+   Per-day progress (localStorage)
    ============================================================ */
-
-type Progress = {
-  dayIndex: number;
-  found: string[];   // puzzle words found
-  bonus: string[];   // bonus words found
-  finalized: boolean; // server session has been finalized for today
-};
 
 function readProgress(dayIndex: number): Progress {
   if (typeof window === "undefined") {
-    return { dayIndex, found: [], bonus: [], finalized: false };
+    return { dayIndex, level: 0, found: [], bonus: [], finalized: false };
   }
   try {
     const raw = window.localStorage.getItem(PROGRESS_KEY);
-    if (!raw) return { dayIndex, found: [], bonus: [], finalized: false };
+    if (!raw) return { dayIndex, level: 0, found: [], bonus: [], finalized: false };
     const p = JSON.parse(raw) as Partial<Progress>;
     if (p.dayIndex !== dayIndex) {
-      return { dayIndex, found: [], bonus: [], finalized: false };
+      return { dayIndex, level: 0, found: [], bonus: [], finalized: false };
     }
     return {
       dayIndex,
+      level: typeof p.level === "number" && p.level >= 0 ? p.level : 0,
       found: Array.isArray(p.found) ? p.found.filter((s) => typeof s === "string") : [],
       bonus: Array.isArray(p.bonus) ? p.bonus.filter((s) => typeof s === "string") : [],
       finalized: Boolean(p.finalized),
     };
   } catch {
-    return { dayIndex, found: [], bonus: [], finalized: false };
+    return { dayIndex, level: 0, found: [], bonus: [], finalized: false };
   }
 }
 
@@ -188,7 +241,7 @@ function writeProgress(p: Progress) {
 }
 
 /* ============================================================
-   Misc helpers
+   Helpers
    ============================================================ */
 
 function shuffle<T>(arr: readonly T[]): T[] {
@@ -200,109 +253,287 @@ function shuffle<T>(arr: readonly T[]): T[] {
   return out;
 }
 
-function formatCountdown(ms: number) {
-  if (ms <= 0) return "00:00:00";
-  const total = Math.ceil(ms / 1000);
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+/** Deterministic puzzle for a (day, level) pair. The day seeds the start so
+ *  every player sees the same opening puzzle on the same calendar day; level
+ *  walks forward through the curated pool from there. */
+export function puzzleFor(dayIndex: number, level: number): Puzzle {
+  const OFFSET = 7;
+  const idx = (((dayIndex + OFFSET + level) % PUZZLES.length) + PUZZLES.length) % PUZZLES.length;
+  return PUZZLES[idx];
+}
+
+/* ============================================================
+   Local glyphs (HUD bits the shared icon set doesn't ship yet)
+   ============================================================ */
+
+function GlyphStar({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+      <path
+        fill="currentColor"
+        d="M12 2.6l2.95 5.97 6.59.96-4.77 4.65 1.13 6.56L12 17.77l-5.9 3.10 1.13-6.56-4.77-4.65 6.59-.96L12 2.6z"
+      />
+    </svg>
+  );
+}
+
+function GlyphShop({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden fill="none">
+      <path
+        d="M3 6h18l-2 12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L3 6z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+        fill="currentColor"
+        fillOpacity="0.18"
+      />
+      <path
+        d="M8 6V4a4 4 0 0 1 8 0v2"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function GlyphShuffle({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden fill="none">
+      <path
+        d="M16 4h4v4M4 20l16-16M20 16v4h-4M4 4l6 6m4 4l6 6"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function GlyphBulb({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden fill="none">
+      <path
+        d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.7.6 1 1.4 1 2.3v1h6v-1c0-.9.3-1.7 1-2.3A7 7 0 0 0 12 2z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/* ============================================================
+   Wheel layout constants (used by both the wheel SVG and the
+   parent component when it computes fly-source positions)
+   ============================================================ */
+
+export const WHEEL_VIEWBOX = 280;
+export const WHEEL_CENTER = WHEEL_VIEWBOX / 2;
+export const WHEEL_RING_R = 100;
+export const WHEEL_LETTER_R = 28;
+
+/** Centre of the i-th letter on a wheel with `n` letters, in viewBox coords.
+ *  Top-of-wheel goes first, then clockwise. */
+export function wheelLetterPos(i: number, n: number): { x: number; y: number } {
+  const theta = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+  return {
+    x: WHEEL_CENTER + WHEEL_RING_R * Math.cos(theta),
+    y: WHEEL_CENTER + WHEEL_RING_R * Math.sin(theta),
+  };
+}
+
+/* ============================================================
+   Flying letter overlay
+   ------------------------------------------------------------
+   When a puzzle word is found, the parent pushes a Flight per
+   letter. Each Flight mounts as a fixed-positioned tile at its
+   `from` viewport coords; after `delayMs` it transitions to
+   `to`, and after delay+duration the parent's onLanded callback
+   fires so the flight can be removed and the corresponding grid
+   cell can reveal.
+   ============================================================ */
+
+function FlyingLetter({
+  flight,
+  onLanded,
+}: {
+  flight: Flight;
+  onLanded: (id: string) => void;
+}) {
+  // Initial position is the "from" point; after the per-letter delay we
+  // setState to the "to" point so the CSS transition runs to the target.
+  const [pos, setPos] = useState<{ x: number; y: number }>({
+    x: flight.fromX,
+    y: flight.fromY,
+  });
+
+  useEffect(() => {
+    const startId = window.setTimeout(() => {
+      setPos({ x: flight.toX, y: flight.toY });
+    }, flight.delayMs);
+    const endId = window.setTimeout(() => {
+      onLanded(flight.id);
+    }, flight.delayMs + FLY_DURATION_MS);
+    return () => {
+      window.clearTimeout(startId);
+      window.clearTimeout(endId);
+    };
+  }, [flight, onLanded]);
+
+  return (
+    <div
+      aria-hidden
+      style={{
+        position: "fixed",
+        left: pos.x,
+        top: pos.y,
+        transform: "translate(-50%, -50%)",
+        transition: `left ${FLY_DURATION_MS}ms cubic-bezier(0.34, 1.32, 0.64, 1), top ${FLY_DURATION_MS}ms cubic-bezier(0.34, 1.32, 0.64, 1)`,
+        width: 38,
+        height: 38,
+        borderRadius: 8,
+        background: TILE_FILLED_BG,
+        border: `1px solid ${TILE_FILLED_BORDER}`,
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.30), 0 4px 14px rgba(0,0,0,0.30)",
+        color: TILE_TEXT,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontWeight: 800,
+        fontSize: 19,
+        letterSpacing: "0.02em",
+        textTransform: "uppercase",
+        pointerEvents: "none",
+        zIndex: 50,
+      }}
+    >
+      {flight.ch.toUpperCase()}
+    </div>
+  );
 }
 
 /* ============================================================
    Crossword grid
    ------------------------------------------------------------
    Renders a sparse rows×cols grid. Cells without a letter are
-   transparent placeholders (so the rest of the layout still
-   aligns); cells with a letter render an empty tile until any
-   word containing that cell has been found, after which the
-   letter is revealed with a flip animation. A cell is revealed
-   if ANY of the words passing through it is in `foundSet`.
+   transparent placeholders; cells with a letter render an empty
+   white tile until the word is in `revealedSet`, after which
+   the tile flips to a violet gradient with the letter on top.
+   `tileRefs` is populated as cells mount so the parent can look
+   up viewport positions for fly-letter targets in step 3.
    ============================================================ */
 
 function Crossword({
   puzzle,
-  foundSet,
-  justFoundWordIdx,
+  revealedSet,
+  tileRefs,
+  phase,
 }: {
   puzzle: Puzzle;
-  foundSet: Set<string>;
-  justFoundWordIdx: number | null;
+  revealedSet: Set<string>;
+  tileRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
+  phase: Phase;
 }) {
   const { rows, cols } = useMemo(() => gridBounds(puzzle), [puzzle]);
   const cells = useMemo(() => gridCells(puzzle), [puzzle]);
 
-  // Map word index → whether that word has been found, for quick lookup.
-  const foundByIdx = useMemo(() => {
-    return puzzle.words.map((w) => foundSet.has(w.word));
-  }, [puzzle.words, foundSet]);
+  const revealedByIdx = useMemo(
+    () => puzzle.words.map((w) => revealedSet.has(w.word)),
+    [puzzle.words, revealedSet],
+  );
 
-  const tilePx = cols >= 7 ? 30 : cols >= 6 ? 34 : 38;
-  const gapPx = 4;
+  // Tile size scales down for wider grids so a 7-column puzzle still fits a
+  // narrow phone without overflowing.
+  const tilePx = cols >= 7 ? 34 : cols >= 6 ? 38 : 42;
+  const gapPx = 6;
 
   return (
-    <div className="flex justify-center mb-4">
-      <div
-        role="grid"
-        aria-label="Crossword grid"
-        style={{
-          display: "grid",
-          gridTemplateRows: `repeat(${rows}, ${tilePx}px)`,
-          gridTemplateColumns: `repeat(${cols}, ${tilePx}px)`,
-          gap: gapPx,
-        }}
-      >
-        {Array.from({ length: rows * cols }).map((_, k) => {
-          const r = Math.floor(k / cols);
-          const c = k % cols;
-          const cell = cells.get(`${r},${c}`);
-          if (!cell) {
-            return <span key={k} aria-hidden style={{ width: tilePx, height: tilePx }} />;
-          }
-          const revealed = cell.wordIdx.some((i) => foundByIdx[i]);
-          const flashing =
-            justFoundWordIdx !== null && cell.wordIdx.includes(justFoundWordIdx);
-          return (
-            <CrossTile
-              key={k}
-              letter={cell.letter}
-              revealed={revealed}
-              flashing={flashing}
-              size={tilePx}
-            />
-          );
-        })}
-      </div>
+    <div
+      role="grid"
+      aria-label="Crossword grid"
+      style={{
+        display: "grid",
+        gridTemplateRows: `repeat(${rows}, ${tilePx}px)`,
+        gridTemplateColumns: `repeat(${cols}, ${tilePx}px)`,
+        gap: gapPx,
+      }}
+    >
+      {Array.from({ length: rows * cols }).map((_, k) => {
+        const r = Math.floor(k / cols);
+        const c = k % cols;
+        const cell = cells.get(`${r},${c}`);
+        if (!cell) {
+          return <span key={k} aria-hidden style={{ width: tilePx, height: tilePx }} />;
+        }
+        const revealed = cell.wordIdx.some((i) => revealedByIdx[i]);
+        const cellKey = `${r},${c}`;
+        return (
+          <CrossTile
+            key={k}
+            cellKey={cellKey}
+            tileRefs={tileRefs}
+            letter={cell.letter}
+            revealed={revealed}
+            size={tilePx}
+            phase={phase}
+            cellOrder={k}
+          />
+        );
+      })}
     </div>
   );
 }
 
 function CrossTile({
+  cellKey,
+  tileRefs,
   letter,
   revealed,
-  flashing,
   size,
+  phase,
+  cellOrder,
 }: {
+  cellKey: string;
+  tileRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
   letter: string;
   revealed: boolean;
-  flashing: boolean;
   size: number;
+  phase: Phase;
+  cellOrder: number;
 }) {
+  // Drive per-cell stagger off grid order. `both` keeps the start/end
+  // state held so a tile is invisible before its turn (entering) or stays
+  // fallen after its turn (exiting). When phase flips back to "playing",
+  // the animation property clears and the tile snaps to its idle look.
+  const animation =
+    phase === "exiting"
+      ? `wordTileFallOut ${EXIT_DURATION_MS}ms cubic-bezier(0.55, 0.06, 0.68, 0.19) ${cellOrder * EXIT_PER_CELL_MS}ms both`
+      : phase === "entering"
+        ? `wordTileFallIn ${ENTER_DURATION_MS}ms cubic-bezier(0.34, 1.56, 0.64, 1) ${cellOrder * ENTER_PER_CELL_MS}ms both`
+        : undefined;
+
   return (
     <div
+      ref={(el) => {
+        if (el) tileRefs.current.set(cellKey, el);
+        else tileRefs.current.delete(cellKey);
+      }}
       role="gridcell"
+      data-cell={cellKey}
       style={{
         width: size,
         height: size,
-        borderRadius: "var(--radius-sm)",
-        background: revealed
-          ? "color-mix(in oklab, var(--brand) 75%, var(--surface))"
-          : "var(--surface-2)",
-        border: revealed
-          ? "1px solid color-mix(in oklab, var(--brand) 60%, transparent)"
-          : "1px solid var(--border)",
-        color: revealed ? "var(--brand-fg)" : "transparent",
+        borderRadius: 8,
+        background: revealed ? TILE_FILLED_BG : TILE_EMPTY_BG,
+        border: `1px solid ${revealed ? TILE_FILLED_BORDER : TILE_EMPTY_BORDER}`,
+        boxShadow: revealed
+          ? "inset 0 1px 0 rgba(255,255,255,0.30), 0 1px 2px rgba(0,0,0,0.18)"
+          : "inset 0 1px 0 rgba(255,255,255,0.6), 0 1px 1px rgba(0,0,0,0.06)",
+        color: revealed ? TILE_TEXT : "transparent",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -311,11 +542,11 @@ function CrossTile({
         textTransform: "uppercase",
         lineHeight: 1,
         letterSpacing: "0.02em",
-        transition: "background 200ms var(--ease-out), color 200ms var(--ease-out)",
-        animation: flashing ? "wordPulse 0.6s var(--ease-out)" : undefined,
+        transition: "background 220ms ease, color 220ms ease, border-color 220ms ease",
+        animation,
       }}
     >
-      {revealed ? letter : ""}
+      {revealed ? letter.toUpperCase() : ""}
     </div>
   );
 }
@@ -323,74 +554,55 @@ function CrossTile({
 /* ============================================================
    Letter wheel
    ------------------------------------------------------------
-   N letters arranged on a circle. The user presses on a letter
-   and drags through neighbours to chain them into a word; on
-   pointer-up the chain is submitted. Hit-testing is in SVG
-   coordinates so it works across phones, tablets, and desktop
-   mice with the same code path.
-
-   `selection` is an array of letter indices (into the supplied
-   `letters` array) representing the current chain. A letter
-   may not appear twice in one selection.
+   Pointer-driven swipe selector. Letters are arranged on a
+   circle; the user presses, drags through neighbours, and
+   releases to submit. Backtracking over the previous letter
+   undoes the last hop. SVG hit-testing means the same code
+   handles touch, mouse, and pen.
    ============================================================ */
 
-const WHEEL_VIEWBOX = 280;
-const WHEEL_CENTER = WHEEL_VIEWBOX / 2;
-const WHEEL_RING_R = 100;
-const WHEEL_LETTER_R = 26;
-// How close (px in viewBox) the pointer must be to a letter's centre to
-// register a hit. Generous enough that swiping across letters always works.
 const HIT_RADIUS = WHEEL_LETTER_R + 6;
-
-function letterPositions(n: number): { x: number; y: number }[] {
-  // First letter at the top, going clockwise.
-  return Array.from({ length: n }, (_, i) => {
-    const theta = -Math.PI / 2 + (i * 2 * Math.PI) / n;
-    return {
-      x: WHEEL_CENTER + WHEEL_RING_R * Math.cos(theta),
-      y: WHEEL_CENTER + WHEEL_RING_R * Math.sin(theta),
-    };
-  });
-}
 
 function LetterWheel({
   letters,
   selection,
   onSelectionChange,
   onSubmit,
-  onShuffle,
+  svgRef,
 }: {
   letters: string[];
   selection: number[];
   onSelectionChange: (next: number[]) => void;
   onSubmit: () => void;
-  onShuffle: () => void;
+  svgRef: React.MutableRefObject<SVGSVGElement | null>;
 }) {
-  const svgRef = useRef<SVGSVGElement | null>(null);
   const draggingRef = useRef(false);
-  // Current pointer position (in viewBox coords) so the trailing line
-  // follows the finger between letters.
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
 
-  const positions = useMemo(() => letterPositions(letters.length), [letters.length]);
+  const positions = useMemo(
+    () => letters.map((_, i) => wheelLetterPos(i, letters.length)),
+    [letters],
+  );
 
-  const toViewBox = useCallback((clientX: number, clientY: number) => {
-    const svg = svgRef.current;
-    if (!svg) return null;
-    const rect = svg.getBoundingClientRect();
-    const x = ((clientX - rect.left) / rect.width) * WHEEL_VIEWBOX;
-    const y = ((clientY - rect.top) / rect.height) * WHEEL_VIEWBOX;
-    return { x, y };
-  }, []);
+  const toViewBox = useCallback(
+    (clientX: number, clientY: number) => {
+      const svg = svgRef.current;
+      if (!svg) return null;
+      const rect = svg.getBoundingClientRect();
+      return {
+        x: ((clientX - rect.left) / rect.width) * WHEEL_VIEWBOX,
+        y: ((clientY - rect.top) / rect.height) * WHEEL_VIEWBOX,
+      };
+    },
+    [svgRef],
+  );
 
   const hitLetter = useCallback(
     (vx: number, vy: number): number => {
       let best = -1;
       let bestDist = HIT_RADIUS;
       for (let i = 0; i < positions.length; i++) {
-        const dx = positions[i].x - vx;
-        const dy = positions[i].y - vy;
-        const d = Math.hypot(dx, dy);
+        const d = Math.hypot(positions[i].x - vx, positions[i].y - vy);
         if (d < bestDist) {
           bestDist = d;
           best = i;
@@ -401,11 +613,10 @@ function LetterWheel({
     [positions],
   );
 
-  const updateSelectionFor = useCallback(
+  const updateSelection = useCallback(
     (idx: number) => {
       if (idx < 0) return;
-      // If the pointer comes back over the previous letter, allow
-      // backtracking (Wordscapes does this — drag back to undo the last hop).
+      // Drag-back-over-previous = undo last hop (Wordscapes behaviour).
       if (selection.length >= 2 && selection[selection.length - 2] === idx) {
         onSelectionChange(selection.slice(0, -1));
         return;
@@ -416,34 +627,30 @@ function LetterWheel({
     [onSelectionChange, selection],
   );
 
-  const handlePointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
+  const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
     const v = toViewBox(e.clientX, e.clientY);
     if (!v) return;
     draggingRef.current = true;
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch {
-      /* setPointerCapture not supported in some test envs */
+      /* ignore */
     }
     setPointer(v);
     const idx = hitLetter(v.x, v.y);
-    if (idx >= 0) {
-      onSelectionChange([idx]);
-    } else {
-      onSelectionChange([]);
-    }
+    onSelectionChange(idx >= 0 ? [idx] : []);
   };
 
-  const handlePointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
+  const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
     if (!draggingRef.current) return;
     const v = toViewBox(e.clientX, e.clientY);
     if (!v) return;
     setPointer(v);
     const idx = hitLetter(v.x, v.y);
-    if (idx >= 0) updateSelectionFor(idx);
+    if (idx >= 0) updateSelection(idx);
   };
 
-  const finishDrag = (e: ReactPointerEvent<SVGSVGElement>) => {
+  const finish = (e: ReactPointerEvent<SVGSVGElement>) => {
     if (!draggingRef.current) return;
     draggingRef.current = false;
     setPointer(null);
@@ -455,130 +662,269 @@ function LetterWheel({
     onSubmit();
   };
 
-  // Build the SVG polyline points: every selected letter centre, plus the
-  // current pointer position so the trailing segment tracks the finger.
-  // `pointer` is only non-null mid-drag (cleared in finishDrag), so its
-  // presence is sufficient — no need to read draggingRef during render.
+  // Selection trail polyline points: each selected letter center plus the
+  // current pointer (only non-null mid-drag, so its presence drives the
+  // trailing segment without reading the dragging ref during render).
   const linePoints = useMemo(() => {
     const pts = selection.map((i) => `${positions[i].x},${positions[i].y}`);
-    if (pointer) {
-      pts.push(`${pointer.x},${pointer.y}`);
-    }
+    if (pointer) pts.push(`${pointer.x},${pointer.y}`);
     return pts.join(" ");
   }, [positions, selection, pointer]);
 
   return (
-    <div className="flex flex-col items-center gap-3 select-none">
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${WHEEL_VIEWBOX} ${WHEEL_VIEWBOX}`}
-        width={WHEEL_VIEWBOX}
-        height={WHEEL_VIEWBOX}
-        style={{
-          maxWidth: "min(86vw, 320px)",
-          touchAction: "none",
-          userSelect: "none",
-        }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={finishDrag}
-        onPointerCancel={finishDrag}
-        onPointerLeave={(e) => {
-          // Release capture only on cancel — we DON'T submit here, since
-          // pointer-leave fires while the drag is still in progress on
-          // some browsers. Pointer-up handles submission.
-          if (!draggingRef.current) return;
-          // Keep tracking outside the SVG.
-          const v = toViewBox(e.clientX, e.clientY);
-          if (v) setPointer(v);
-        }}
-        role="application"
-        aria-label="Letter wheel"
-      >
-        {/* Hub */}
-        <circle
-          cx={WHEEL_CENTER}
-          cy={WHEEL_CENTER}
-          r={WHEEL_RING_R + WHEEL_LETTER_R + 8}
-          fill="var(--surface-2)"
-          stroke="var(--border)"
-          strokeWidth={1}
+    <svg
+      ref={svgRef}
+      viewBox={`0 0 ${WHEEL_VIEWBOX} ${WHEEL_VIEWBOX}`}
+      width={WHEEL_VIEWBOX}
+      height={WHEEL_VIEWBOX}
+      role="application"
+      aria-label="Letter wheel"
+      style={{
+        width: "min(86vw, 320px)",
+        height: "auto",
+        touchAction: "none",
+        userSelect: "none",
+      }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={finish}
+      onPointerCancel={finish}
+    >
+      {/* Hub */}
+      <circle
+        cx={WHEEL_CENTER}
+        cy={WHEEL_CENTER}
+        r={WHEEL_RING_R + WHEEL_LETTER_R + 8}
+        fill={WHEEL_HUB_BG}
+        stroke={WHEEL_HUB_STROKE}
+        strokeWidth={1}
+      />
+      {/* Selection trail (under the letter circles) */}
+      {selection.length > 0 && (
+        <polyline
+          points={linePoints}
+          fill="none"
+          stroke={WHEEL_LINE}
+          strokeWidth={8}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity={0.85}
         />
-        {/* Selection trail */}
-        {selection.length > 0 && (
-          <polyline
-            points={linePoints}
-            fill="none"
-            stroke="var(--brand)"
-            strokeWidth={6}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            opacity={0.85}
-          />
-        )}
-        {/* Letter circles */}
-        {positions.map((p, i) => {
-          const selected = selection.includes(i);
-          return (
-            <g key={i}>
-              <circle
-                cx={p.x}
-                cy={p.y}
-                r={WHEEL_LETTER_R}
-                fill={selected ? "var(--brand)" : "var(--surface)"}
-                stroke={selected ? "var(--brand)" : "var(--border-strong)"}
-                strokeWidth={2}
-              />
-              <text
-                x={p.x}
-                y={p.y}
-                textAnchor="middle"
-                dominantBaseline="central"
-                fontSize={WHEEL_LETTER_R}
-                fontWeight={800}
-                fill={selected ? "var(--brand-fg)" : "var(--text)"}
-                style={{ textTransform: "uppercase", pointerEvents: "none" }}
-              >
-                {letters[i].toUpperCase()}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-      <button
-        type="button"
-        onClick={onShuffle}
-        className="btn btn-secondary btn-sm"
-        aria-label="Shuffle letters"
-      >
-        Shuffle
-      </button>
-    </div>
+      )}
+      {/* Letter circles */}
+      {positions.map((p, i) => {
+        const selected = selection.includes(i);
+        return (
+          <g key={i}>
+            <circle
+              cx={p.x}
+              cy={p.y}
+              r={WHEEL_LETTER_R}
+              fill={selected ? WHEEL_LETTER_SELECTED_BG : WHEEL_LETTER_BG}
+              stroke={selected ? WHEEL_LETTER_SELECTED_BG : WHEEL_LETTER_STROKE}
+              strokeWidth={2}
+            />
+            <text
+              x={p.x}
+              y={p.y}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize={WHEEL_LETTER_R}
+              fontWeight={800}
+              fill={selected ? WHEEL_LETTER_SELECTED_TEXT : WHEEL_LETTER_TEXT}
+              style={{ textTransform: "uppercase", pointerEvents: "none" }}
+            >
+              {letters[i].toUpperCase()}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/* ============================================================
+   Selection preview + bonus dots
+   ============================================================ */
+
+function FlashPill({ flash }: { flash: Flash }) {
+  // Visual treatment per kind. Found/bonus get a positive look; duplicates,
+  // tooshort, and invalid words get a quieter "no" treatment.
+  let bg = "rgba(255,255,255,0.18)";
+  const fg = "#ffffff";
+  let prefix: React.ReactNode = null;
+  let suffix: React.ReactNode = null;
+  let label: string = flash.word.toUpperCase();
+
+  if (flash.kind === "found") {
+    bg = "linear-gradient(180deg, #34c759 0%, #1f9e44 100%)";
+    prefix = <IconSparkles size={14} />;
+    if (flash.coins) {
+      suffix = (
+        <>
+          {" "}+ <IconCoin size={12} /> {flash.coins}
+        </>
+      );
+    }
+  } else if (flash.kind === "bonus") {
+    bg = "linear-gradient(180deg, #f5a623 0%, #c87b08 100%)";
+    prefix = <IconSparkles size={14} />;
+    suffix = flash.coins ? (
+      <>
+        {" "}+ <IconCoin size={12} /> {flash.coins} (bonus)
+      </>
+    ) : (
+      " (bonus)"
+    );
+  } else if (flash.kind === "duplicate") {
+    bg = "rgba(255,255,255,0.22)";
+    label = `Already found: ${flash.word.toUpperCase()}`;
+  } else if (flash.kind === "invalid") {
+    bg = "rgba(220, 60, 60, 0.85)";
+    prefix = <IconError size={14} />;
+    label = `Not a word`;
+  } else if (flash.kind === "tooshort") {
+    bg = "rgba(255,255,255,0.22)";
+    label = "Too short";
+  }
+
+  return (
+    <span
+      role="status"
+      aria-live="polite"
+      style={{
+        background: bg,
+        color: fg,
+        padding: "6px 14px",
+        borderRadius: 999,
+        fontWeight: 700,
+        fontSize: 14,
+        letterSpacing: "0.05em",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
+        animation: "wordFloatPill 1.2s ease both",
+      }}
+    >
+      {prefix}
+      <span>{label}</span>
+      {suffix}
+    </span>
+  );
+}
+
+function SelectionPreview({ word }: { word: string }) {
+  if (!word) {
+    return (
+      <span style={{ opacity: 0.6, fontSize: 13 }}>
+        Drag across the wheel to spell a word
+      </span>
+    );
+  }
+  return (
+    <span
+      style={{
+        background: WHEEL_LETTER_SELECTED_BG,
+        color: WHEEL_LETTER_SELECTED_TEXT,
+        padding: "6px 16px",
+        borderRadius: 999,
+        fontWeight: 800,
+        fontSize: 22,
+        letterSpacing: "0.10em",
+        textTransform: "uppercase",
+        boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
+      }}
+    >
+      {word}
+    </span>
+  );
+}
+
+function BonusDots({ found, total }: { found: number; total: number }) {
+  // Cap the visible row so very long bonus lists don't blow out the layout.
+  const slots = Math.min(8, Math.max(4, total));
+  const filled =
+    total === 0 ? 0 : Math.min(slots, Math.round((found / total) * slots));
+  return (
+    <>
+      {Array.from({ length: slots }).map((_, i) => (
+        <span
+          key={i}
+          style={{
+            width: 14,
+            height: 14,
+            borderRadius: 999,
+            background: i < filled ? BONUS_DOT_FILLED : BONUS_DOT_EMPTY,
+            boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.06)",
+          }}
+        />
+      ))}
+    </>
   );
 }
 
 /* ============================================================
    Main component
+   ------------------------------------------------------------
+   Step 2: wires the real grid + wheel into the layout. No
+   word validation or scoring yet — pointer-up just clears the
+   chain so the user can practice tracing letters and watch the
+   selection preview update.
    ============================================================ */
 
-type FlashKind = "found" | "bonus" | "duplicate" | "invalid" | "tooshort";
-type Flash = { kind: FlashKind; word: string; coins?: number };
-
 export default function WordClient({ playerName }: { playerName: string }) {
+  // Hooks are wired up but most aren't read yet — they're here so the
+  // surrounding state structure is in place for steps 2–5.
   const stats = useSyncExternalStore(subscribeStats, getStatsSnapshot, getStatsServer);
 
-  const [today] = useState(() => {
-    const ts = Date.now();
-    return { dayIndex: utcDayIndex(ts), puzzle: puzzleForDay(ts) };
-  });
-
-  // Wheel order is randomised per session for replay variety.
-  const [wheelLetters, setWheelLetters] = useState<string[]>(() =>
-    shuffle(today.puzzle.letters),
+  const [today] = useState(() => ({ dayIndex: utcDayIndex(Date.now()) }));
+  const initialProgress = useMemo(
+    () => readProgress(today.dayIndex),
+    [today.dayIndex],
   );
+
+  const [level, setLevel] = useState<number>(initialProgress.level);
+  const puzzle = useMemo(
+    () => puzzleFor(today.dayIndex, level),
+    [today.dayIndex, level],
+  );
+
+  const [phase, setPhase] = useState<Phase>("playing");
+  const [wheelLetters, setWheelLetters] = useState<string[]>(() =>
+    shuffle(puzzle.letters),
+  );
+  const [foundWords, setFoundWords] = useState<Set<string>>(
+    () => new Set(initialProgress.found),
+  );
+  const [foundBonus, setFoundBonus] = useState<Set<string>>(
+    () => new Set(initialProgress.bonus),
+  );
+  // Cells reveal off `revealedWords` (populated when the fly animation
+  // lands), not `foundWords`, so the grid stays empty until letters arrive.
+  const [revealedWords, setRevealedWords] = useState<Set<string>>(
+    () => new Set(initialProgress.found),
+  );
+  const [selection, setSelection] = useState<number[]>([]);
+  const [flash, setFlash] = useState<Flash | null>(null);
+  const [flights, setFlights] = useState<Flight[]>([]);
+
+  // Refs the next steps will need — declared now so the structure is set.
+  const wheelSvgRef = useRef<SVGSVGElement | null>(null);
+  const tileRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const sessionIdRef = useRef<string | null>(null);
+  const sessionStartedRef = useRef(false);
+  const finalizedRef = useRef<boolean>(initialProgress.finalized);
+
+  /** Word currently traced on the wheel (derived from selection indices). */
+  const currentWord = useMemo(
+    () => selection.map((i) => wheelLetters[i]).join(""),
+    [selection, wheelLetters],
+  );
+
+  /** Reshuffle the wheel letters; avoids returning the same order back. */
   const reshuffle = useCallback(() => {
     setWheelLetters((prev) => {
-      // Avoid an immediate identical shuffle on small letter sets.
       for (let attempt = 0; attempt < 4; attempt++) {
         const next = shuffle(prev);
         if (next.join("") !== prev.join("")) return next;
@@ -587,79 +933,168 @@ export default function WordClient({ playerName }: { playerName: string }) {
     });
   }, []);
 
-  // Hydrate today's persisted progress in the lazy initialisers so we don't
-  // setState() from an effect on mount (cascading-renders lint rule).
-  const [foundWords, setFoundWords] = useState<Set<string>>(() => {
-    const p = readProgress(today.dayIndex);
-    return new Set(p.found);
-  });
-  const [foundBonus, setFoundBonus] = useState<Set<string>>(() => {
-    const p = readProgress(today.dayIndex);
-    return new Set(p.bonus);
-  });
-  const [selection, setSelection] = useState<number[]>([]);
-  const [flash, setFlash] = useState<Flash | null>(null);
-  const [justFoundWordIdx, setJustFoundWordIdx] = useState<number | null>(null);
-  const [now, setNow] = useState<number>(() => Date.now());
+  /* ----- flash messages ----- */
+  // Monotonic id keeps two consecutive identical flashes (e.g. two
+  // duplicates of the same word) from being elided as the same React node.
+  const flashCounterRef = useRef(0);
+  const flashMsg = useCallback(
+    (kind: FlashKind, word: string, coins?: number) => {
+      flashCounterRef.current += 1;
+      setFlash({ id: flashCounterRef.current, kind, word, coins });
+    },
+    [],
+  );
 
-  const sessionIdRef = useRef<string | null>(null);
-  const sessionStartedRef = useRef(false);
-  const finalizedRef = useRef<boolean>(readProgress(today.dayIndex).finalized);
-  const earnedCoinsRef = useRef(0);
+  /* ----- letter fly-in to the grid ----- */
 
-  // Persist progress whenever it changes.
+  const triggerFlight = useCallback(
+    (wordIdx: number, sourceIndices: number[]) => {
+      const placement = puzzle.words[wordIdx];
+      if (!placement) return;
+      const svg = wheelSvgRef.current;
+      if (!svg) return;
+      const svgRect = svg.getBoundingClientRect();
+      const scale = svgRect.width / WHEEL_VIEWBOX;
+
+      const newFlights: Flight[] = [];
+      for (let i = 0; i < placement.word.length; i++) {
+        const r = placement.dir === "h" ? placement.row : placement.row + i;
+        const c = placement.dir === "h" ? placement.col + i : placement.col;
+        const tile = tileRefs.current.get(`${r},${c}`);
+        if (!tile) continue;
+        const tr = tile.getBoundingClientRect();
+        const wp = wheelLetterPos(sourceIndices[i], wheelLetters.length);
+        newFlights.push({
+          id: `f-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+          ch: placement.word[i],
+          fromX: svgRect.left + wp.x * scale,
+          fromY: svgRect.top + wp.y * scale,
+          toX: tr.left + tr.width / 2,
+          toY: tr.top + tr.height / 2,
+          delayMs: i * FLY_PER_LETTER_MS,
+          word: placement.word,
+        });
+      }
+
+      setFlights((prev) => [...prev, ...newFlights]);
+
+      // Reveal the word in the grid once the last letter has landed.
+      const totalMs = (placement.word.length - 1) * FLY_PER_LETTER_MS + FLY_DURATION_MS;
+      window.setTimeout(() => {
+        setRevealedWords((prev) => {
+          const next = new Set(prev);
+          next.add(placement.word);
+          return next;
+        });
+      }, totalMs);
+    },
+    [puzzle, wheelLetters.length],
+  );
+
+  const onFlightLanded = useCallback((id: string) => {
+    setFlights((prev) => prev.filter((f) => f.id !== id));
+  }, []);
+
+  /* ----- pointer-up validation ----- */
+
+  const onWheelSubmit = useCallback(() => {
+    const sel = selection;
+    setSelection([]);
+    if (sel.length === 0) return;
+    const word = sel.map((i) => wheelLetters[i]).join("");
+
+    if (word.length < 3) {
+      if (word.length > 0) flashMsg("tooshort", word);
+      return;
+    }
+    if (!canFormWord(puzzle, word)) {
+      flashMsg("invalid", word);
+      return;
+    }
+
+    // Lazy-start the server session on the first valid attempt today.
+    if (!sessionStartedRef.current && !finalizedRef.current) {
+      sessionStartedRef.current = true;
+      startGameSession("word").then((r) => {
+        if (r.ok) sessionIdRef.current = r.sessionId;
+      });
+    }
+
+    const wordIdx = isPuzzleWord(puzzle, word);
+    if (wordIdx >= 0) {
+      if (foundWords.has(word)) {
+        flashMsg("duplicate", word);
+        return;
+      }
+      setFoundWords((prev) => {
+        const next = new Set(prev);
+        next.add(word);
+        return next;
+      });
+      triggerFlight(wordIdx, sel);
+      flashMsg("found", word, COINS_PER_PUZZLE_WORD);
+      return;
+    }
+
+    if (isBonusWord(puzzle, word)) {
+      if (foundBonus.has(word)) {
+        flashMsg("duplicate", word);
+        return;
+      }
+      setFoundBonus((prev) => {
+        const next = new Set(prev);
+        next.add(word);
+        return next;
+      });
+      flashMsg("bonus", word, COINS_PER_BONUS_WORD);
+      return;
+    }
+
+    flashMsg("invalid", word);
+  }, [
+    selection,
+    wheelLetters,
+    puzzle,
+    foundWords,
+    foundBonus,
+    flashMsg,
+    triggerFlight,
+  ]);
+
+  /* ----- persistence + flash auto-clear + level finalize ----- */
+
+  // Save in-progress state on every change so a refresh keeps found words.
   useEffect(() => {
     writeProgress({
       dayIndex: today.dayIndex,
+      level,
       found: Array.from(foundWords),
       bonus: Array.from(foundBonus),
       finalized: finalizedRef.current,
     });
-  }, [today.dayIndex, foundWords, foundBonus]);
+  }, [today.dayIndex, level, foundWords, foundBonus]);
 
-  // Tick the countdown clock.
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  // Auto-clear flash messages.
+  // Flash messages clear themselves so repeated guesses keep updating it.
   useEffect(() => {
     if (!flash) return;
     const id = window.setTimeout(() => setFlash(null), 1200);
     return () => window.clearTimeout(id);
   }, [flash]);
 
-  // Auto-clear the "just found" pulse so the same word doesn't keep
-  // re-animating on every re-render.
-  useEffect(() => {
-    if (justFoundWordIdx === null) return;
-    const id = window.setTimeout(() => setJustFoundWordIdx(null), 700);
-    return () => window.clearTimeout(id);
-  }, [justFoundWordIdx]);
-
-  const allFound = foundWords.size === today.puzzle.words.length;
+  const allFound = foundWords.size === puzzle.words.length;
   const totalScoreToday =
     foundWords.size * COINS_PER_PUZZLE_WORD +
     foundBonus.size * COINS_PER_BONUS_WORD +
     (allFound ? COINS_FULL_CLEAR_BONUS : 0);
 
-  // The currently-spelled word, derived from the chained letter indices.
-  const currentWord = useMemo(
-    () => selection.map((i) => wheelLetters[i]).join(""),
-    [selection, wheelLetters],
-  );
-
-  /* ----- finalize: send the score to the server once today is done ----- */
-
+  // Server finalize fires once the player clears every grid word for the day.
+  // Subsequent levels (steps 4–5) advance locally; the server enforces the
+  // 24h cooldown so only the first clear pays out.
   const finalize = useCallback(
     (solved: boolean) => {
       if (finalizedRef.current) return;
       finalizedRef.current = true;
-
       const score = totalScoreToday;
-      earnedCoinsRef.current = score;
-
       const prev = getStatsSnapshot();
       const nextStreak = solved ? prev.currentStreak + 1 : 0;
       writeStats({
@@ -671,13 +1106,6 @@ export default function WordClient({ playerName }: { playerName: string }) {
         lastPlayedDay: today.dayIndex,
         lastResult: solved ? "solved" : "partial",
       });
-      writeProgress({
-        dayIndex: today.dayIndex,
-        found: Array.from(foundWords),
-        bonus: Array.from(foundBonus),
-        finalized: true,
-      });
-
       if (sessionIdRef.current) {
         const sid = sessionIdRef.current;
         sessionIdRef.current = null;
@@ -686,161 +1114,271 @@ export default function WordClient({ playerName }: { playerName: string }) {
         });
       }
     },
-    [totalScoreToday, today.dayIndex, foundWords, foundBonus],
+    [totalScoreToday, today.dayIndex],
   );
 
-  // Auto-finalize the moment every grid word is found.
   useEffect(() => {
     if (allFound && !finalizedRef.current) {
       finalize(true);
     }
   }, [allFound, finalize]);
 
-  /* ----- selection submit ----- */
+  /* ----- level transitions: exit → swap puzzle → enter → play ----- */
 
-  const submitSelection = useCallback(() => {
-    if (selection.length === 0) return;
-    const word = currentWord;
-    setSelection([]);
+  // Total cells in the current grid drives the longest stagger so we know
+  // when each phase's animation has fully finished.
+  const cellCount = useMemo(() => {
+    const { rows, cols } = gridBounds(puzzle);
+    return rows * cols;
+  }, [puzzle]);
 
-    if (word.length < 3) {
-      if (word.length > 0) setFlash({ kind: "tooshort", word });
-      return;
-    }
+  // Once every grid word is found AND every fly-in has landed, hold for a
+  // beat so the player can read the last reveal, then flip to "exiting"
+  // which drives the per-cell fall-down animation in CrossTile.
+  useEffect(() => {
+    if (phase !== "playing") return;
+    if (!allFound) return;
+    if (flights.length > 0) return;
+    const t = window.setTimeout(() => setPhase("exiting"), LEVEL_HOLD_MS);
+    return () => window.clearTimeout(t);
+  }, [phase, allFound, flights.length]);
 
-    if (!canFormWord(today.puzzle, word)) {
-      setFlash({ kind: "invalid", word });
-      return;
-    }
+  // Phase "exiting" — once the last cell has finished falling out, advance
+  // the level, reset per-puzzle state, reshuffle the wheel for the new
+  // letter set, and flip to "entering" so the new tiles fall in from above.
+  useEffect(() => {
+    if (phase !== "exiting") return;
+    const totalMs =
+      Math.max(0, cellCount - 1) * EXIT_PER_CELL_MS +
+      EXIT_DURATION_MS +
+      LEVEL_INTERLUDE_MS;
+    const t = window.setTimeout(() => {
+      const nextLevel = level + 1;
+      const nextPuzzle = puzzleFor(today.dayIndex, nextLevel);
+      setLevel(nextLevel);
+      setWheelLetters(shuffle(nextPuzzle.letters));
+      setFoundWords(new Set());
+      setFoundBonus(new Set());
+      setRevealedWords(new Set());
+      setSelection([]);
+      setFlash(null);
+      setFlights([]);
+      // The server session has already been finalized for today on the
+      // first all-found; subsequent levels are local-only.
+      setPhase("entering");
+    }, totalMs);
+    return () => window.clearTimeout(t);
+  }, [phase, cellCount, level, today.dayIndex]);
 
-    // Lazily kick off the server session on the first valid attempt.
-    if (!sessionStartedRef.current && !finalizedRef.current) {
-      sessionStartedRef.current = true;
-      startGameSession("word").then((r) => {
-        if (r.ok) sessionIdRef.current = r.sessionId;
-      });
-    }
+  // Phase "entering" — return to playing once every cell has landed.
+  useEffect(() => {
+    if (phase !== "entering") return;
+    const totalMs =
+      Math.max(0, cellCount - 1) * ENTER_PER_CELL_MS + ENTER_DURATION_MS + 50;
+    const t = window.setTimeout(() => setPhase("playing"), totalMs);
+    return () => window.clearTimeout(t);
+  }, [phase, cellCount]);
 
-    const puzzleIdx = isPuzzleWord(today.puzzle, word);
-    if (puzzleIdx >= 0) {
-      if (foundWords.has(word)) {
-        setFlash({ kind: "duplicate", word });
-        return;
-      }
-      setFoundWords((prev) => {
-        const next = new Set(prev);
-        next.add(word);
-        return next;
-      });
-      setJustFoundWordIdx(puzzleIdx);
-      setFlash({ kind: "found", word, coins: COINS_PER_PUZZLE_WORD });
-      return;
-    }
-
-    if (isBonusWord(today.puzzle, word)) {
-      if (foundBonus.has(word)) {
-        setFlash({ kind: "duplicate", word });
-        return;
-      }
-      setFoundBonus((prev) => {
-        const next = new Set(prev);
-        next.add(word);
-        return next;
-      });
-      setFlash({ kind: "bonus", word, coins: COINS_PER_BONUS_WORD });
-      return;
-    }
-
-    setFlash({ kind: "invalid", word });
-  }, [currentWord, foundWords, foundBonus, selection.length, today.puzzle]);
-
-  /* ----- render ----- */
-
-  const firstName = playerName?.split(/\s+/)[0] || "Miner";
-  const msUntilTomorrow = Math.max(0, (today.dayIndex + 1) * DAY_MS - now);
-  const totalBonusKnown = today.puzzle.bonus.length;
+  void stats;
+  void playerName;
 
   return (
-    <div className="mx-auto max-w-[560px] px-4 py-6 lg:py-8">
-      <header className="mb-5 lg:mb-6">
-        <span className="section-title">Play</span>
-        <h1 className="text-2xl lg:text-3xl font-bold tracking-tight mt-1">
-          Word Game
-        </h1>
-        <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-          Swipe the letters to spell every word in the grid. Bonus words pay extra.
-        </p>
+    <div
+      className="word-game-root"
+      style={{
+        minHeight: "calc(100vh - 56px)",
+        background: "linear-gradient(180deg, #2a2456 0%, #4a3fb0 60%, #6b5fd6 100%)",
+        display: "flex",
+        flexDirection: "column",
+        color: "#ffffff",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      {/* Top HUD ------------------------------------------------ */}
+      <header
+        className="word-hud"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "12px 16px",
+        }}
+      >
+        <button
+          type="button"
+          aria-label="Back"
+          className="word-hud-btn"
+          style={hudButtonStyle}
+        >
+          <IconArrowLeft size={18} />
+        </button>
+        <div style={{ flex: 1 }} />
+        <span style={hudPillStyle}>
+          <span style={{ color: "#f5c542", display: "inline-flex" }}>
+            <GlyphStar size={14} />
+          </span>
+          <span style={{ marginLeft: 6, fontWeight: 700 }}>0</span>
+        </span>
+        <span style={hudPillStyle}>
+          <span style={{ color: "#f5c542", display: "inline-flex" }}>
+            <IconCoin size={14} />
+          </span>
+          <span style={{ marginLeft: 6, fontWeight: 700 }}>450</span>
+          <button
+            type="button"
+            aria-label="Shop"
+            style={{
+              ...hudPillButtonStyle,
+              marginLeft: 6,
+            }}
+          >
+            <GlyphShop size={14} />
+          </button>
+        </span>
       </header>
 
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-2 mb-4">
-        <MiniStat
-          label="Words"
-          value={`${foundWords.size}/${today.puzzle.words.length}`}
+      {/* Crossword surface ------------------------------------- */}
+      <section
+        className="word-grid-surface"
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "16px",
+        }}
+        aria-label="Crossword grid"
+      >
+        <Crossword
+          puzzle={puzzle}
+          revealedSet={revealedWords}
+          tileRefs={tileRefs}
+          phase={phase}
         />
-        <MiniStat
-          label="Bonus"
-          value={`${foundBonus.size}/${totalBonusKnown}`}
-        />
-        <MiniStat label="Streak" value={stats.currentStreak} />
-        <MiniStat label="Best" value={stats.bestStreak} />
+      </section>
+
+      {/* Bonus dot row ----------------------------------------- */}
+      <div
+        className="word-bonus-row"
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          gap: 8,
+          padding: "4px 16px 4px",
+        }}
+        aria-hidden
+      >
+        <BonusDots found={foundBonus.size} total={puzzle.bonus.length} />
       </div>
 
-      {allFound && (
-        <ResultBanner
-          kind="won"
-          title={`Solved it, ${firstName}!`}
-          detail={
-            <>
-              <span>
-                {foundWords.size} words · {foundBonus.size} bonus ·{" "}
-              </span>
-              <IconCoin
-                size={13}
-                style={{ display: "inline", verticalAlign: "middle" }}
-              />
-              <span> +{totalScoreToday} coins</span>
-            </>
-          }
-          countdownMs={msUntilTomorrow}
-        />
-      )}
-
-      {/* Crossword grid */}
-      <Crossword
-        puzzle={today.puzzle}
-        foundSet={foundWords}
-        justFoundWordIdx={justFoundWordIdx}
-      />
-
-      {/* Bonus dot row */}
-      <BonusDots found={foundBonus.size} total={totalBonusKnown} />
-
-      {/* Current selection / flash */}
-      <div className="min-h-[40px] my-3 flex items-center justify-center">
-        {flash ? <FlashPill flash={flash} /> : <SelectionPreview word={currentWord} />}
+      {/* Selection preview floats above the wheel ------------- */}
+      <div
+        style={{
+          minHeight: 38,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "4px 16px",
+        }}
+      >
+        {flash ? (
+          <FlashPill key={flash.id} flash={flash} />
+        ) : (
+          <SelectionPreview word={currentWord} />
+        )}
       </div>
 
-      {/* Letter wheel */}
-      <LetterWheel
-        letters={wheelLetters}
-        selection={selection}
-        onSelectionChange={setSelection}
-        onSubmit={submitSelection}
-        onShuffle={reshuffle}
-      />
+      {/* Wheel area -------------------------------------------- */}
+      <section
+        className="word-wheel-surface"
+        style={{
+          padding: "8px 16px 28px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 12,
+          // Lock interaction while cells are mid-fall so a stray drag
+          // doesn't queue a flight on tiles that aren't really there yet.
+          pointerEvents: phase === "playing" ? "auto" : "none",
+          opacity: phase === "playing" ? 1 : 0.7,
+          transition: "opacity 200ms ease",
+        }}
+        aria-label="Letter wheel"
+      >
+        {/* Side controls (left) */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            width: "min(86vw, 360px)",
+          }}
+        >
+          <button
+            type="button"
+            aria-label="Shuffle letters"
+            onClick={reshuffle}
+            style={hudButtonStyle}
+          >
+            <GlyphShuffle size={18} />
+          </button>
+          <button type="button" aria-label="Hint" style={hudButtonStyle}>
+            <GlyphBulb size={18} />
+            <span
+              style={{
+                position: "absolute",
+                bottom: -2,
+                right: -2,
+                background: "#f5c542",
+                color: "#1c1340",
+                fontSize: 10,
+                fontWeight: 700,
+                padding: "1px 5px",
+                borderRadius: 999,
+              }}
+            >
+              100
+            </span>
+          </button>
+        </div>
+
+        <LetterWheel
+          letters={wheelLetters}
+          selection={selection}
+          onSelectionChange={setSelection}
+          onSubmit={onWheelSubmit}
+          svgRef={wheelSvgRef}
+        />
+      </section>
+
+      {/* Flying letter overlay — fixed-positioned, escapes layout */}
+      {flights.map((f) => (
+        <FlyingLetter key={f.id} flight={f} onLanded={onFlightLanded} />
+      ))}
 
       <style>{`
-        @keyframes wordPulse {
-          0%   { transform: scale(1);    filter: brightness(1); }
-          40%  { transform: scale(1.12); filter: brightness(1.4); }
-          100% { transform: scale(1);    filter: brightness(1); }
-        }
-        @keyframes wordFloat {
-          0%   { opacity: 0; transform: translateY(6px); }
-          15%  { opacity: 1; transform: translateY(0); }
+        @keyframes wordFloatPill {
+          0%   { opacity: 0; transform: translateY(6px) scale(0.96); }
+          15%  { opacity: 1; transform: translateY(0) scale(1.02); }
+          25%  { transform: translateY(0) scale(1); }
           85%  { opacity: 1; }
-          100% { opacity: 0; transform: translateY(-4px); }
+          100% { opacity: 0; transform: translateY(-3px) scale(1); }
+        }
+        /* Per-cell drop on level clear. Cells gain a tiny rotation +
+           translation that accelerates downward, then fade out. */
+        @keyframes wordTileFallOut {
+          0%   { opacity: 1; transform: translateY(0) rotate(0deg); }
+          20%  { opacity: 1; transform: translateY(-4px) rotate(-2deg); }
+          100% { opacity: 0; transform: translateY(220px) rotate(8deg); }
+        }
+        /* Reverse drop for the next level entering. Cells start above
+           and out of view, then fall into place with a tiny overshoot. */
+        @keyframes wordTileFallIn {
+          0%   { opacity: 0; transform: translateY(-220px) rotate(-8deg); }
+          70%  { opacity: 1; transform: translateY(8px) rotate(2deg); }
+          100% { opacity: 1; transform: translateY(0) rotate(0deg); }
         }
       `}</style>
     </div>
@@ -848,196 +1386,79 @@ export default function WordClient({ playerName }: { playerName: string }) {
 }
 
 /* ============================================================
-   Small UI bits
+   Inline style fragments shared by HUD bits
    ============================================================ */
 
-function SelectionPreview({ word }: { word: string }) {
-  if (!word) {
-    return (
-      <span className="text-xs" style={{ color: "var(--text-subtle)" }}>
-        Drag across the wheel to spell a word
-      </span>
-    );
-  }
-  return (
-    <span
-      className="px-3 py-1 rounded-full text-base font-bold tracking-wide"
-      style={{
-        background: "var(--surface-2)",
-        color: "var(--text)",
-        border: "1px solid var(--border-strong)",
-        textTransform: "uppercase",
-        letterSpacing: "0.08em",
-      }}
-    >
-      {word}
-    </span>
-  );
-}
+const hudButtonStyle: React.CSSProperties = {
+  position: "relative",
+  width: 38,
+  height: 38,
+  borderRadius: 999,
+  background: "rgba(255,255,255,0.18)",
+  border: "1px solid rgba(255,255,255,0.18)",
+  color: "#ffffff",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+};
 
-function FlashPill({ flash }: { flash: Flash }) {
-  const { kind, word, coins } = flash;
-  let bg = "var(--surface-2)";
-  let fg = "var(--text)";
-  let border = "var(--border-strong)";
-  let prefix: React.ReactNode = null;
-  let suffix: React.ReactNode = null;
+const hudPillStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  background: "rgba(0,0,0,0.30)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  borderRadius: 999,
+  padding: "5px 10px",
+  fontSize: 13,
+  color: "#ffffff",
+};
 
-  if (kind === "found") {
-    bg = "var(--success-weak)";
-    fg = "var(--success-fg)";
-    border = "color-mix(in oklab, var(--success) 40%, transparent)";
-    prefix = <IconSparkles size={14} />;
-    suffix = coins ? (
-      <>
-        {" "}+ <IconCoin size={12} /> {coins}
-      </>
-    ) : null;
-  } else if (kind === "bonus") {
-    bg = "var(--brand-weak)";
-    fg = "var(--brand-weak-fg)";
-    border = "color-mix(in oklab, var(--brand) 40%, transparent)";
-    prefix = <IconSparkles size={14} />;
-    suffix = coins ? (
-      <>
-        {" "}+ <IconCoin size={12} /> {coins} (bonus)
-      </>
-    ) : (
-      " (bonus)"
-    );
-  } else if (kind === "duplicate") {
-    bg = "var(--surface-3)";
-    fg = "var(--text-muted)";
-  } else if (kind === "invalid") {
-    bg = "var(--danger-weak)";
-    fg = "var(--danger-fg)";
-    border = "color-mix(in oklab, var(--danger) 40%, transparent)";
-    prefix = <IconError size={14} />;
-  } else if (kind === "tooshort") {
-    bg = "var(--surface-3)";
-    fg = "var(--text-muted)";
-  }
+const hudPillButtonStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 22,
+  height: 22,
+  borderRadius: 999,
+  background: "#34c759",
+  color: "#ffffff",
+  border: "none",
+  cursor: "pointer",
+};
 
-  const label =
-    kind === "duplicate"
-      ? `Already found: ${word.toUpperCase()}`
-      : kind === "tooshort"
-        ? `Too short`
-        : kind === "invalid"
-          ? `Not a word`
-          : word.toUpperCase();
+/* ============================================================
+   Re-exports kept so step 2+ can import without touching this
+   file's import block.
+   ============================================================ */
 
-  return (
-    <span
-      role="status"
-      className="px-3 py-1.5 rounded-full text-sm font-semibold inline-flex items-center gap-1.5"
-      style={{
-        background: bg,
-        color: fg,
-        border: `1px solid ${border}`,
-        animation: "wordFloat 1.2s var(--ease-out) both",
-      }}
-    >
-      {prefix}
-      <span>{label}</span>
-      {suffix}
-    </span>
-  );
-}
-
-function BonusDots({ found, total }: { found: number; total: number }) {
-  // Cap the visual row so it doesn't overflow on long bonus lists; scale
-  // the "filled" count proportionally if total is very large.
-  const slots = Math.min(8, Math.max(4, total));
-  const filled =
-    total === 0 ? 0 : Math.min(slots, Math.round((found / total) * slots));
-  return (
-    <div className="flex items-center justify-center gap-1.5 my-2" aria-hidden>
-      {Array.from({ length: slots }).map((_, i) => (
-        <span
-          key={i}
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: "var(--radius-full)",
-            background: i < filled ? "var(--brand)" : "var(--surface-3)",
-            border: "1px solid var(--border)",
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div
-      className="rounded-md flex flex-col items-center justify-center py-2"
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-      }}
-    >
-      <span
-        className="text-base font-bold leading-none"
-        style={{ color: "var(--text)" }}
-      >
-        {value}
-      </span>
-      <span
-        className="text-[10px] uppercase tracking-wider mt-1"
-        style={{ color: "var(--text-subtle)" }}
-      >
-        {label}
-      </span>
-    </div>
-  );
-}
-
-function ResultBanner({
-  kind,
-  title,
-  detail,
-  countdownMs,
-}: {
-  kind: "won" | "lost";
-  title: string;
-  detail: React.ReactNode;
-  countdownMs: number;
-}) {
-  const isWin = kind === "won";
-  return (
-    <section
-      className="card mb-5 flex flex-col sm:flex-row items-start sm:items-center gap-4"
-      style={{
-        background: isWin
-          ? "linear-gradient(135deg, color-mix(in oklab, var(--brand-weak) 75%, transparent), var(--surface))"
-          : "linear-gradient(135deg, color-mix(in oklab, var(--danger-weak) 75%, transparent), var(--surface))",
-      }}
-    >
-      <span
-        aria-hidden
-        className="inline-flex h-12 w-12 items-center justify-center rounded-full shrink-0"
-        style={{
-          background: isWin ? "var(--brand-weak)" : "var(--danger-weak)",
-          color: isWin ? "var(--brand)" : "var(--danger-fg)",
-        }}
-      >
-        {isWin ? <IconTrophy size={22} /> : <IconError size={22} />}
-      </span>
-      <div className="flex-1 min-w-0">
-        <h2 className="font-semibold text-lg">{title}</h2>
-        <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-          {detail}
-        </p>
-        <div
-          className="mt-1 inline-flex items-center gap-1.5 text-xs font-mono"
-          style={{ color: "var(--text-subtle)" }}
-        >
-          <IconClock size={12} />
-          Next puzzle in {formatCountdown(countdownMs)}
-        </div>
-      </div>
-    </section>
-  );
-}
+export type { Phase, Flash, Flight, Progress };
+export {
+  COINS_FULL_CLEAR_BONUS,
+  COINS_PER_BONUS_WORD,
+  COINS_PER_PUZZLE_WORD,
+  EMPTY_STATS,
+  PROGRESS_KEY,
+  STATS_KEY,
+  TILE_EMPTY_BG,
+  TILE_EMPTY_BORDER,
+  TILE_FILLED_BG,
+  TILE_FILLED_BORDER,
+  TILE_TEXT,
+  WHEEL_HUB_BG,
+  WHEEL_HUB_STROKE,
+  WHEEL_LETTER_BG,
+  WHEEL_LETTER_SELECTED_BG,
+  WHEEL_LETTER_SELECTED_TEXT,
+  WHEEL_LETTER_STROKE,
+  WHEEL_LETTER_TEXT,
+  WHEEL_LINE,
+  BONUS_DOT_EMPTY,
+  BONUS_DOT_FILLED,
+  shuffle,
+  readProgress,
+  writeProgress,
+  writeStats,
+  getStatsSnapshot,
+  subscribeStats,
+};
