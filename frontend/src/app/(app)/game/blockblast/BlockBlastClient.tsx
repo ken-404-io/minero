@@ -90,6 +90,31 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
   const handleDropRef = useRef<(s: DragState) => void>(() => {});
   const { drag, startDrag } = useDrag((s) => handleDropRef.current(s));
 
+  // Snap a live drag's pointer to a board cell anchor (top-left cell of the piece).
+  // Returns null when the pointer is outside the board's bounding box.
+  function boardAnchorAt(d: DragState): { row: number; col: number } | null {
+    const board = boardRef.current;
+    if (!board) return null;
+    const rect = board.getBoundingClientRect();
+    const { x: px, y: py } = d.pointer;
+    if (px < rect.left || px > rect.right || py < rect.top || py > rect.bottom) return null;
+    const pitch = CELL + GAP;
+    const pieceLeft = px - (d.grabCellC + d.subX) * pitch;
+    const pieceTop = py - (d.grabCellR + d.subY) * pitch;
+    return {
+      row: Math.round((pieceTop - rect.top) / pitch),
+      col: Math.round((pieceLeft - rect.left) / pitch),
+    };
+  }
+
+  // Detect if a pointer position falls inside the hold drop zone.
+  function pointerOverHold(d: DragState): boolean {
+    const el = holdRef.current;
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    return d.pointer.x >= r.left && d.pointer.x <= r.right && d.pointer.y >= r.top && d.pointer.y <= r.bottom;
+  }
+
   useEffect(() => {
     setStats(loadStats());
     setDaily(loadDailyData());
