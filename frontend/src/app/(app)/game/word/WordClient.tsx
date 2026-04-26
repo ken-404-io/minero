@@ -431,10 +431,12 @@ function Crossword({
   puzzle,
   revealedSet,
   tileRefs,
+  phase,
 }: {
   puzzle: Puzzle;
   revealedSet: Set<string>;
   tileRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
+  phase: Phase;
 }) {
   const { rows, cols } = useMemo(() => gridBounds(puzzle), [puzzle]);
   const cells = useMemo(() => gridCells(puzzle), [puzzle]);
@@ -477,6 +479,8 @@ function Crossword({
             letter={cell.letter}
             revealed={revealed}
             size={tilePx}
+            phase={phase}
+            cellOrder={k}
           />
         );
       })}
@@ -490,13 +494,25 @@ function CrossTile({
   letter,
   revealed,
   size,
+  phase,
+  cellOrder,
 }: {
   cellKey: string;
   tileRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
   letter: string;
   revealed: boolean;
   size: number;
+  phase: Phase;
+  cellOrder: number;
 }) {
+  // Drive the per-cell fall stagger from grid order. `both` keeps the final
+  // (faded-out) state once the keyframes complete so the screen stays
+  // empty until step 5 swaps in the next level's tiles.
+  const exiting = phase === "exiting";
+  const animation = exiting
+    ? `wordTileFallOut ${EXIT_DURATION_MS}ms cubic-bezier(0.55, 0.06, 0.68, 0.19) ${cellOrder * EXIT_PER_CELL_MS}ms both`
+    : undefined;
+
   return (
     <div
       ref={(el) => {
@@ -524,6 +540,7 @@ function CrossTile({
         lineHeight: 1,
         letterSpacing: "0.02em",
         transition: "background 220ms ease, color 220ms ease, border-color 220ms ease",
+        animation,
       }}
     >
       {revealed ? letter.toUpperCase() : ""}
@@ -1103,11 +1120,23 @@ export default function WordClient({ playerName }: { playerName: string }) {
     }
   }, [allFound, finalize]);
 
-  // Step-3 unused-binding silencers — phase + setLevel + setPhase land in
-  // step 4/5 when level transitions wire up.
+  /* ----- level-clear fall-down ----- */
+
+  // Once every grid word is found AND every fly-in has landed, hold for a
+  // beat so the player can read the last reveal, then flip to "exiting"
+  // which drives the per-cell fall-down animation in CrossTile. Step 5
+  // hooks the post-exit transition to the next level.
+  useEffect(() => {
+    if (phase !== "playing") return;
+    if (!allFound) return;
+    if (flights.length > 0) return;
+    const t = window.setTimeout(() => setPhase("exiting"), LEVEL_HOLD_MS);
+    return () => window.clearTimeout(t);
+  }, [phase, allFound, flights.length]);
+
+  // Step-3 unused-binding silencers — setLevel still lands in step 5 when
+  // the next-level transition wires up.
   void stats;
-  void phase;
-  void setPhase;
   void setLevel;
   void playerName;
 
@@ -1184,6 +1213,7 @@ export default function WordClient({ playerName }: { playerName: string }) {
           puzzle={puzzle}
           revealedSet={revealedWords}
           tileRefs={tileRefs}
+          phase={phase}
         />
       </section>
 
@@ -1288,6 +1318,13 @@ export default function WordClient({ playerName }: { playerName: string }) {
           25%  { transform: translateY(0) scale(1); }
           85%  { opacity: 1; }
           100% { opacity: 0; transform: translateY(-3px) scale(1); }
+        }
+        /* Per-cell drop on level clear. Cells gain a tiny rotation +
+           translation that accelerates downward, then fade out. */
+        @keyframes wordTileFallOut {
+          0%   { opacity: 1; transform: translateY(0) rotate(0deg); }
+          20%  { opacity: 1; transform: translateY(-4px) rotate(-2deg); }
+          100% { opacity: 0; transform: translateY(220px) rotate(8deg); }
         }
       `}</style>
     </div>
