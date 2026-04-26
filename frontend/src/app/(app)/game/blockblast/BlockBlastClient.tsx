@@ -68,11 +68,9 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
   const [status, setStatus] = useState<Status>("idle");
   const [grid, setGrid] = useState<(string | null)[][]>(emptyGrid);
   const [pieces, setPieces] = useState<[ColoredPiece | null, ColoredPiece | null, ColoredPiece | null]>([null, null, null]);
-  const [sel, setSel] = useState<0 | 1 | 2 | null>(null);
   const [held, setHeld] = useState<ColoredPiece | null>(null);
   const [score, setScore] = useState(0);
   const [lines, setLines] = useState(0);
-  const [hover, setHover] = useState<[number, number] | null>(null);
   const [clearingCells, setClearingCells] = useState<Map<string, string>>(new Map());
   const [scorePops, setScorePops] = useState<ScorePop[]>([]);
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
@@ -132,11 +130,9 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
 
     setGrid(emptyGrid());
     setPieces(threeNew(0));
-    setSel(null);
     setHeld(null);
     setScore(0);
     setLines(0);
-    setHover(null);
     setClearingCells(new Map());
     setScorePops([]);
     setStatus("playing");
@@ -144,68 +140,6 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
     startGameSession("blockblast").then((r) => {
       if (r.ok) sessionIdRef.current = r.sessionId;
     });
-  }
-
-  function handleCell(row: number, col: number) {
-    if (status !== "playing" || sel === null) return;
-    const piece = pieces[sel];
-    if (!piece || !fits(grid, piece.shape, row, col)) return;
-
-    const { grid: ng, cleared, lines: ln } = place(grid, piece.shape, piece.color, row, col);
-
-    // Score decay: points earned shrink as current score approaches SCORE_CAP
-    const mult = scoreMultiplier(score);
-    const basePts = piece.shape.length + ln * 10 + Math.max(0, ln - 1) * 5;
-    const pts = Math.max(1, Math.round(basePts * mult));
-    const newScore = score + pts;
-    const newLines = lines + ln;
-
-    // Clearing animation
-    if (cleared.size > 0) {
-      setClearingCells(new Map(cleared));
-      setTimeout(() => setClearingCells(new Map()), 560);
-    }
-
-    // Score pop
-    const pop: ScorePop = { id: ++_popId, pts };
-    setScorePops((prev: ScorePop[]) => [...prev, pop]);
-    setTimeout(() => setScorePops((prev: ScorePop[]) => prev.filter((p: ScorePop) => p.id !== pop.id)), 1150);
-
-    // Next pieces — use newScore for difficulty escalation
-    const next: [ColoredPiece | null, ColoredPiece | null, ColoredPiece | null] = [pieces[0], pieces[1], pieces[2]];
-    next[sel] = null;
-    const finalPieces: [ColoredPiece | null, ColoredPiece | null, ColoredPiece | null] =
-      next.every((p) => !p) ? threeNew(newScore) : next;
-
-    const queueOver = finalPieces.every((p) => !p || !fitsAnywhere(ng, p.shape));
-    const heldFits = held !== null ? fitsAnywhere(ng, held.shape) : false;
-    const over = queueOver && !heldFits;
-
-    setGrid(ng);
-    setPieces(finalPieces);
-    setSel(null);
-    setScore(newScore);
-    setLines(newLines);
-    setHover(null);
-
-    if (over) {
-      setStatus("over");
-      const s: Stats = {
-        totalCoins: stats.totalCoins + newScore,
-        bestScore: Math.max(stats.bestScore, newScore),
-        gamesPlayed: stats.gamesPlayed + 1,
-        linesCleared: stats.linesCleared + newLines,
-      };
-      setStats(s);
-      saveStats(s);
-      if (sessionIdRef.current) {
-        const sid = sessionIdRef.current;
-        sessionIdRef.current = null;
-        finishGameSession(sid, newScore).then((r) => {
-          if (r.ok) emitBalanceChange();
-        });
-      }
-    }
   }
 
   function handleDrop(d: DragState) {
@@ -336,6 +270,10 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
         @keyframes bb-limitblink {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.45; }
+        }
+        @keyframes bb-snapback {
+          0%   { transform: translate(0, 0);                       opacity: 0.85; }
+          100% { transform: translate(var(--bb-dx), var(--bb-dy)); opacity: 0;    }
         }
       `}</style>
 
@@ -483,10 +421,12 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
           <div style={{ overflowX: "auto" }}>
             <div style={{ position: "relative", width: gridWidth, margin: "0 auto 20px" }}>
               <div
+                ref={boardRef}
                 style={{
                   display: "grid",
                   gridTemplateColumns: `repeat(${G}, ${CELL}px)`,
                   gap: GAP,
+                  touchAction: "none",
                 }}
               >
                 {Array.from({ length: G * G }, (_, i) => {
@@ -519,16 +459,12 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                   return (
                     <div
                       key={key}
-                      onClick={() => handleCell(r, c)}
-                      onMouseEnter={() => status === "playing" && setHover([r, c])}
-                      onMouseLeave={() => setHover(null)}
                       style={{
                         width: CELL,
                         height: CELL,
                         background: bg,
                         border: `1px solid ${border}`,
                         borderRadius: 4,
-                        cursor: status === "playing" && sel !== null ? "pointer" : "default",
                         transition: clearColor !== undefined ? "none" : "background 80ms",
                         ...animCss,
                       }}
@@ -578,6 +514,7 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                     Hold
                   </span>
                   <button
+                    ref={holdRef}
                     type="button"
                     title="Drag a piece here to store it"
                     style={{
@@ -587,13 +524,13 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                       width: 76,
                       height: 76,
                       borderRadius: 10,
-                      border: `2px dashed ${held ? "var(--brand)" : "var(--border)"}`,
-                      background: held
-                        ? "color-mix(in oklab,var(--brand) 12%,var(--surface))"
-                        : "var(--surface)",
-                      cursor: sel !== null ? "pointer" : "not-allowed",
-                      opacity: sel === null ? 0.4 : 1,
-                      transition: "opacity 150ms, border-color 150ms, background 150ms",
+                      border: `2px dashed ${(drag && pointerOverHold(drag)) ? "var(--brand)" : held ? "var(--brand)" : "var(--border)"}`,
+                      background: (drag && pointerOverHold(drag))
+                        ? "color-mix(in oklab,var(--brand) 22%,var(--surface))"
+                        : held
+                          ? "color-mix(in oklab,var(--brand) 12%,var(--surface))"
+                          : "var(--surface)",
+                      transition: "border-color 150ms, background 150ms",
                     }}
                   >
                     {held ? <PieceMini piece={held} /> : (
@@ -609,7 +546,6 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                 <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flex: 1, justifyContent: "space-around" }}>
                   {([0, 1, 2] as const).map((idx) => {
                     const piece = pieces[idx];
-                    const isSelected = sel === idx;
 
                     if (!piece) return <div key={idx} style={{ width: 82, height: 82 }} />;
 
@@ -617,26 +553,29 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                     const maxR = Math.max(...shape.map(([r]) => r));
                     const maxC = Math.max(...shape.map(([, c]) => c));
                     const csz = Math.max(10, Math.min(20, Math.floor(68 / Math.max(maxR + 1, maxC + 1))));
+                    const isDragging = drag?.source.kind === "tray" && drag.source.slot === idx;
 
                     return (
-                      <button
+                      <div
                         key={idx}
-                        onClick={() => setSel(isSelected ? null : idx)}
+                        role="button"
+                        tabIndex={0}
+                        onPointerDown={(e) => startDrag(e, { kind: "tray", slot: idx }, piece, csz + 2)}
                         style={{
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                           padding: 8,
                           borderRadius: 10,
-                          border: `2px solid ${isSelected ? color : "var(--border)"}`,
-                          background: isSelected
-                            ? `color-mix(in oklab,${color} 18%,var(--surface))`
-                            : "var(--surface)",
-                          cursor: "pointer",
+                          border: `2px solid var(--border)`,
+                          background: "var(--surface)",
+                          cursor: "grab",
                           minWidth: 82,
                           minHeight: 82,
-                          transition: "border-color 120ms, background 120ms, transform 120ms",
-                          transform: isSelected ? "scale(1.08)" : "scale(1)",
+                          touchAction: "none",
+                          userSelect: "none",
+                          opacity: isDragging ? 0.3 : 1,
+                          transition: "opacity 120ms",
                         }}
                       >
                         <div
@@ -645,6 +584,7 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                             gridTemplateColumns: `repeat(${maxC + 1},${csz}px)`,
                             gridTemplateRows: `repeat(${maxR + 1},${csz}px)`,
                             gap: 2,
+                            pointerEvents: "none",
                           }}
                         >
                           {Array.from({ length: (maxR + 1) * (maxC + 1) }, (_, j) => {
@@ -656,16 +596,14 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                             );
                           })}
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
               </div>
 
               <p className="text-center text-xs mt-3" style={{ color: "var(--text-subtle)" }}>
-                {sel === null
-                  ? "Tap a piece to select · tap Hold to save for later"
-                  : "Tap the grid to place · Hold to swap · tap piece to deselect"}
+                Drag a piece onto the board to place · drop on Hold to store for later
               </p>
             </>
           )}
@@ -681,6 +619,83 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
           </p>
         </div>
       )}
+
+      {/* Floating dragged-piece ghost (follows the cursor) */}
+      {drag && (() => {
+        const pitch = CELL + GAP;
+        const left = drag.pointer.x - (drag.grabCellC + drag.subX) * pitch;
+        const top = drag.pointer.y - (drag.grabCellR + drag.subY) * pitch;
+        const { shape, color } = drag.piece;
+        return (
+          <div
+            style={{
+              position: "fixed",
+              left,
+              top,
+              pointerEvents: "none",
+              zIndex: 50,
+              filter: "drop-shadow(0 14px 22px rgba(0,0,0,0.45))",
+            }}
+          >
+            {shape.map(([dr, dc], i) => (
+              <div
+                key={i}
+                style={{
+                  position: "absolute",
+                  left: dc * pitch,
+                  top: dr * pitch,
+                  width: CELL,
+                  height: CELL,
+                  background: color,
+                  border: `1px solid ${color}`,
+                  borderRadius: 4,
+                  opacity: 0.92,
+                }}
+              />
+            ))}
+          </div>
+        );
+      })()}
+
+      {/* Snap-back ghost shown briefly after an invalid drop */}
+      {invalidReturn && (() => {
+        const pitch = CELL + GAP;
+        const { shape, color } = invalidReturn.piece;
+        const dx = invalidReturn.to.x - invalidReturn.from.x;
+        const dy = invalidReturn.to.y - invalidReturn.from.y;
+        return (
+          <div
+            key={invalidReturn.id}
+            style={{
+              position: "fixed",
+              left: invalidReturn.from.x,
+              top: invalidReturn.from.y,
+              pointerEvents: "none",
+              zIndex: 49,
+              animation: "bb-snapback 220ms ease-out forwards",
+              ["--bb-dx" as string]: `${dx}px`,
+              ["--bb-dy" as string]: `${dy}px`,
+            } as React.CSSProperties}
+          >
+            {shape.map(([dr, dc], i) => (
+              <div
+                key={i}
+                style={{
+                  position: "absolute",
+                  left: dc * pitch,
+                  top: dr * pitch,
+                  width: CELL,
+                  height: CELL,
+                  background: color,
+                  border: `1px solid ${color}`,
+                  borderRadius: 4,
+                  opacity: 0.7,
+                }}
+              />
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 }
