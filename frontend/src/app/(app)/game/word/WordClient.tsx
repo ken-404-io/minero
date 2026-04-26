@@ -400,21 +400,23 @@ function Crossword({
   // We bound by both width and height: tilePx = floor(min((w - pad)/cols,
   // (h - pad)/rows) - gap). The fallback before the observer fires picks
   // a sensible mid-range value so the first paint isn't comically huge.
+  // The floor (14) is deliberately small — better to render readable-but-
+  // tight tiles than to overflow the available space and force a scroll.
   const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const [tilePx, setTilePx] = useState<number>(38);
-  const gapPx = 6;
+  const [tilePx, setTilePx] = useState<number>(36);
+  const gapPx = 5;
   useEffect(() => {
     const el = wrapperRef.current?.parentElement; // the surface <section>
     if (!el) return;
     const recompute = () => {
       const r = el.getBoundingClientRect();
-      const padX = 16;
-      const padY = 16;
+      const padX = 8;
+      const padY = 8;
       const usableW = Math.max(0, r.width - padX);
       const usableH = Math.max(0, r.height - padY);
       const byW = (usableW - gapPx * (cols - 1)) / Math.max(1, cols);
       const byH = (usableH - gapPx * (rows - 1)) / Math.max(1, rows);
-      const px = Math.floor(Math.max(20, Math.min(48, byW, byH)));
+      const px = Math.floor(Math.max(14, Math.min(48, byW, byH)));
       setTilePx(px);
     };
     recompute();
@@ -662,9 +664,12 @@ function LetterWheel({
       role="application"
       aria-label="Letter wheel"
       style={{
-        // Bound by both width AND height so a very short viewport still
-        // shows the whole wheel without clipping.
-        width: "min(78vw, 32svh, 280px)",
+        // Bound by both width AND height so very short or narrow viewports
+        // still show the whole wheel without clipping. The 30svh + 240px
+        // ceiling keeps the wheel from monopolising the screen on tablets,
+        // and the 140px floor keeps the letter circles tappable on tiny
+        // phones.
+        width: "min(72vw, max(140px, min(30svh, 240px)))",
         height: "auto",
         touchAction: "none",
         userSelect: "none",
@@ -1180,9 +1185,11 @@ export default function WordClient({ playerName }: { playerName: string }) {
     <div
       className="word-game-root"
       style={{
-        // Fit the available main-content area without scroll. svh is the
-        // small-viewport unit — stable while the URL bar is showing on
-        // mobile, so the wheel never gets clipped.
+        // 100svh + overflow:hidden is the baseline. On phones the game
+        // additionally claims the whole viewport via `position: fixed`
+        // (see CSS below) so the mobile topbar, ad banner, and bottom
+        // nav don't push the wheel off-screen. On desktop we keep
+        // normal flow so the side nav stays visible.
         height: "100svh",
         maxHeight: "100svh",
         background:
@@ -1201,11 +1208,11 @@ export default function WordClient({ playerName }: { playerName: string }) {
         aria-label="Back to all games"
         style={{
           position: "absolute",
-          top: 12,
-          left: 12,
+          top: 10,
+          left: 10,
           zIndex: 5,
-          width: 36,
-          height: 36,
+          width: 32,
+          height: 32,
           borderRadius: 999,
           background: "var(--surface-2)",
           border: "1px solid var(--border)",
@@ -1216,7 +1223,7 @@ export default function WordClient({ playerName }: { playerName: string }) {
           textDecoration: "none",
         }}
       >
-        <IconArrowLeft size={18} />
+        <IconArrowLeft size={16} />
       </Link>
 
       {/* Level badge — small, top-right, just so the player can tell where
@@ -1225,10 +1232,10 @@ export default function WordClient({ playerName }: { playerName: string }) {
         aria-label={`Level ${level + 1}`}
         style={{
           position: "absolute",
-          top: 16,
-          right: 16,
+          top: 14,
+          right: 14,
           zIndex: 5,
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: 700,
           letterSpacing: "0.08em",
           textTransform: "uppercase",
@@ -1244,13 +1251,13 @@ export default function WordClient({ playerName }: { playerName: string }) {
         style={{
           flex: 1,
           minHeight: 0,
+          minWidth: 0,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          // Top padding leaves room for the back/level overlays; horizontal
-          // and bottom paddings stay tight so the grid claims as much of
-          // the available height as possible.
-          padding: "44px 12px 8px",
+          // Top reserves room for the back/level overlays; horizontal/bottom
+          // stay tight so the grid claims as much height as possible.
+          padding: "36px 8px 4px",
           overflow: "hidden",
         }}
         aria-label="Crossword grid"
@@ -1263,14 +1270,19 @@ export default function WordClient({ playerName }: { playerName: string }) {
         />
       </section>
 
+      {/* Right stack — bonus dots, selection, wheel. Uses `display:
+          contents` in portrait so it's flat in the DOM, and becomes the
+          right column when the landscape media query takes over. */}
+      <div className="word-right-stack">
+
       {/* Bonus dot row ----------------------------------------- */}
       <div
         className="word-bonus-row"
         style={{
           display: "flex",
           justifyContent: "center",
-          gap: 6,
-          padding: "2px 16px",
+          gap: 5,
+          padding: "1px 16px",
         }}
         aria-hidden
       >
@@ -1279,12 +1291,13 @@ export default function WordClient({ playerName }: { playerName: string }) {
 
       {/* Selection preview floats above the wheel ------------- */}
       <div
+        className="word-selection-row"
         style={{
-          minHeight: 32,
+          minHeight: 28,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: "2px 16px",
+          padding: "1px 16px",
         }}
       >
         {flash ? (
@@ -1298,11 +1311,11 @@ export default function WordClient({ playerName }: { playerName: string }) {
       <section
         className="word-wheel-surface"
         style={{
-          padding: "4px 16px calc(12px + env(safe-area-inset-bottom, 0px))",
+          padding: "2px 16px calc(8px + env(safe-area-inset-bottom, 0px))",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: 8,
+          gap: 6,
           // Lock interaction while cells are mid-fall so a stray drag
           // doesn't queue a flight on tiles that aren't really there yet.
           pointerEvents: phase === "playing" ? "auto" : "none",
@@ -1340,12 +1353,65 @@ export default function WordClient({ playerName }: { playerName: string }) {
         />
       </section>
 
+      </div>{/* /.word-right-stack */}
+
       {/* Flying letter overlay — fixed-positioned, escapes layout */}
       {flights.map((f) => (
         <FlyingLetter key={f.id} flight={f} onLanded={onFlightLanded} />
       ))}
 
       <style>{`
+        /* On phones, take over the full viewport so the mobile topbar,
+           ad banner, and bottom nav don't squeeze the game vertically.
+           On desktop (lg+) the side nav stays visible and the game uses
+           normal flow inside main. */
+        @media (max-width: 1023px) {
+          .word-game-root {
+            position: fixed !important;
+            inset: 0 !important;
+            z-index: 40;
+            padding-top: env(safe-area-inset-top, 0px);
+          }
+        }
+        /* In portrait the right-stack wrapper is invisible to layout so
+           bonus/selection/wheel render exactly as if they were direct
+           children of the root flex column. In landscape it activates as
+           a real flex column on the right side of the row layout. */
+        .word-right-stack {
+          display: contents;
+        }
+        /* Landscape (and any short-viewport tall-aspect device) reflows
+           the game into two columns: grid on the left, wheel + chrome on
+           the right. Without this, the stacked-column layout has to share
+           a tiny vertical budget with the wheel and tiles end up too
+           small to read. */
+        @media (orientation: landscape) and (max-height: 640px) {
+          .word-game-root {
+            flex-direction: row !important;
+            align-items: stretch;
+          }
+          .word-grid-surface {
+            flex: 1 1 auto;
+            padding: 36px 8px 8px !important;
+          }
+          .word-right-stack {
+            display: flex !important;
+            flex-direction: column;
+            justify-content: center;
+            align-items: stretch;
+            flex: 0 0 auto;
+            width: clamp(220px, 42vw, 300px);
+            padding: 36px 0 calc(8px + env(safe-area-inset-bottom, 0px));
+          }
+          .word-bonus-row,
+          .word-selection-row {
+            padding-left: 8px !important;
+            padding-right: 8px !important;
+          }
+          .word-wheel-surface {
+            padding: 4px 8px 4px !important;
+          }
+        }
         @keyframes wordFloatPill {
           0%   { opacity: 0; transform: translateY(6px) scale(0.96); }
           15%  { opacity: 1; transform: translateY(0) scale(1.02); }
