@@ -137,6 +137,19 @@ type Progress = {
 };
 
 /* ============================================================
+   Hydration-gate snapshots
+   ------------------------------------------------------------
+   useSyncExternalStore with getServerSnapshot=false and
+   getSnapshot=true gives us a stable boolean that's false during
+   SSR and true after the client has hydrated, without tripping
+   the React Compiler's set-state-in-effect lint rule.
+   ============================================================ */
+
+const noopSubscribe = (): (() => void) => () => {};
+const getMountedClient = (): boolean => true;
+const getMountedServer = (): boolean => false;
+
+/* ============================================================
    Lifetime stats (localStorage, useSyncExternalStore-shaped)
    ============================================================ */
 
@@ -871,6 +884,19 @@ function BonusDots({ found, total }: { found: number; total: number }) {
    ============================================================ */
 
 export default function WordClient({ playerName }: { playerName: string }) {
+  // Hydration gate. SSR runs this component once on the server to produce
+  // HTML, then the client renders it again to hydrate. State derived from
+  // browser-only sources (Date.now(), localStorage via readProgress, and
+  // Math.random() via shuffle) returns different values across those two
+  // passes, which trips React's hydration check (error #418). useSyncExt-
+  // ernalStore with separate server/client snapshots is the lint-clean
+  // way to defer the real render to the client without setState-in-effect.
+  const mounted = useSyncExternalStore(
+    noopSubscribe,
+    getMountedClient,
+    getMountedServer,
+  );
+
   // Hooks are wired up but most aren't read yet — they're here so the
   // surrounding state structure is in place for steps 2–5.
   const stats = useSyncExternalStore(subscribeStats, getStatsSnapshot, getStatsServer);
@@ -1180,6 +1206,31 @@ export default function WordClient({ playerName }: { playerName: string }) {
 
   void stats;
   void playerName;
+
+  // Pre-mount: render the same minimal shell SSR would emit. This guarantees
+  // server HTML and the client's first render are byte-identical, so the
+  // hydration check (error #418) passes. Once the effect fires we flip to
+  // the real game tree, which gets to use Date.now / localStorage / random
+  // freely.
+  if (!mounted) {
+    return (
+      <div
+        className="word-game-root"
+        style={{
+          height: "100svh",
+          maxHeight: "100svh",
+          background:
+            "linear-gradient(180deg, var(--bg) 0%, color-mix(in oklab, var(--brand) 8%, var(--bg)) 100%)",
+          display: "flex",
+          flexDirection: "column",
+          color: "var(--text)",
+          position: "relative",
+          overflow: "hidden",
+        }}
+        aria-hidden
+      />
+    );
+  }
 
   return (
     <div
