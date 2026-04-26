@@ -8,7 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "prebuild": "prisma generate",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js",
+    "start": "tsx src/index.ts",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
@@ -25,13 +25,13 @@
     "pg": "^8.13.1",
     "pg-boss": "^12.17.0",
     "prisma": "^7.7.0",
+    "tsx": "^4.21.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/pg": "^8.11.10",
-    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }
