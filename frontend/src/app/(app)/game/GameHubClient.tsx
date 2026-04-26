@@ -574,6 +574,7 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
           tagline="Answer fast, build streaks"
           description="10 questions across mixed categories. Speed bonuses and streak multipliers boost your score."
           icon={<IconBrain size={22} />}
+          logoSrc="/games/trivia.png"
           status={
             trivia.gamesPlayed > 0
               ? `Best ${trivia.bestScore} · ${trivia.gamesPlayed} played`
@@ -588,6 +589,7 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
           tagline="Free spin every 24h"
           description="Give the wheel a whirl once a day for up to 250 free game coins. No skill required."
           icon={<IconGift size={22} />}
+          logoSrc="/games/spin.png"
           status={
             spinReady
               ? spin.spinsCompleted > 0
@@ -606,6 +608,7 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
           tagline="Flip-and-match card game"
           description="Pair up the cards with as few moves as possible. Three difficulty tiers, scored on moves + time."
           icon={<IconCopy size={22} />}
+          logoSrc="/games/memory.png"
           status={
             memoryWins > 0
               ? `${memoryWins} cleared${
@@ -624,6 +627,7 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
           tagline="Clear the board, dodge the mines"
           description="Classic logic puzzle. Flag mines, reveal safe cells. Harder difficulties pay out more coins."
           icon={<IconMine size={22} />}
+          logoSrc="/games/minesweeper.png"
           status={
             sweepWins > 0
               ? `${sweepWins} cleared${
@@ -643,6 +647,7 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
           tagline="Daily 5-letter puzzle"
           description="Guess the day's word in six tries. Fewer tries earn bigger payouts. One word per day."
           icon={<IconBrain size={22} />}
+          logoSrc="/games/word.png"
           status={
             wordDoneToday
               ? word.lastResult === "win"
@@ -662,6 +667,7 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
           tagline="Place blocks, clear lines"
           description="Drop pieces onto an 8×8 grid. Fill complete rows or columns to clear them. Game ends when no piece fits."
           icon={<IconGame size={22} />}
+          logoSrc="/games/blockblast.png"
           status={
             blockblast.gamesPlayed > 0
               ? `Best ${blockblast.bestScore} · ${blockblast.gamesPlayed} played`
@@ -690,12 +696,28 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
 
 type Accent = "brand" | "success" | "muted";
 
+function GameLogo({ src, fallback }: { src: string; fallback: React.ReactNode }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <>{fallback}</>;
+  return (
+    <img
+      src={src}
+      alt=""
+      width={28}
+      height={28}
+      className="object-contain"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 function GameCard({
   href,
   title,
   tagline,
   description,
   icon,
+  logoSrc,
   status,
   statusIcon,
   ctaLabel,
@@ -706,6 +728,7 @@ function GameCard({
   tagline: string;
   description: string;
   icon: React.ReactNode;
+  logoSrc?: string;
   status: string;
   statusIcon?: React.ReactNode;
   ctaLabel: string;
@@ -733,7 +756,7 @@ function GameCard({
           className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
           style={{ background: "var(--brand-weak)", color: "var(--brand)" }}
         >
-          {icon}
+          {logoSrc ? <GameLogo src={logoSrc} fallback={icon} /> : icon}
         </span>
         <div className="flex-1 min-w-0">
           <h2 className="text-base md:text-lg font-semibold leading-snug truncate">
