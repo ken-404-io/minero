@@ -3,19 +3,28 @@
 import {
   PointerEvent as ReactPointerEvent,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
-import { IconArrowLeft, IconCoin } from "@/components/icons";
+import { IconArrowLeft, IconCoin, IconError, IconSparkles } from "@/components/icons";
 import {
   PUZZLES,
   Puzzle,
+  canFormWord,
   gridBounds,
   gridCells,
+  isBonusWord,
+  isPuzzleWord,
   utcDayIndex,
 } from "./words";
+import {
+  emitBalanceChange,
+  finishGameSession,
+  startGameSession,
+} from "@/lib/game-session";
 
 /* ============================================================
    Config
@@ -338,6 +347,76 @@ export function wheelLetterPos(i: number, n: number): { x: number; y: number } {
 }
 
 /* ============================================================
+   Flying letter overlay
+   ------------------------------------------------------------
+   When a puzzle word is found, the parent pushes a Flight per
+   letter. Each Flight mounts as a fixed-positioned tile at its
+   `from` viewport coords; after `delayMs` it transitions to
+   `to`, and after delay+duration the parent's onLanded callback
+   fires so the flight can be removed and the corresponding grid
+   cell can reveal.
+   ============================================================ */
+
+function FlyingLetter({
+  flight,
+  onLanded,
+}: {
+  flight: Flight;
+  onLanded: (id: string) => void;
+}) {
+  // Initial position is the "from" point; after the per-letter delay we
+  // setState to the "to" point so the CSS transition runs to the target.
+  const [pos, setPos] = useState<{ x: number; y: number }>({
+    x: flight.fromX,
+    y: flight.fromY,
+  });
+
+  useEffect(() => {
+    const startId = window.setTimeout(() => {
+      setPos({ x: flight.toX, y: flight.toY });
+    }, flight.delayMs);
+    const endId = window.setTimeout(() => {
+      onLanded(flight.id);
+    }, flight.delayMs + FLY_DURATION_MS);
+    return () => {
+      window.clearTimeout(startId);
+      window.clearTimeout(endId);
+    };
+  }, [flight, onLanded]);
+
+  return (
+    <div
+      aria-hidden
+      style={{
+        position: "fixed",
+        left: pos.x,
+        top: pos.y,
+        transform: "translate(-50%, -50%)",
+        transition: `left ${FLY_DURATION_MS}ms cubic-bezier(0.34, 1.32, 0.64, 1), top ${FLY_DURATION_MS}ms cubic-bezier(0.34, 1.32, 0.64, 1)`,
+        width: 38,
+        height: 38,
+        borderRadius: 8,
+        background: TILE_FILLED_BG,
+        border: `1px solid ${TILE_FILLED_BORDER}`,
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.30), 0 4px 14px rgba(0,0,0,0.30)",
+        color: TILE_TEXT,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontWeight: 800,
+        fontSize: 19,
+        letterSpacing: "0.02em",
+        textTransform: "uppercase",
+        pointerEvents: "none",
+        zIndex: 50,
+      }}
+    >
+      {flight.ch.toUpperCase()}
+    </div>
+  );
+}
+
+/* ============================================================
    Crossword grid
    ------------------------------------------------------------
    Renders a sparse rows×cols grid. Cells without a letter are
@@ -648,6 +727,73 @@ function LetterWheel({
    Selection preview + bonus dots
    ============================================================ */
 
+function FlashPill({ flash }: { flash: Flash }) {
+  // Visual treatment per kind. Found/bonus get a positive look; duplicates,
+  // tooshort, and invalid words get a quieter "no" treatment.
+  let bg = "rgba(255,255,255,0.18)";
+  const fg = "#ffffff";
+  let prefix: React.ReactNode = null;
+  let suffix: React.ReactNode = null;
+  let label: string = flash.word.toUpperCase();
+
+  if (flash.kind === "found") {
+    bg = "linear-gradient(180deg, #34c759 0%, #1f9e44 100%)";
+    prefix = <IconSparkles size={14} />;
+    if (flash.coins) {
+      suffix = (
+        <>
+          {" "}+ <IconCoin size={12} /> {flash.coins}
+        </>
+      );
+    }
+  } else if (flash.kind === "bonus") {
+    bg = "linear-gradient(180deg, #f5a623 0%, #c87b08 100%)";
+    prefix = <IconSparkles size={14} />;
+    suffix = flash.coins ? (
+      <>
+        {" "}+ <IconCoin size={12} /> {flash.coins} (bonus)
+      </>
+    ) : (
+      " (bonus)"
+    );
+  } else if (flash.kind === "duplicate") {
+    bg = "rgba(255,255,255,0.22)";
+    label = `Already found: ${flash.word.toUpperCase()}`;
+  } else if (flash.kind === "invalid") {
+    bg = "rgba(220, 60, 60, 0.85)";
+    prefix = <IconError size={14} />;
+    label = `Not a word`;
+  } else if (flash.kind === "tooshort") {
+    bg = "rgba(255,255,255,0.22)";
+    label = "Too short";
+  }
+
+  return (
+    <span
+      role="status"
+      aria-live="polite"
+      style={{
+        background: bg,
+        color: fg,
+        padding: "6px 14px",
+        borderRadius: 999,
+        fontWeight: 700,
+        fontSize: 14,
+        letterSpacing: "0.05em",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
+        animation: "wordFloatPill 1.2s ease both",
+      }}
+    >
+      {prefix}
+      <span>{label}</span>
+      {suffix}
+    </span>
+  );
+}
+
 function SelectionPreview({ word }: { word: string }) {
   if (!word) {
     return (
@@ -767,30 +913,202 @@ export default function WordClient({ playerName }: { playerName: string }) {
     });
   }, []);
 
-  /** Pointer-up on the wheel. Step 2 just clears the chain — validation
-   *  and scoring (which read currentWord and the puzzle) land in step 3. */
-  const onWheelSubmit = useCallback(() => {
-    setSelection([]);
+  /* ----- flash messages ----- */
+  // Monotonic id keeps two consecutive identical flashes (e.g. two
+  // duplicates of the same word) from being elided as the same React node.
+  const flashCounterRef = useRef(0);
+  const flashMsg = useCallback(
+    (kind: FlashKind, word: string, coins?: number) => {
+      flashCounterRef.current += 1;
+      setFlash({ id: flashCounterRef.current, kind, word, coins });
+    },
+    [],
+  );
+
+  /* ----- letter fly-in to the grid ----- */
+
+  const triggerFlight = useCallback(
+    (wordIdx: number, sourceIndices: number[]) => {
+      const placement = puzzle.words[wordIdx];
+      if (!placement) return;
+      const svg = wheelSvgRef.current;
+      if (!svg) return;
+      const svgRect = svg.getBoundingClientRect();
+      const scale = svgRect.width / WHEEL_VIEWBOX;
+
+      const newFlights: Flight[] = [];
+      for (let i = 0; i < placement.word.length; i++) {
+        const r = placement.dir === "h" ? placement.row : placement.row + i;
+        const c = placement.dir === "h" ? placement.col + i : placement.col;
+        const tile = tileRefs.current.get(`${r},${c}`);
+        if (!tile) continue;
+        const tr = tile.getBoundingClientRect();
+        const wp = wheelLetterPos(sourceIndices[i], wheelLetters.length);
+        newFlights.push({
+          id: `f-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+          ch: placement.word[i],
+          fromX: svgRect.left + wp.x * scale,
+          fromY: svgRect.top + wp.y * scale,
+          toX: tr.left + tr.width / 2,
+          toY: tr.top + tr.height / 2,
+          delayMs: i * FLY_PER_LETTER_MS,
+          word: placement.word,
+        });
+      }
+
+      setFlights((prev) => [...prev, ...newFlights]);
+
+      // Reveal the word in the grid once the last letter has landed.
+      const totalMs = (placement.word.length - 1) * FLY_PER_LETTER_MS + FLY_DURATION_MS;
+      window.setTimeout(() => {
+        setRevealedWords((prev) => {
+          const next = new Set(prev);
+          next.add(placement.word);
+          return next;
+        });
+      }, totalMs);
+    },
+    [puzzle, wheelLetters.length],
+  );
+
+  const onFlightLanded = useCallback((id: string) => {
+    setFlights((prev) => prev.filter((f) => f.id !== id));
   }, []);
 
-  // Step-2 unused-binding silencers — these slots are populated in
-  // later steps. Removing them when the consumer lands keeps the diff
-  // surface small.
+  /* ----- pointer-up validation ----- */
+
+  const onWheelSubmit = useCallback(() => {
+    const sel = selection;
+    setSelection([]);
+    if (sel.length === 0) return;
+    const word = sel.map((i) => wheelLetters[i]).join("");
+
+    if (word.length < 3) {
+      if (word.length > 0) flashMsg("tooshort", word);
+      return;
+    }
+    if (!canFormWord(puzzle, word)) {
+      flashMsg("invalid", word);
+      return;
+    }
+
+    // Lazy-start the server session on the first valid attempt today.
+    if (!sessionStartedRef.current && !finalizedRef.current) {
+      sessionStartedRef.current = true;
+      startGameSession("word").then((r) => {
+        if (r.ok) sessionIdRef.current = r.sessionId;
+      });
+    }
+
+    const wordIdx = isPuzzleWord(puzzle, word);
+    if (wordIdx >= 0) {
+      if (foundWords.has(word)) {
+        flashMsg("duplicate", word);
+        return;
+      }
+      setFoundWords((prev) => {
+        const next = new Set(prev);
+        next.add(word);
+        return next;
+      });
+      triggerFlight(wordIdx, sel);
+      flashMsg("found", word, COINS_PER_PUZZLE_WORD);
+      return;
+    }
+
+    if (isBonusWord(puzzle, word)) {
+      if (foundBonus.has(word)) {
+        flashMsg("duplicate", word);
+        return;
+      }
+      setFoundBonus((prev) => {
+        const next = new Set(prev);
+        next.add(word);
+        return next;
+      });
+      flashMsg("bonus", word, COINS_PER_BONUS_WORD);
+      return;
+    }
+
+    flashMsg("invalid", word);
+  }, [
+    selection,
+    wheelLetters,
+    puzzle,
+    foundWords,
+    foundBonus,
+    flashMsg,
+    triggerFlight,
+  ]);
+
+  /* ----- persistence + flash auto-clear + level finalize ----- */
+
+  // Save in-progress state on every change so a refresh keeps found words.
+  useEffect(() => {
+    writeProgress({
+      dayIndex: today.dayIndex,
+      level,
+      found: Array.from(foundWords),
+      bonus: Array.from(foundBonus),
+      finalized: finalizedRef.current,
+    });
+  }, [today.dayIndex, level, foundWords, foundBonus]);
+
+  // Flash messages clear themselves so repeated guesses keep updating it.
+  useEffect(() => {
+    if (!flash) return;
+    const id = window.setTimeout(() => setFlash(null), 1200);
+    return () => window.clearTimeout(id);
+  }, [flash]);
+
+  const allFound = foundWords.size === puzzle.words.length;
+  const totalScoreToday =
+    foundWords.size * COINS_PER_PUZZLE_WORD +
+    foundBonus.size * COINS_PER_BONUS_WORD +
+    (allFound ? COINS_FULL_CLEAR_BONUS : 0);
+
+  // Server finalize fires once the player clears every grid word for the day.
+  // Subsequent levels (steps 4–5) advance locally; the server enforces the
+  // 24h cooldown so only the first clear pays out.
+  const finalize = useCallback(
+    (solved: boolean) => {
+      if (finalizedRef.current) return;
+      finalizedRef.current = true;
+      const score = totalScoreToday;
+      const prev = getStatsSnapshot();
+      const nextStreak = solved ? prev.currentStreak + 1 : 0;
+      writeStats({
+        totalCoins: prev.totalCoins + score,
+        gamesPlayed: prev.gamesPlayed + 1,
+        puzzlesSolved: prev.puzzlesSolved + (solved ? 1 : 0),
+        currentStreak: nextStreak,
+        bestStreak: Math.max(prev.bestStreak, nextStreak),
+        lastPlayedDay: today.dayIndex,
+        lastResult: solved ? "solved" : "partial",
+      });
+      if (sessionIdRef.current) {
+        const sid = sessionIdRef.current;
+        sessionIdRef.current = null;
+        finishGameSession(sid, score).then((r) => {
+          if (r.ok) emitBalanceChange();
+        });
+      }
+    },
+    [totalScoreToday, today.dayIndex],
+  );
+
+  useEffect(() => {
+    if (allFound && !finalizedRef.current) {
+      finalize(true);
+    }
+  }, [allFound, finalize]);
+
+  // Step-3 unused-binding silencers — phase + setLevel + setPhase land in
+  // step 4/5 when level transitions wire up.
   void stats;
   void phase;
   void setPhase;
   void setLevel;
-  void foundWords;
-  void setFoundWords;
-  void setFoundBonus;
-  void setRevealedWords;
-  void flash;
-  void setFlash;
-  void flights;
-  void setFlights;
-  void sessionIdRef;
-  void sessionStartedRef;
-  void finalizedRef;
   void playerName;
 
   return (
@@ -893,7 +1211,11 @@ export default function WordClient({ playerName }: { playerName: string }) {
           padding: "4px 16px",
         }}
       >
-        <SelectionPreview word={currentWord} />
+        {flash ? (
+          <FlashPill key={flash.id} flash={flash} />
+        ) : (
+          <SelectionPreview word={currentWord} />
+        )}
       </div>
 
       {/* Wheel area -------------------------------------------- */}
@@ -953,6 +1275,21 @@ export default function WordClient({ playerName }: { playerName: string }) {
           svgRef={wheelSvgRef}
         />
       </section>
+
+      {/* Flying letter overlay — fixed-positioned, escapes layout */}
+      {flights.map((f) => (
+        <FlyingLetter key={f.id} flight={f} onLanded={onFlightLanded} />
+      ))}
+
+      <style>{`
+        @keyframes wordFloatPill {
+          0%   { opacity: 0; transform: translateY(6px) scale(0.96); }
+          15%  { opacity: 1; transform: translateY(0) scale(1.02); }
+          25%  { transform: translateY(0) scale(1); }
+          85%  { opacity: 1; }
+          100% { opacity: 0; transform: translateY(-3px) scale(1); }
+        }
+      `}</style>
     </div>
   );
 }
