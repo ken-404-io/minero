@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -8,178 +9,195 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { IconClock, IconCoin, IconError, IconTrophy } from "@/components/icons";
-import { isValidGuess, utcDayIndex, wordForDay } from "./words";
 import {
-  startGameSession,
-  finishGameSession,
+  IconClock,
+  IconCoin,
+  IconError,
+  IconSparkles,
+  IconTrophy,
+} from "@/components/icons";
+import {
+  Puzzle,
+  canFormWord,
+  gridBounds,
+  gridCells,
+  isBonusWord,
+  isPuzzleWord,
+  puzzleForDay,
+  utcDayIndex,
+} from "./words";
+import {
   emitBalanceChange,
+  finishGameSession,
+  startGameSession,
 } from "@/lib/game-session";
 
 /* ============================================================
    Config
+   ------------------------------------------------------------
+   Score per word, plus a finishing bonus when every grid word
+   is found. Server clamps to the per-session and per-day caps
+   defined in backend/src/lib/games.ts so tweaks here can't
+   blow past the daily cap.
    ============================================================ */
 
-const WORD_LENGTH = 5;
-const MAX_GUESSES = 6;
+const COINS_PER_PUZZLE_WORD = 30;
+const COINS_PER_BONUS_WORD = 10;
+const COINS_FULL_CLEAR_BONUS = 100;
 
-// Score table keyed by 1-based try count; tighter solves pay out steeply more.
-const SCORE_BY_TRY: Record<number, number> = {
-  1: 1500,
-  2: 1000,
-  3: 700,
-  4: 450,
-  5: 250,
-  6: 100,
-};
-
-const STORAGE_KEY = "minero_word_stats_v1";
+const STATS_KEY = "minero_word_stats_v1";
+const PROGRESS_KEY = "minero_word_progress_v1";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-type LetterState = "correct" | "present" | "absent";
+/* ============================================================
+   Lifetime stats (localStorage)
+   ============================================================ */
 
 type Stats = {
   totalCoins: number;
   gamesPlayed: number;
-  wins: number;
+  puzzlesSolved: number;     // puzzles where every grid word was found
   currentStreak: number;
   bestStreak: number;
-  // Epoch day index of the last completed round (-1 if never).
   lastPlayedDay: number;
-  // Whether the last round was a win.
-  lastResult: "win" | "loss" | null;
-  // Wins indexed by 1..MAX_GUESSES (index 0 unused for clarity).
-  distribution: number[];
+  lastResult: "solved" | "partial" | null;
 };
 
 const EMPTY_STATS: Stats = {
   totalCoins: 0,
   gamesPlayed: 0,
-  wins: 0,
+  puzzlesSolved: 0,
   currentStreak: 0,
   bestStreak: 0,
   lastPlayedDay: -1,
   lastResult: null,
-  distribution: new Array(MAX_GUESSES + 1).fill(0),
 };
 
 function parseStats(raw: string | null): Stats {
   if (!raw) return EMPTY_STATS;
   try {
     const p = JSON.parse(raw) as Partial<Stats> & { totalPoints?: number };
-    const dist = Array.isArray(p.distribution)
-      ? p.distribution.slice(0, MAX_GUESSES + 1).map((n) => Number(n) || 0)
-      : [];
-    while (dist.length < MAX_GUESSES + 1) dist.push(0);
     return {
       totalCoins: Number(p.totalCoins) || Number(p.totalPoints) || 0,
       gamesPlayed: Number(p.gamesPlayed) || 0,
-      wins: Number(p.wins) || 0,
+      puzzlesSolved: Number(p.puzzlesSolved) || 0,
       currentStreak: Number(p.currentStreak) || 0,
       bestStreak: Number(p.bestStreak) || 0,
       lastPlayedDay:
         typeof p.lastPlayedDay === "number" && Number.isFinite(p.lastPlayedDay)
           ? p.lastPlayedDay
           : -1,
-      lastResult: p.lastResult === "win" || p.lastResult === "loss" ? p.lastResult : null,
-      distribution: dist,
+      lastResult:
+        p.lastResult === "solved" || p.lastResult === "partial"
+          ? p.lastResult
+          : null,
     };
   } catch {
     return EMPTY_STATS;
   }
 }
 
-let cachedRaw: string | null = null;
-let cachedStats: Stats = EMPTY_STATS;
+let statsRaw: string | null = null;
+let statsCache: Stats = EMPTY_STATS;
 
-function getSnapshot(): Stats {
+function getStatsSnapshot(): Stats {
   if (typeof window === "undefined") return EMPTY_STATS;
-  const raw = window.localStorage.getItem(STORAGE_KEY);
-  if (raw !== cachedRaw) {
-    cachedRaw = raw;
-    cachedStats = parseStats(raw);
+  const raw = window.localStorage.getItem(STATS_KEY);
+  if (raw !== statsRaw) {
+    statsRaw = raw;
+    statsCache = parseStats(raw);
   }
-  return cachedStats;
+  return statsCache;
 }
 
-function getServerSnapshot(): Stats {
+function getStatsServer(): Stats {
   return EMPTY_STATS;
 }
 
-const listeners = new Set<() => void>();
-function subscribe(cb: () => void) {
-  listeners.add(cb);
+const statsListeners = new Set<() => void>();
+
+function subscribeStats(cb: () => void) {
+  statsListeners.add(cb);
   const onStorage = (e: StorageEvent) => {
-    if (e.key === STORAGE_KEY) cb();
+    if (e.key === STATS_KEY) cb();
   };
   window.addEventListener("storage", onStorage);
   return () => {
-    listeners.delete(cb);
+    statsListeners.delete(cb);
     window.removeEventListener("storage", onStorage);
   };
 }
+
 function writeStats(next: Stats) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    cachedRaw = window.localStorage.getItem(STORAGE_KEY);
-    cachedStats = parseStats(cachedRaw);
-    listeners.forEach((cb) => cb());
-    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
+    window.localStorage.setItem(STATS_KEY, JSON.stringify(next));
+    statsRaw = window.localStorage.getItem(STATS_KEY);
+    statsCache = parseStats(statsRaw);
+    statsListeners.forEach((cb) => cb());
+    window.dispatchEvent(new StorageEvent("storage", { key: STATS_KEY }));
   } catch {
     /* quota / private mode */
   }
 }
 
 /* ============================================================
-   Grading
-   Per-letter Wordle rules: a letter in the guess marked "present"
-   only if the answer has an un-matched copy elsewhere. Duplicates
-   in the guess that exceed the count in the answer fall through to
-   "absent" after greens/yellows are assigned.
+   Per-day puzzle progress (localStorage)
+   ------------------------------------------------------------
+   Holds the words found so far for today's puzzle so a refresh
+   doesn't reset progress mid-session. Cleared automatically
+   when the day rolls over.
    ============================================================ */
 
-function gradeGuess(guess: string, answer: string): LetterState[] {
-  const out: LetterState[] = new Array(WORD_LENGTH).fill("absent");
-  const counts: Record<string, number> = {};
+type Progress = {
+  dayIndex: number;
+  found: string[];   // puzzle words found
+  bonus: string[];   // bonus words found
+  finalized: boolean; // server session has been finalized for today
+};
 
-  // First pass: exact matches (green) and count remaining answer letters.
-  for (let i = 0; i < WORD_LENGTH; i++) {
-    if (guess[i] === answer[i]) {
-      out[i] = "correct";
-    } else {
-      counts[answer[i]] = (counts[answer[i]] || 0) + 1;
-    }
+function readProgress(dayIndex: number): Progress {
+  if (typeof window === "undefined") {
+    return { dayIndex, found: [], bonus: [], finalized: false };
   }
-  // Second pass: present (yellow) draws from remaining counts.
-  for (let i = 0; i < WORD_LENGTH; i++) {
-    if (out[i] === "correct") continue;
-    const c = guess[i];
-    if (counts[c] && counts[c] > 0) {
-      out[i] = "present";
-      counts[c]--;
+  try {
+    const raw = window.localStorage.getItem(PROGRESS_KEY);
+    if (!raw) return { dayIndex, found: [], bonus: [], finalized: false };
+    const p = JSON.parse(raw) as Partial<Progress>;
+    if (p.dayIndex !== dayIndex) {
+      return { dayIndex, found: [], bonus: [], finalized: false };
     }
+    return {
+      dayIndex,
+      found: Array.isArray(p.found) ? p.found.filter((s) => typeof s === "string") : [],
+      bonus: Array.isArray(p.bonus) ? p.bonus.filter((s) => typeof s === "string") : [],
+      finalized: Boolean(p.finalized),
+    };
+  } catch {
+    return { dayIndex, found: [], bonus: [], finalized: false };
   }
-  return out;
 }
 
-/** Best-state merge so the on-screen keyboard never regresses a key. */
-function mergeKeyState(
-  prev: Record<string, LetterState | undefined>,
-  guess: string,
-  grades: LetterState[],
-): Record<string, LetterState | undefined> {
-  const next = { ...prev };
-  const rank: Record<LetterState, number> = { absent: 1, present: 2, correct: 3 };
-  for (let i = 0; i < WORD_LENGTH; i++) {
-    const c = guess[i];
-    const incoming = grades[i];
-    const existing = next[c];
-    if (!existing || rank[incoming] > rank[existing]) {
-      next[c] = incoming;
-    }
+function writeProgress(p: Progress) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PROGRESS_KEY, JSON.stringify(p));
+  } catch {
+    /* ignore */
   }
-  return next;
+}
+
+/* ============================================================
+   Misc helpers
+   ============================================================ */
+
+function shuffle<T>(arr: readonly T[]): T[] {
+  const out = arr.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
 
 function formatCountdown(ms: number) {
@@ -193,104 +211,473 @@ function formatCountdown(ms: number) {
 }
 
 /* ============================================================
-   Main client
+   Crossword grid
+   ------------------------------------------------------------
+   Renders a sparse rows×cols grid. Cells without a letter are
+   transparent placeholders (so the rest of the layout still
+   aligns); cells with a letter render an empty tile until any
+   word containing that cell has been found, after which the
+   letter is revealed with a flip animation. A cell is revealed
+   if ANY of the words passing through it is in `foundSet`.
    ============================================================ */
 
-const ROW_1 = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"];
-const ROW_2 = ["a", "s", "d", "f", "g", "h", "j", "k", "l"];
-const ROW_3 = ["z", "x", "c", "v", "b", "n", "m"];
+function Crossword({
+  puzzle,
+  foundSet,
+  justFoundWordIdx,
+}: {
+  puzzle: Puzzle;
+  foundSet: Set<string>;
+  justFoundWordIdx: number | null;
+}) {
+  const { rows, cols } = useMemo(() => gridBounds(puzzle), [puzzle]);
+  const cells = useMemo(() => gridCells(puzzle), [puzzle]);
 
-type Status = "playing" | "won" | "lost";
+  // Map word index → whether that word has been found, for quick lookup.
+  const foundByIdx = useMemo(() => {
+    return puzzle.words.map((w) => foundSet.has(w.word));
+  }, [puzzle.words, foundSet]);
+
+  const tilePx = cols >= 7 ? 30 : cols >= 6 ? 34 : 38;
+  const gapPx = 4;
+
+  return (
+    <div className="flex justify-center mb-4">
+      <div
+        role="grid"
+        aria-label="Crossword grid"
+        style={{
+          display: "grid",
+          gridTemplateRows: `repeat(${rows}, ${tilePx}px)`,
+          gridTemplateColumns: `repeat(${cols}, ${tilePx}px)`,
+          gap: gapPx,
+        }}
+      >
+        {Array.from({ length: rows * cols }).map((_, k) => {
+          const r = Math.floor(k / cols);
+          const c = k % cols;
+          const cell = cells.get(`${r},${c}`);
+          if (!cell) {
+            return <span key={k} aria-hidden style={{ width: tilePx, height: tilePx }} />;
+          }
+          const revealed = cell.wordIdx.some((i) => foundByIdx[i]);
+          const flashing =
+            justFoundWordIdx !== null && cell.wordIdx.includes(justFoundWordIdx);
+          return (
+            <CrossTile
+              key={k}
+              letter={cell.letter}
+              revealed={revealed}
+              flashing={flashing}
+              size={tilePx}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CrossTile({
+  letter,
+  revealed,
+  flashing,
+  size,
+}: {
+  letter: string;
+  revealed: boolean;
+  flashing: boolean;
+  size: number;
+}) {
+  return (
+    <div
+      role="gridcell"
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "var(--radius-sm)",
+        background: revealed
+          ? "color-mix(in oklab, var(--brand) 75%, var(--surface))"
+          : "var(--surface-2)",
+        border: revealed
+          ? "1px solid color-mix(in oklab, var(--brand) 60%, transparent)"
+          : "1px solid var(--border)",
+        color: revealed ? "var(--brand-fg)" : "transparent",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontWeight: 800,
+        fontSize: size * 0.5,
+        textTransform: "uppercase",
+        lineHeight: 1,
+        letterSpacing: "0.02em",
+        transition: "background 200ms var(--ease-out), color 200ms var(--ease-out)",
+        animation: flashing ? "wordPulse 0.6s var(--ease-out)" : undefined,
+      }}
+    >
+      {revealed ? letter : ""}
+    </div>
+  );
+}
+
+/* ============================================================
+   Letter wheel
+   ------------------------------------------------------------
+   N letters arranged on a circle. The user presses on a letter
+   and drags through neighbours to chain them into a word; on
+   pointer-up the chain is submitted. Hit-testing is in SVG
+   coordinates so it works across phones, tablets, and desktop
+   mice with the same code path.
+
+   `selection` is an array of letter indices (into the supplied
+   `letters` array) representing the current chain. A letter
+   may not appear twice in one selection.
+   ============================================================ */
+
+const WHEEL_VIEWBOX = 280;
+const WHEEL_CENTER = WHEEL_VIEWBOX / 2;
+const WHEEL_RING_R = 100;
+const WHEEL_LETTER_R = 26;
+// How close (px in viewBox) the pointer must be to a letter's centre to
+// register a hit. Generous enough that swiping across letters always works.
+const HIT_RADIUS = WHEEL_LETTER_R + 6;
+
+function letterPositions(n: number): { x: number; y: number }[] {
+  // First letter at the top, going clockwise.
+  return Array.from({ length: n }, (_, i) => {
+    const theta = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+    return {
+      x: WHEEL_CENTER + WHEEL_RING_R * Math.cos(theta),
+      y: WHEEL_CENTER + WHEEL_RING_R * Math.sin(theta),
+    };
+  });
+}
+
+function LetterWheel({
+  letters,
+  selection,
+  onSelectionChange,
+  onSubmit,
+  onShuffle,
+}: {
+  letters: string[];
+  selection: number[];
+  onSelectionChange: (next: number[]) => void;
+  onSubmit: () => void;
+  onShuffle: () => void;
+}) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const draggingRef = useRef(false);
+  // Current pointer position (in viewBox coords) so the trailing line
+  // follows the finger between letters.
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
+
+  const positions = useMemo(() => letterPositions(letters.length), [letters.length]);
+
+  const toViewBox = useCallback((clientX: number, clientY: number) => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    const x = ((clientX - rect.left) / rect.width) * WHEEL_VIEWBOX;
+    const y = ((clientY - rect.top) / rect.height) * WHEEL_VIEWBOX;
+    return { x, y };
+  }, []);
+
+  const hitLetter = useCallback(
+    (vx: number, vy: number): number => {
+      let best = -1;
+      let bestDist = HIT_RADIUS;
+      for (let i = 0; i < positions.length; i++) {
+        const dx = positions[i].x - vx;
+        const dy = positions[i].y - vy;
+        const d = Math.hypot(dx, dy);
+        if (d < bestDist) {
+          bestDist = d;
+          best = i;
+        }
+      }
+      return best;
+    },
+    [positions],
+  );
+
+  const updateSelectionFor = useCallback(
+    (idx: number) => {
+      if (idx < 0) return;
+      // If the pointer comes back over the previous letter, allow
+      // backtracking (Wordscapes does this — drag back to undo the last hop).
+      if (selection.length >= 2 && selection[selection.length - 2] === idx) {
+        onSelectionChange(selection.slice(0, -1));
+        return;
+      }
+      if (selection.includes(idx)) return;
+      onSelectionChange([...selection, idx]);
+    },
+    [onSelectionChange, selection],
+  );
+
+  const handlePointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
+    const v = toViewBox(e.clientX, e.clientY);
+    if (!v) return;
+    draggingRef.current = true;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* setPointerCapture not supported in some test envs */
+    }
+    setPointer(v);
+    const idx = hitLetter(v.x, v.y);
+    if (idx >= 0) {
+      onSelectionChange([idx]);
+    } else {
+      onSelectionChange([]);
+    }
+  };
+
+  const handlePointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (!draggingRef.current) return;
+    const v = toViewBox(e.clientX, e.clientY);
+    if (!v) return;
+    setPointer(v);
+    const idx = hitLetter(v.x, v.y);
+    if (idx >= 0) updateSelectionFor(idx);
+  };
+
+  const finishDrag = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    setPointer(null);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    onSubmit();
+  };
+
+  // Build the SVG polyline points: every selected letter centre, plus the
+  // current pointer position so the trailing segment tracks the finger.
+  // `pointer` is only non-null mid-drag (cleared in finishDrag), so its
+  // presence is sufficient — no need to read draggingRef during render.
+  const linePoints = useMemo(() => {
+    const pts = selection.map((i) => `${positions[i].x},${positions[i].y}`);
+    if (pointer) {
+      pts.push(`${pointer.x},${pointer.y}`);
+    }
+    return pts.join(" ");
+  }, [positions, selection, pointer]);
+
+  return (
+    <div className="flex flex-col items-center gap-3 select-none">
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${WHEEL_VIEWBOX} ${WHEEL_VIEWBOX}`}
+        width={WHEEL_VIEWBOX}
+        height={WHEEL_VIEWBOX}
+        style={{
+          maxWidth: "min(86vw, 320px)",
+          touchAction: "none",
+          userSelect: "none",
+        }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishDrag}
+        onPointerCancel={finishDrag}
+        onPointerLeave={(e) => {
+          // Release capture only on cancel — we DON'T submit here, since
+          // pointer-leave fires while the drag is still in progress on
+          // some browsers. Pointer-up handles submission.
+          if (!draggingRef.current) return;
+          // Keep tracking outside the SVG.
+          const v = toViewBox(e.clientX, e.clientY);
+          if (v) setPointer(v);
+        }}
+        role="application"
+        aria-label="Letter wheel"
+      >
+        {/* Hub */}
+        <circle
+          cx={WHEEL_CENTER}
+          cy={WHEEL_CENTER}
+          r={WHEEL_RING_R + WHEEL_LETTER_R + 8}
+          fill="var(--surface-2)"
+          stroke="var(--border)"
+          strokeWidth={1}
+        />
+        {/* Selection trail */}
+        {selection.length > 0 && (
+          <polyline
+            points={linePoints}
+            fill="none"
+            stroke="var(--brand)"
+            strokeWidth={6}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            opacity={0.85}
+          />
+        )}
+        {/* Letter circles */}
+        {positions.map((p, i) => {
+          const selected = selection.includes(i);
+          return (
+            <g key={i}>
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r={WHEEL_LETTER_R}
+                fill={selected ? "var(--brand)" : "var(--surface)"}
+                stroke={selected ? "var(--brand)" : "var(--border-strong)"}
+                strokeWidth={2}
+              />
+              <text
+                x={p.x}
+                y={p.y}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fontSize={WHEEL_LETTER_R}
+                fontWeight={800}
+                fill={selected ? "var(--brand-fg)" : "var(--text)"}
+                style={{ textTransform: "uppercase", pointerEvents: "none" }}
+              >
+                {letters[i].toUpperCase()}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+      <button
+        type="button"
+        onClick={onShuffle}
+        className="btn btn-secondary btn-sm"
+        aria-label="Shuffle letters"
+      >
+        Shuffle
+      </button>
+    </div>
+  );
+}
+
+/* ============================================================
+   Main component
+   ============================================================ */
+
+type FlashKind = "found" | "bonus" | "duplicate" | "invalid" | "tooshort";
+type Flash = { kind: FlashKind; word: string; coins?: number };
 
 export default function WordClient({ playerName }: { playerName: string }) {
-  const stats = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const stats = useSyncExternalStore(subscribeStats, getStatsSnapshot, getStatsServer);
 
-  // Answer is fixed per UTC day. We read it once on mount; no need to refresh
-  // mid-session (if the clock rolls past midnight we keep the current puzzle
-  // and let the next page load pick up the new day).
-  const [today] = useState(() => ({
-    dayIndex: utcDayIndex(Date.now()),
-    answer: wordForDay(Date.now()),
-  }));
+  const [today] = useState(() => {
+    const ts = Date.now();
+    return { dayIndex: utcDayIndex(ts), puzzle: puzzleForDay(ts) };
+  });
+
+  // Wheel order is randomised per session for replay variety.
+  const [wheelLetters, setWheelLetters] = useState<string[]>(() =>
+    shuffle(today.puzzle.letters),
+  );
+  const reshuffle = useCallback(() => {
+    setWheelLetters((prev) => {
+      // Avoid an immediate identical shuffle on small letter sets.
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const next = shuffle(prev);
+        if (next.join("") !== prev.join("")) return next;
+      }
+      return shuffle(prev);
+    });
+  }, []);
+
+  // Hydrate today's persisted progress in the lazy initialisers so we don't
+  // setState() from an effect on mount (cascading-renders lint rule).
+  const [foundWords, setFoundWords] = useState<Set<string>>(() => {
+    const p = readProgress(today.dayIndex);
+    return new Set(p.found);
+  });
+  const [foundBonus, setFoundBonus] = useState<Set<string>>(() => {
+    const p = readProgress(today.dayIndex);
+    return new Set(p.bonus);
+  });
+  const [selection, setSelection] = useState<number[]>([]);
+  const [flash, setFlash] = useState<Flash | null>(null);
+  const [justFoundWordIdx, setJustFoundWordIdx] = useState<number | null>(null);
+  const [now, setNow] = useState<number>(() => Date.now());
 
   const sessionIdRef = useRef<string | null>(null);
   const sessionStartedRef = useRef(false);
+  const finalizedRef = useRef<boolean>(readProgress(today.dayIndex).finalized);
+  const earnedCoinsRef = useRef(0);
 
-  const [guesses, setGuesses] = useState<string[]>([]);
-  const [current, setCurrent] = useState<string>("");
-  const [status, setStatus] = useState<Status>("playing");
-  const [error, setError] = useState<string | null>(null);
-  const [shakeRow, setShakeRow] = useState<number>(-1);
-  const [now, setNow] = useState<number>(() => Date.now());
-  const [finalScore, setFinalScore] = useState<number>(0);
-
-  // If the user already completed today's word, rehydrate the lock screen.
-  const alreadyFinishedToday = stats.lastPlayedDay === today.dayIndex;
-
+  // Persist progress whenever it changes.
   useEffect(() => {
-    if (!alreadyFinishedToday) return;
-    // Lock state — we don't preserve individual guesses across reloads, just
-    // the final outcome. Show the summary screen.
-    setStatus(stats.lastResult === "win" ? "won" : "lost");
-  }, [alreadyFinishedToday, stats.lastResult]);
+    writeProgress({
+      dayIndex: today.dayIndex,
+      found: Array.from(foundWords),
+      bonus: Array.from(foundBonus),
+      finalized: finalizedRef.current,
+    });
+  }, [today.dayIndex, foundWords, foundBonus]);
 
+  // Tick the countdown clock.
   useEffect(() => {
-    if (status === "playing") return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [status]);
+  }, []);
 
-  // Key state across all guesses so we can color the virtual keyboard.
-  const keyState = useMemo(() => {
-    let acc: Record<string, LetterState | undefined> = {};
-    for (const g of guesses) {
-      acc = mergeKeyState(acc, g, gradeGuess(g, today.answer));
-    }
-    return acc;
-  }, [guesses, today.answer]);
+  // Auto-clear flash messages.
+  useEffect(() => {
+    if (!flash) return;
+    const id = window.setTimeout(() => setFlash(null), 1200);
+    return () => window.clearTimeout(id);
+  }, [flash]);
 
-  const errorTimeoutRef = useRef<number | null>(null);
-  const flashError = useCallback(
-    (msg: string) => {
-      setError(msg);
-      setShakeRow(guesses.length);
-      if (errorTimeoutRef.current !== null) {
-        window.clearTimeout(errorTimeoutRef.current);
-      }
-      errorTimeoutRef.current = window.setTimeout(() => {
-        setError(null);
-        setShakeRow(-1);
-        errorTimeoutRef.current = null;
-      }, 1200);
-    },
-    [guesses.length],
+  // Auto-clear the "just found" pulse so the same word doesn't keep
+  // re-animating on every re-render.
+  useEffect(() => {
+    if (justFoundWordIdx === null) return;
+    const id = window.setTimeout(() => setJustFoundWordIdx(null), 700);
+    return () => window.clearTimeout(id);
+  }, [justFoundWordIdx]);
+
+  const allFound = foundWords.size === today.puzzle.words.length;
+  const totalScoreToday =
+    foundWords.size * COINS_PER_PUZZLE_WORD +
+    foundBonus.size * COINS_PER_BONUS_WORD +
+    (allFound ? COINS_FULL_CLEAR_BONUS : 0);
+
+  // The currently-spelled word, derived from the chained letter indices.
+  const currentWord = useMemo(
+    () => selection.map((i) => wheelLetters[i]).join(""),
+    [selection, wheelLetters],
   );
 
+  /* ----- finalize: send the score to the server once today is done ----- */
+
   const finalize = useCallback(
-    (allGuesses: string[], outcome: "win" | "loss") => {
-      const tryCount = allGuesses.length;
-      const score = outcome === "win" ? (SCORE_BY_TRY[tryCount] ?? 0) : 0;
-      setFinalScore(score);
-      setStatus(outcome === "win" ? "won" : "lost");
+    (solved: boolean) => {
+      if (finalizedRef.current) return;
+      finalizedRef.current = true;
 
-      const prev = getSnapshot();
-      // Streak logic: a miss resets the streak, a win extends it.
-      const nextStreak = outcome === "win" ? prev.currentStreak + 1 : 0;
-      const nextDistribution = [...prev.distribution];
-      if (outcome === "win") {
-        nextDistribution[tryCount] = (nextDistribution[tryCount] || 0) + 1;
-      }
+      const score = totalScoreToday;
+      earnedCoinsRef.current = score;
 
+      const prev = getStatsSnapshot();
+      const nextStreak = solved ? prev.currentStreak + 1 : 0;
       writeStats({
         totalCoins: prev.totalCoins + score,
         gamesPlayed: prev.gamesPlayed + 1,
-        wins: prev.wins + (outcome === "win" ? 1 : 0),
+        puzzlesSolved: prev.puzzlesSolved + (solved ? 1 : 0),
         currentStreak: nextStreak,
         bestStreak: Math.max(prev.bestStreak, nextStreak),
         lastPlayedDay: today.dayIndex,
-        lastResult: outcome,
-        distribution: nextDistribution,
+        lastResult: solved ? "solved" : "partial",
       });
+      writeProgress({
+        dayIndex: today.dayIndex,
+        found: Array.from(foundWords),
+        bonus: Array.from(foundBonus),
+        finalized: true,
+      });
+
       if (sessionIdRef.current) {
         const sid = sessionIdRef.current;
         sessionIdRef.current = null;
@@ -299,122 +686,79 @@ export default function WordClient({ playerName }: { playerName: string }) {
         });
       }
     },
-    [today.dayIndex],
+    [totalScoreToday, today.dayIndex, foundWords, foundBonus],
   );
 
-  const submitGuess = useCallback(() => {
-    if (status !== "playing") return;
-    if (alreadyFinishedToday) return;
-    if (current.length !== WORD_LENGTH) {
-      flashError("Need 5 letters");
+  // Auto-finalize the moment every grid word is found.
+  useEffect(() => {
+    if (allFound && !finalizedRef.current) {
+      finalize(true);
+    }
+  }, [allFound, finalize]);
+
+  /* ----- selection submit ----- */
+
+  const submitSelection = useCallback(() => {
+    if (selection.length === 0) return;
+    const word = currentWord;
+    setSelection([]);
+
+    if (word.length < 3) {
+      if (word.length > 0) setFlash({ kind: "tooshort", word });
       return;
     }
-    if (!isValidGuess(current)) {
-      flashError("Not in word list");
+
+    if (!canFormWord(today.puzzle, word)) {
+      setFlash({ kind: "invalid", word });
       return;
     }
-    // Start server session on the first valid guess.
-    if (!sessionStartedRef.current) {
+
+    // Lazily kick off the server session on the first valid attempt.
+    if (!sessionStartedRef.current && !finalizedRef.current) {
       sessionStartedRef.current = true;
       startGameSession("word").then((r) => {
         if (r.ok) sessionIdRef.current = r.sessionId;
       });
     }
-    const next = [...guesses, current];
-    setGuesses(next);
-    setCurrent("");
 
-    if (current === today.answer) {
-      finalize(next, "win");
-    } else if (next.length >= MAX_GUESSES) {
-      finalize(next, "loss");
-    }
-  }, [
-    alreadyFinishedToday,
-    current,
-    finalize,
-    flashError,
-    guesses,
-    status,
-    today.answer,
-  ]);
-
-  const pressLetter = useCallback(
-    (ch: string) => {
-      if (status !== "playing" || alreadyFinishedToday) return;
-      if (current.length >= WORD_LENGTH) return;
-      setCurrent((c) => c + ch.toLowerCase());
-      setError(null);
-    },
-    [alreadyFinishedToday, current.length, status],
-  );
-  const pressBackspace = useCallback(() => {
-    if (status !== "playing" || alreadyFinishedToday) return;
-    setCurrent((c) => c.slice(0, -1));
-    setError(null);
-  }, [alreadyFinishedToday, status]);
-
-  // Physical keyboard
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "Enter") {
-        e.preventDefault();
-        submitGuess();
-      } else if (e.key === "Backspace") {
-        e.preventDefault();
-        pressBackspace();
-      } else if (/^[a-zA-Z]$/.test(e.key)) {
-        e.preventDefault();
-        pressLetter(e.key);
+    const puzzleIdx = isPuzzleWord(today.puzzle, word);
+    if (puzzleIdx >= 0) {
+      if (foundWords.has(word)) {
+        setFlash({ kind: "duplicate", word });
+        return;
       }
+      setFoundWords((prev) => {
+        const next = new Set(prev);
+        next.add(word);
+        return next;
+      });
+      setJustFoundWordIdx(puzzleIdx);
+      setFlash({ kind: "found", word, coins: COINS_PER_PUZZLE_WORD });
+      return;
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [pressBackspace, pressLetter, submitGuess]);
 
-  // Derived rows for rendering
-  const rows = useMemo(() => {
-    const rendered: {
-      chars: string[];
-      grades: (LetterState | "pending")[];
-      filled: boolean;
-    }[] = [];
-    for (let i = 0; i < MAX_GUESSES; i++) {
-      const guess = guesses[i];
-      if (guess) {
-        rendered.push({
-          chars: guess.split(""),
-          grades: gradeGuess(guess, today.answer),
-          filled: true,
-        });
-      } else if (i === guesses.length && status === "playing") {
-        const chars = current.split("");
-        while (chars.length < WORD_LENGTH) chars.push("");
-        rendered.push({
-          chars,
-          grades: new Array(WORD_LENGTH).fill("pending"),
-          filled: false,
-        });
-      } else {
-        rendered.push({
-          chars: new Array(WORD_LENGTH).fill(""),
-          grades: new Array(WORD_LENGTH).fill("pending"),
-          filled: false,
-        });
+    if (isBonusWord(today.puzzle, word)) {
+      if (foundBonus.has(word)) {
+        setFlash({ kind: "duplicate", word });
+        return;
       }
+      setFoundBonus((prev) => {
+        const next = new Set(prev);
+        next.add(word);
+        return next;
+      });
+      setFlash({ kind: "bonus", word, coins: COINS_PER_BONUS_WORD });
+      return;
     }
-    return rendered;
-  }, [current, guesses, status, today.answer]);
+
+    setFlash({ kind: "invalid", word });
+  }, [currentWord, foundWords, foundBonus, selection.length, today.puzzle]);
+
+  /* ----- render ----- */
 
   const firstName = playerName?.split(/\s+/)[0] || "Miner";
-  const msUntilTomorrow = Math.max(
-    0,
-    (today.dayIndex + 1) * DAY_MS - now,
-  );
-  const winRatePct = stats.gamesPlayed
-    ? Math.round((stats.wins / stats.gamesPlayed) * 100)
-    : 0;
+  const msUntilTomorrow = Math.max(0, (today.dayIndex + 1) * DAY_MS - now);
+  const totalBonusKnown = today.puzzle.bonus.length;
 
   return (
     <div className="mx-auto max-w-[560px] px-4 py-6 lg:py-8">
@@ -424,122 +768,79 @@ export default function WordClient({ playerName }: { playerName: string }) {
           Word Game
         </h1>
         <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-          Guess the day&apos;s 5-letter word in six tries. Fewer tries pay more.
+          Swipe the letters to spell every word in the grid. Bonus words pay extra.
         </p>
       </header>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-2 mb-5">
-        <MiniStat label="Played" value={stats.gamesPlayed} />
-        <MiniStat label="Win %" value={`${winRatePct}`} />
+      <div className="grid grid-cols-4 gap-2 mb-4">
+        <MiniStat
+          label="Words"
+          value={`${foundWords.size}/${today.puzzle.words.length}`}
+        />
+        <MiniStat
+          label="Bonus"
+          value={`${foundBonus.size}/${totalBonusKnown}`}
+        />
         <MiniStat label="Streak" value={stats.currentStreak} />
         <MiniStat label="Best" value={stats.bestStreak} />
       </div>
 
-      {/* Result banner */}
-      {status === "won" && (
+      {allFound && (
         <ResultBanner
           kind="won"
-          title={`Nailed it, ${firstName}!`}
+          title={`Solved it, ${firstName}!`}
           detail={
-            alreadyFinishedToday && finalScore === 0
-              ? `You solved today's word — come back tomorrow for a fresh one.`
-              : <><span>Solved in {guesses.length} {guesses.length === 1 ? "try" : "tries"} · </span><IconCoin size={13} style={{ display: "inline", verticalAlign: "middle" }} /><span> +{finalScore} coins</span></>
+            <>
+              <span>
+                {foundWords.size} words · {foundBonus.size} bonus ·{" "}
+              </span>
+              <IconCoin
+                size={13}
+                style={{ display: "inline", verticalAlign: "middle" }}
+              />
+              <span> +{totalScoreToday} coins</span>
+            </>
           }
           countdownMs={msUntilTomorrow}
         />
       )}
-      {status === "lost" && (
-        <ResultBanner
-          kind="lost"
-          title="Out of tries"
-          detail={`Today's word was "${today.answer.toUpperCase()}". Fresh one in…`}
-          countdownMs={msUntilTomorrow}
-        />
-      )}
 
-      {/* Error pill */}
-      <div className="min-h-[24px] mb-2 flex items-center justify-center">
-        {error && (
-          <span
-            role="alert"
-            className="text-xs font-medium px-2.5 py-1 rounded-full"
-            style={{
-              background: "var(--danger-weak)",
-              color: "var(--danger-fg)",
-              border:
-                "1px solid color-mix(in oklab, var(--danger) 35%, transparent)",
-            }}
-          >
-            {error}
-          </span>
-        )}
+      {/* Crossword grid */}
+      <Crossword
+        puzzle={today.puzzle}
+        foundSet={foundWords}
+        justFoundWordIdx={justFoundWordIdx}
+      />
+
+      {/* Bonus dot row */}
+      <BonusDots found={foundBonus.size} total={totalBonusKnown} />
+
+      {/* Current selection / flash */}
+      <div className="min-h-[40px] my-3 flex items-center justify-center">
+        {flash ? <FlashPill flash={flash} /> : <SelectionPreview word={currentWord} />}
       </div>
 
-      {/* Board */}
-      <div
-        className="mx-auto grid gap-1.5 mb-5"
-        style={{
-          gridTemplateRows: `repeat(${MAX_GUESSES}, 1fr)`,
-          maxWidth: `calc(${WORD_LENGTH} * 58px + ${WORD_LENGTH - 1} * 6px)`,
-        }}
-        role="grid"
-        aria-label="Word board"
-      >
-        {rows.map((row, i) => (
-          <div
-            key={i}
-            className="grid gap-1.5"
-            style={{
-              gridTemplateColumns: `repeat(${WORD_LENGTH}, 1fr)`,
-              animation:
-                shakeRow === i ? "wordShake 0.3s var(--ease-out)" : undefined,
-            }}
-          >
-            {row.chars.map((ch, j) => (
-              <LetterTile
-                key={j}
-                ch={ch}
-                state={row.grades[j]}
-                filled={row.filled}
-                revealDelayMs={row.filled ? j * 90 : 0}
-              />
-            ))}
-          </div>
-        ))}
-      </div>
+      {/* Letter wheel */}
+      <LetterWheel
+        letters={wheelLetters}
+        selection={selection}
+        onSelectionChange={setSelection}
+        onSubmit={submitSelection}
+        onShuffle={reshuffle}
+      />
 
-      {/* Keyboard */}
-      <div className="flex flex-col gap-1.5 select-none">
-        <KeyboardRow letters={ROW_1} keyState={keyState} onLetter={pressLetter} />
-        <KeyboardRow letters={ROW_2} keyState={keyState} onLetter={pressLetter} />
-        <div className="flex gap-1.5 justify-center">
-          <KeyButton wide onClick={submitGuess} label="Enter" />
-          {ROW_3.map((l) => (
-            <KeyButton
-              key={l}
-              onClick={() => pressLetter(l)}
-              label={l}
-              state={keyState[l]}
-            />
-          ))}
-          <KeyButton wide onClick={pressBackspace} label="⌫" />
-        </div>
-      </div>
-
-      {/* Local CSS for tile flip + shake */}
       <style>{`
-        @keyframes wordShake {
-          0%, 100% { transform: translateX(0); }
-          25% { transform: translateX(-6px); }
-          50% { transform: translateX(6px); }
-          75% { transform: translateX(-4px); }
+        @keyframes wordPulse {
+          0%   { transform: scale(1);    filter: brightness(1); }
+          40%  { transform: scale(1.12); filter: brightness(1.4); }
+          100% { transform: scale(1);    filter: brightness(1); }
         }
-        @keyframes wordFlip {
-          0% { transform: rotateX(0deg); }
-          49% { transform: rotateX(90deg); }
-          50% { transform: rotateX(90deg); }
-          100% { transform: rotateX(0deg); }
+        @keyframes wordFloat {
+          0%   { opacity: 0; transform: translateY(6px); }
+          15%  { opacity: 1; transform: translateY(0); }
+          85%  { opacity: 1; }
+          100% { opacity: 0; transform: translateY(-4px); }
         }
       `}</style>
     </div>
@@ -547,148 +848,126 @@ export default function WordClient({ playerName }: { playerName: string }) {
 }
 
 /* ============================================================
-   Tile
+   Small UI bits
    ============================================================ */
 
-function LetterTile({
-  ch,
-  state,
-  filled,
-  revealDelayMs,
-}: {
-  ch: string;
-  state: LetterState | "pending";
-  filled: boolean;
-  revealDelayMs: number;
-}) {
-  const graded = filled && state !== "pending";
-  const bg =
-    graded && state === "correct"
-      ? "var(--success)"
-      : graded && state === "present"
-        ? "var(--warning)"
-        : graded && state === "absent"
-          ? "var(--surface-3)"
-          : "var(--surface)";
-  const color =
-    graded && state === "correct"
-      ? "#0b1a10"
-      : graded && state === "present"
-        ? "#2a1f04"
-        : "var(--text)";
-  const border = ch
-    ? "var(--border-strong)"
-    : "var(--border)";
-
+function SelectionPreview({ word }: { word: string }) {
+  if (!word) {
+    return (
+      <span className="text-xs" style={{ color: "var(--text-subtle)" }}>
+        Drag across the wheel to spell a word
+      </span>
+    );
+  }
   return (
-    <div
-      role="gridcell"
+    <span
+      className="px-3 py-1 rounded-full text-base font-bold tracking-wide"
       style={{
-        aspectRatio: "1 / 1",
-        border: `1px solid ${graded ? "transparent" : border}`,
-        borderRadius: "var(--radius-sm)",
-        background: bg,
-        color,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontWeight: 800,
-        fontSize: "1.4rem",
+        background: "var(--surface-2)",
+        color: "var(--text)",
+        border: "1px solid var(--border-strong)",
         textTransform: "uppercase",
-        lineHeight: 1,
-        letterSpacing: "0.02em",
-        animation: graded
-          ? `wordFlip 0.5s var(--ease-out) ${revealDelayMs}ms both`
-          : undefined,
+        letterSpacing: "0.08em",
       }}
     >
-      {ch}
-    </div>
+      {word}
+    </span>
   );
 }
 
-/* ============================================================
-   Keyboard
-   ============================================================ */
+function FlashPill({ flash }: { flash: Flash }) {
+  const { kind, word, coins } = flash;
+  let bg = "var(--surface-2)";
+  let fg = "var(--text)";
+  let border = "var(--border-strong)";
+  let prefix: React.ReactNode = null;
+  let suffix: React.ReactNode = null;
 
-function KeyboardRow({
-  letters,
-  keyState,
-  onLetter,
-}: {
-  letters: string[];
-  keyState: Record<string, LetterState | undefined>;
-  onLetter: (ch: string) => void;
-}) {
+  if (kind === "found") {
+    bg = "var(--success-weak)";
+    fg = "var(--success-fg)";
+    border = "color-mix(in oklab, var(--success) 40%, transparent)";
+    prefix = <IconSparkles size={14} />;
+    suffix = coins ? (
+      <>
+        {" "}+ <IconCoin size={12} /> {coins}
+      </>
+    ) : null;
+  } else if (kind === "bonus") {
+    bg = "var(--brand-weak)";
+    fg = "var(--brand-weak-fg)";
+    border = "color-mix(in oklab, var(--brand) 40%, transparent)";
+    prefix = <IconSparkles size={14} />;
+    suffix = coins ? (
+      <>
+        {" "}+ <IconCoin size={12} /> {coins} (bonus)
+      </>
+    ) : (
+      " (bonus)"
+    );
+  } else if (kind === "duplicate") {
+    bg = "var(--surface-3)";
+    fg = "var(--text-muted)";
+  } else if (kind === "invalid") {
+    bg = "var(--danger-weak)";
+    fg = "var(--danger-fg)";
+    border = "color-mix(in oklab, var(--danger) 40%, transparent)";
+    prefix = <IconError size={14} />;
+  } else if (kind === "tooshort") {
+    bg = "var(--surface-3)";
+    fg = "var(--text-muted)";
+  }
+
+  const label =
+    kind === "duplicate"
+      ? `Already found: ${word.toUpperCase()}`
+      : kind === "tooshort"
+        ? `Too short`
+        : kind === "invalid"
+          ? `Not a word`
+          : word.toUpperCase();
+
   return (
-    <div className="flex gap-1.5 justify-center">
-      {letters.map((l) => (
-        <KeyButton
-          key={l}
-          onClick={() => onLetter(l)}
-          label={l}
-          state={keyState[l]}
+    <span
+      role="status"
+      className="px-3 py-1.5 rounded-full text-sm font-semibold inline-flex items-center gap-1.5"
+      style={{
+        background: bg,
+        color: fg,
+        border: `1px solid ${border}`,
+        animation: "wordFloat 1.2s var(--ease-out) both",
+      }}
+    >
+      {prefix}
+      <span>{label}</span>
+      {suffix}
+    </span>
+  );
+}
+
+function BonusDots({ found, total }: { found: number; total: number }) {
+  // Cap the visual row so it doesn't overflow on long bonus lists; scale
+  // the "filled" count proportionally if total is very large.
+  const slots = Math.min(8, Math.max(4, total));
+  const filled =
+    total === 0 ? 0 : Math.min(slots, Math.round((found / total) * slots));
+  return (
+    <div className="flex items-center justify-center gap-1.5 my-2" aria-hidden>
+      {Array.from({ length: slots }).map((_, i) => (
+        <span
+          key={i}
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: "var(--radius-full)",
+            background: i < filled ? "var(--brand)" : "var(--surface-3)",
+            border: "1px solid var(--border)",
+          }}
         />
       ))}
     </div>
   );
 }
-
-function KeyButton({
-  onClick,
-  label,
-  state,
-  wide,
-}: {
-  onClick: () => void;
-  label: string;
-  state?: LetterState;
-  wide?: boolean;
-}) {
-  const bg =
-    state === "correct"
-      ? "var(--success)"
-      : state === "present"
-        ? "var(--warning)"
-        : state === "absent"
-          ? "var(--surface-3)"
-          : "var(--surface-2)";
-  const color =
-    state === "correct"
-      ? "#0b1a10"
-      : state === "present"
-        ? "#2a1f04"
-        : state === "absent"
-          ? "var(--text-subtle)"
-          : "var(--text)";
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        flex: wide ? "1.5 1 0" : "1 1 0",
-        minWidth: wide ? 52 : 0,
-        height: 52,
-        border: "1px solid var(--border)",
-        borderRadius: "var(--radius-sm)",
-        background: bg,
-        color,
-        fontSize: "var(--fs-14)",
-        fontWeight: 700,
-        textTransform: "uppercase",
-        WebkitTapHighlightColor: "transparent",
-        cursor: "pointer",
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-/* ============================================================
-   Small stat tile + result banner
-   ============================================================ */
 
 function MiniStat({ label, value }: { label: string; value: string | number }) {
   return (
@@ -700,7 +979,7 @@ function MiniStat({ label, value }: { label: string; value: string | number }) {
       }}
     >
       <span
-        className="text-lg font-bold leading-none"
+        className="text-base font-bold leading-none"
         style={{ color: "var(--text)" }}
       >
         {value}
@@ -756,7 +1035,7 @@ function ResultBanner({
           style={{ color: "var(--text-subtle)" }}
         >
           <IconClock size={12} />
-          Next word in {formatCountdown(countdownMs)}
+          Next puzzle in {formatCountdown(countdownMs)}
         </div>
       </div>
     </section>

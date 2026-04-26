@@ -13,7 +13,6 @@ import {
   IconGift,
   IconMine,
   IconSparkles,
-  IconTrophy,
 } from "@/components/icons";
 
 /* ============================================================
@@ -25,7 +24,6 @@ const SPIN_KEY = "minero_spin_stats_v1";
 const MEMORY_KEY = "minero_memory_stats_v1";
 const MINESWEEPER_KEY = "minero_minesweeper_stats_v1";
 const WORD_KEY = "minero_word_stats_v1";
-const SNAKE_KEY = "minero_snake_stats_v1";
 const BLOCKBLAST_KEY = "minero_blockblast_stats_v1";
 const REWARDS_KEY = "minero_rewards_v1";
 const SPIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -119,20 +117,6 @@ const EMPTY_WORD: WordStats = {
   bestStreak: 0,
   lastPlayedDay: -1,
   lastResult: null,
-};
-
-type SnakeStats = {
-  totalCoins: number;
-  bestScore: number;
-  gamesPlayed: number;
-  applesEaten: number;
-};
-
-const EMPTY_SNAKE: SnakeStats = {
-  totalCoins: 0,
-  bestScore: 0,
-  gamesPlayed: 0,
-  applesEaten: 0,
 };
 
 type BlockBlastStats = {
@@ -250,21 +234,6 @@ function parseWord(raw: string | null): WordStats {
   }
 }
 
-function parseSnake(raw: string | null): SnakeStats {
-  if (!raw) return EMPTY_SNAKE;
-  try {
-    const p = JSON.parse(raw) as Record<string, unknown>;
-    return {
-      totalCoins: Number(p.totalCoins) || Number(p.totalPoints) || 0,
-      bestScore: Number(p.bestScore) || 0,
-      gamesPlayed: Number(p.gamesPlayed) || 0,
-      applesEaten: Number(p.applesEaten) || 0,
-    };
-  } catch {
-    return EMPTY_SNAKE;
-  }
-}
-
 function parseBlockBlast(raw: string | null): BlockBlastStats {
   if (!raw) return EMPTY_BLOCKBLAST;
   try {
@@ -291,8 +260,6 @@ let sweepRaw: string | null = null;
 let sweepCache: MinesweeperStats = EMPTY_MINESWEEPER;
 let wordRaw: string | null = null;
 let wordCache: WordStats = EMPTY_WORD;
-let snakeRaw: string | null = null;
-let snakeCache: SnakeStats = EMPTY_SNAKE;
 let bbRaw: string | null = null;
 let bbCache: BlockBlastStats = EMPTY_BLOCKBLAST;
 
@@ -346,16 +313,6 @@ function getWordSnapshot(): WordStats {
   return wordCache;
 }
 
-function getSnakeSnapshot(): SnakeStats {
-  if (typeof window === "undefined") return EMPTY_SNAKE;
-  const raw = window.localStorage.getItem(SNAKE_KEY);
-  if (raw !== snakeRaw) {
-    snakeRaw = raw;
-    snakeCache = parseSnake(raw);
-  }
-  return snakeCache;
-}
-
 function makeSubscriber(key: string) {
   return (cb: () => void) => {
     const onStorage = (e: StorageEvent) => {
@@ -380,9 +337,6 @@ const getMinesweeperServer = () => EMPTY_MINESWEEPER;
 
 const subscribeWord = makeSubscriber(WORD_KEY);
 const getWordServer = () => EMPTY_WORD;
-
-const subscribeSnake = makeSubscriber(SNAKE_KEY);
-const getSnakeServer = () => EMPTY_SNAKE;
 
 function getBlockBlastSnapshot(): BlockBlastStats {
   if (typeof window === "undefined") return EMPTY_BLOCKBLAST;
@@ -460,11 +414,6 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     getWordSnapshot,
     getWordServer,
   );
-  const snake = useSyncExternalStore(
-    subscribeSnake,
-    getSnakeSnapshot,
-    getSnakeServer,
-  );
   const blockblast = useSyncExternalStore(
     subscribeBlockBlast,
     getBlockBlastSnapshot,
@@ -532,7 +481,6 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     memory.totalCoins +
     sweep.totalCoins +
     word.totalCoins +
-    snake.totalCoins +
     blockblast.totalCoins;
   // Pre-migration users (and anyone whose finishGameSession() was cut short
   // by a navigation before the request resolved) have localStorage stats
@@ -707,20 +655,6 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
           statusIcon={wordDoneToday ? <IconClock size={14} /> : undefined}
           ctaLabel={wordDoneToday ? "View result" : "Play today"}
           accent={wordDoneToday ? "muted" : "brand"}
-        />
-        <GameCard
-          href="/game/snake"
-          title="Snake"
-          tagline="Arcade classic on a canvas"
-          description="Eat apples, grow longer, don't hit a wall or yourself. Score = apples × 10."
-          icon={<IconGame size={22} />}
-          status={
-            snake.gamesPlayed > 0
-              ? `Best ${snake.bestScore} · ${snake.gamesPlayed} played`
-              : "New — arrows / swipe to play"
-          }
-          ctaLabel="Play Snake"
-          accent="brand"
         />
         <GameCard
           href="/game/blockblast"

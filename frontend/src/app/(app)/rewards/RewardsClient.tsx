@@ -55,7 +55,6 @@ const GAME_KEYS = [
   "minero_memory_stats_v1",
   "minero_minesweeper_stats_v1",
   "minero_word_stats_v1",
-  "minero_snake_stats_v1",
   "minero_blockblast_stats_v1",
 ];
 
