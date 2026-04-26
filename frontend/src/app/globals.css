@@ -891,3 +891,11 @@ kbd {
   .mine-anim__coin,
   .mine-anim__ore-crack { animation: none !important; }
 }
+
+/* Prevent iOS Safari auto-zoom on input focus (triggers when font-size < 16px) */
+@media (max-width: 768px) {
+  .input,
+  input,
+  select,
+  textarea { font-size: 1rem !important; }
+}
