@@ -14,7 +14,7 @@ import {
   multColor,
   SCORE_CAP,
 } from "./pieces";
-import { G, emptyGrid, fits, fitsAnywhere, place } from "./grid";
+import { G, emptyGrid, fits, fitsAnywhere, place, predictClears } from "./grid";
 import {
   type Stats,
   type DailyData,
@@ -72,6 +72,7 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
   const [score, setScore] = useState(0);
   const [lines, setLines] = useState(0);
   const [clearingCells, setClearingCells] = useState<Map<string, string>>(new Map());
+  const [settleCells, setSettleCells] = useState<Set<string>>(new Set());
   const [scorePops, setScorePops] = useState<ScorePop[]>([]);
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
   const [daily, setDaily] = useState<DailyData>({ date: todayStr(), plays: 0 });
@@ -134,6 +135,7 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
     setScore(0);
     setLines(0);
     setClearingCells(new Map());
+    setSettleCells(new Set());
     setScorePops([]);
     setStatus("playing");
     sessionIdRef.current = null;
@@ -185,6 +187,17 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
       setTimeout(() => setClearingCells(new Map()), 560);
     }
 
+    // Settle bounce on the newly placed cells that survived the clear.
+    const placedKeys = new Set<string>();
+    for (const [dr, dc] of piece.shape) {
+      const key = `${row + dr}-${col + dc}`;
+      if (!cleared.has(key)) placedKeys.add(key);
+    }
+    if (placedKeys.size > 0) {
+      setSettleCells(placedKeys);
+      setTimeout(() => setSettleCells(new Set()), 360);
+    }
+
     const pop: ScorePop = { id: ++_popId, pts };
     setScorePops((prev) => [...prev, pop]);
     setTimeout(() => setScorePops((prev) => prev.filter((p) => p.id !== pop.id)), 1150);
@@ -234,6 +247,8 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
 
   // Compute preview from the active drag (re-runs each pointermove via setDrag).
   const preview = new Set<string>();
+  const previewClearRows = new Set<number>();
+  const previewClearCols = new Set<number>();
   let previewOk = false;
   let previewColor = "";
   if (drag && status === "playing") {
@@ -246,6 +261,11 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
         const r = anchor.row + dr;
         const c = anchor.col + dc;
         if (r >= 0 && r < G && c >= 0 && c < G) preview.add(`${r}-${c}`);
+      }
+      if (previewOk) {
+        const cleared = predictClears(grid, p.shape, anchor.row, anchor.col);
+        cleared.rows.forEach((r) => previewClearRows.add(r));
+        cleared.cols.forEach((c) => previewClearCols.add(c));
       }
     }
   }
@@ -274,6 +294,28 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
         @keyframes bb-snapback {
           0%   { transform: translate(0, 0);                       opacity: 0.85; }
           100% { transform: translate(var(--bb-dx), var(--bb-dy)); opacity: 0;    }
+        }
+        @keyframes bb-clearpulse {
+          0%, 100% {
+            box-shadow: 0 0 0 0 rgba(255,255,255,0.0), 0 0 0 0 rgba(255,255,255,0.0);
+            filter: brightness(1);
+          }
+          50% {
+            box-shadow:
+              inset 0 0 0 2px rgba(255,255,255,0.85),
+              0 0 12px 2px rgba(255,255,255,0.55);
+            filter: brightness(1.25);
+          }
+        }
+        @keyframes bb-settle {
+          0%   { transform: translateY(-7px) scale(1.08); }
+          55%  { transform: translateY(2px)  scale(0.96); }
+          80%  { transform: translateY(-1px) scale(1.02); }
+          100% { transform: translateY(0)    scale(1);    }
+        }
+        @keyframes bb-particle {
+          0%   { transform: translate(0, 0)                       scale(1);    opacity: 0.95; }
+          100% { transform: translate(var(--bb-px), var(--bb-py)) scale(0.25); opacity: 0;    }
         }
       `}</style>
 
@@ -437,23 +479,48 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                   const isPrev = preview.has(key);
                   const clearColor = clearingCells.get(key);
 
-                  let bg = "var(--surface-2)";
+                  let bg: string = "var(--surface-2)";
                   let border = "var(--border)";
+                  let extra: React.CSSProperties = {};
                   let animCss: React.CSSProperties = {};
 
+                  // 2.5D extrusion shared by filled and preview cells.
+                  const extrudeShadow =
+                    "inset 0 2px 0 rgba(255,255,255,0.32), " +
+                    "inset 0 -3px 0 rgba(0,0,0,0.32), " +
+                    "inset -2px 0 0 rgba(0,0,0,0.18), " +
+                    "0 3px 5px rgba(0,0,0,0.35)";
+
                   if (clearColor !== undefined) {
-                    bg = clearColor;
-                    border = clearColor;
+                    bg = `linear-gradient(180deg, color-mix(in oklab,${clearColor} 78%,white), ${clearColor} 55%, color-mix(in oklab,${clearColor} 78%,black))`;
+                    border = "transparent";
+                    extra = { boxShadow: extrudeShadow };
                     animCss = { animation: "bb-cellpop 0.56s cubic-bezier(0.34,1.56,0.64,1) forwards" };
                   } else if (cellColor) {
-                    bg = cellColor;
-                    border = cellColor;
+                    bg = `linear-gradient(180deg, color-mix(in oklab,${cellColor} 78%,white), ${cellColor} 55%, color-mix(in oklab,${cellColor} 78%,black))`;
+                    border = "transparent";
+                    extra = { boxShadow: extrudeShadow };
                   } else if (isPrev && previewOk) {
-                    bg = `color-mix(in oklab,${previewColor} 42%,transparent)`;
+                    bg = `linear-gradient(180deg, color-mix(in oklab,${previewColor} 55%,transparent), color-mix(in oklab,${previewColor} 35%,transparent))`;
                     border = previewColor;
+                    extra = {
+                      boxShadow:
+                        "inset 0 2px 0 rgba(255,255,255,0.18), " +
+                        "inset 0 -3px 0 rgba(0,0,0,0.18), " +
+                        "0 2px 4px rgba(0,0,0,0.22)",
+                    };
                   } else if (isPrev && !previewOk) {
-                    bg = "color-mix(in oklab,#ef4444 38%,transparent)";
+                    bg = "linear-gradient(180deg, color-mix(in oklab,#ef4444 55%,transparent), color-mix(in oklab,#ef4444 35%,transparent))";
                     border = "#ef4444";
+                  }
+
+                  // Highlight rows/columns that would clear on drop.
+                  const inPreviewClear =
+                    clearColor === undefined && (previewClearRows.has(r) || previewClearCols.has(c));
+                  if (inPreviewClear && (cellColor || isPrev)) {
+                    animCss = { animation: "bb-clearpulse 0.9s ease-in-out infinite" };
+                  } else if (clearColor === undefined && settleCells.has(key)) {
+                    animCss = { animation: "bb-settle 0.32s cubic-bezier(0.34,1.56,0.64,1) forwards" };
                   }
 
                   return (
@@ -464,14 +531,48 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                         height: CELL,
                         background: bg,
                         border: `1px solid ${border}`,
-                        borderRadius: 4,
+                        borderRadius: 5,
                         transition: clearColor !== undefined ? "none" : "background 80ms",
+                        ...extra,
                         ...animCss,
                       }}
                     />
                   );
                 })}
               </div>
+
+              {/* Particle burst on row/column clear */}
+              {clearingCells.size > 0 && (
+                <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+                  {Array.from(clearingCells.entries()).flatMap(([key, color]) => {
+                    const [pr, pc] = key.split("-").map(Number);
+                    const cx = pc * (CELL + GAP) + CELL / 2;
+                    const cy = pr * (CELL + GAP) + CELL / 2;
+                    const dirs: [number, number][] = [
+                      [22, 0], [-22, 0], [0, 22], [0, -22],
+                      [16, 16], [-16, 16], [16, -16], [-16, -16],
+                    ];
+                    return dirs.map(([dx, dy], i) => (
+                      <div
+                        key={`${key}-p${i}`}
+                        style={{
+                          position: "absolute",
+                          left: cx - 3,
+                          top: cy - 3,
+                          width: 6,
+                          height: 6,
+                          borderRadius: "50%",
+                          background: color,
+                          boxShadow: `0 0 8px 1px ${color}`,
+                          animation: "bb-particle 0.6s ease-out forwards",
+                          ["--bb-px" as string]: `${dx}px`,
+                          ["--bb-py" as string]: `${dy}px`,
+                        } as React.CSSProperties}
+                      />
+                    ));
+                  })}
+                </div>
+              )}
 
               {/* Score pop-up overlays */}
               {scorePops.map((pop) => (
@@ -634,7 +735,10 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
               top,
               pointerEvents: "none",
               zIndex: 50,
-              filter: "drop-shadow(0 14px 22px rgba(0,0,0,0.45))",
+              transform: "scale(1.06)",
+              transformOrigin: "top left",
+              filter:
+                "drop-shadow(0 18px 14px rgba(0,0,0,0.35)) drop-shadow(0 6px 8px rgba(0,0,0,0.25))",
             }}
           >
             {shape.map(([dr, dc], i) => (
@@ -646,10 +750,12 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                   top: dr * pitch,
                   width: CELL,
                   height: CELL,
-                  background: color,
-                  border: `1px solid ${color}`,
-                  borderRadius: 4,
-                  opacity: 0.92,
+                  background: `linear-gradient(180deg, color-mix(in oklab,${color} 75%,white), ${color} 55%, color-mix(in oklab,${color} 75%,black))`,
+                  borderRadius: 5,
+                  boxShadow:
+                    "inset 0 2px 0 rgba(255,255,255,0.4), " +
+                    "inset 0 -3px 0 rgba(0,0,0,0.35), " +
+                    "inset -2px 0 0 rgba(0,0,0,0.2)",
                 }}
               />
             ))}
