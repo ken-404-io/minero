@@ -261,16 +261,31 @@ function PieceMini({ piece }: { piece: ColoredPiece }) {
 let _popId = 0;
 type ScorePop = { id: number; pts: number };
 
+type DragSource = { kind: "queue"; idx: 0 | 1 | 2 } | { kind: "hold" };
+type DragState = {
+  source: DragSource;
+  piece: ColoredPiece;
+  pointerId: number;
+  // Pointer position in viewport coords (for the floating ghost)
+  x: number;
+  y: number;
+  // Offset of the pointer within the dragged piece's grid (in cells), so the
+  // anchor cell maps from the touched square rather than the top-left.
+  anchorR: number;
+  anchorC: number;
+};
+
 export default function BlockBlastClient({ playerName: _ }: { playerName: string }) {
   const sessionIdRef = useRef<string | null>(null);
+  const boardRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [grid, setGrid] = useState<(string | null)[][]>(emptyGrid);
   const [pieces, setPieces] = useState<[ColoredPiece | null, ColoredPiece | null, ColoredPiece | null]>([null, null, null]);
-  const [sel, setSel] = useState<0 | 1 | 2 | null>(null);
   const [held, setHeld] = useState<ColoredPiece | null>(null);
   const [score, setScore] = useState(0);
   const [lines, setLines] = useState(0);
-  const [hover, setHover] = useState<[number, number] | null>(null);
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const [previewCell, setPreviewCell] = useState<[number, number] | null>(null);
   const [clearingCells, setClearingCells] = useState<Map<string, string>>(new Map());
   const [scorePops, setScorePops] = useState<ScorePop[]>([]);
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
@@ -293,11 +308,11 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
 
     setGrid(emptyGrid());
     setPieces(threeNew(0));
-    setSel(null);
     setHeld(null);
     setScore(0);
     setLines(0);
-    setHover(null);
+    setDrag(null);
+    setPreviewCell(null);
     setClearingCells(new Map());
     setScorePops([]);
     setStatus("playing");
@@ -307,26 +322,7 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
     });
   }
 
-  function holdPiece() {
-    if (sel === null) return;
-    const current = pieces[sel];
-    if (!current) return;
-
-    const next: [ColoredPiece | null, ColoredPiece | null, ColoredPiece | null] = [pieces[0], pieces[1], pieces[2]];
-    next[sel] = held ?? null;
-
-    const finalPieces = next.every((p) => !p) ? threeNew(score) : next;
-
-    setHeld(current);
-    setPieces(finalPieces);
-    setSel(held !== null ? sel : null);
-  }
-
-  function handleCell(row: number, col: number) {
-    if (status !== "playing" || sel === null) return;
-    const piece = pieces[sel];
-    if (!piece || !fits(grid, piece.shape, row, col)) return;
-
+  function commitPlacement(piece: ColoredPiece, source: DragSource, row: number, col: number) {
     const { grid: ng, cleared, lines: ln } = place(grid, piece.shape, piece.color, row, col);
 
     // Score decay: points earned shrink as current score approaches SCORE_CAP
@@ -348,21 +344,27 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
     setTimeout(() => setScorePops((prev: ScorePop[]) => prev.filter((p: ScorePop) => p.id !== pop.id)), 1150);
 
     // Next pieces — use newScore for difficulty escalation
-    const next: [ColoredPiece | null, ColoredPiece | null, ColoredPiece | null] = [pieces[0], pieces[1], pieces[2]];
-    next[sel] = null;
-    const finalPieces: [ColoredPiece | null, ColoredPiece | null, ColoredPiece | null] =
-      next.every((p) => !p) ? threeNew(newScore) : next;
+    let nextHeld = held;
+    let finalPieces: [ColoredPiece | null, ColoredPiece | null, ColoredPiece | null];
+    if (source.kind === "queue") {
+      const next: [ColoredPiece | null, ColoredPiece | null, ColoredPiece | null] = [pieces[0], pieces[1], pieces[2]];
+      next[source.idx] = null;
+      finalPieces = next.every((p) => !p) ? threeNew(newScore) : next;
+    } else {
+      // Placed from hold slot
+      nextHeld = null;
+      finalPieces = [pieces[0], pieces[1], pieces[2]];
+    }
 
     const queueOver = finalPieces.every((p) => !p || !fitsAnywhere(ng, p.shape));
-    const heldFits = held !== null ? fitsAnywhere(ng, held.shape) : false;
+    const heldFits = nextHeld !== null ? fitsAnywhere(ng, nextHeld.shape) : false;
     const over = queueOver && !heldFits;
 
     setGrid(ng);
     setPieces(finalPieces);
-    setSel(null);
+    setHeld(nextHeld);
     setScore(newScore);
     setLines(newLines);
-    setHover(null);
 
     if (over) {
       setStatus("over");
@@ -384,16 +386,98 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
     }
   }
 
-  // Compute preview
+  // Map a viewport coordinate to a board cell anchor (top-left of the piece).
+  // anchorR/anchorC is the offset within the piece bbox where the user grabbed it.
+  function pointToAnchor(x: number, y: number, anchorR: number, anchorC: number): [number, number] | null {
+    const board = boardRef.current;
+    if (!board) return null;
+    const rect = board.getBoundingClientRect();
+    const localX = x - rect.left;
+    const localY = y - rect.top;
+    const step = CELL + GAP;
+    const c = Math.floor(localX / step) - anchorC;
+    const r = Math.floor(localY / step) - anchorR;
+    return [r, c];
+  }
+
+  function startDrag(e: React.PointerEvent, source: DragSource, piece: ColoredPiece) {
+    if (status !== "playing") return;
+    e.preventDefault();
+
+    // Figure out which sub-cell of the piece preview was grabbed so the piece
+    // doesn't snap its top-left to the cursor.
+    const target = e.currentTarget as HTMLElement;
+    const rect = target.getBoundingClientRect();
+    const maxR = Math.max(...piece.shape.map(([r]) => r));
+    const maxC = Math.max(...piece.shape.map(([, c]) => c));
+    const cellW = rect.width / (maxC + 1);
+    const cellH = rect.height / (maxR + 1);
+    const anchorC = Math.max(0, Math.min(maxC, Math.floor((e.clientX - rect.left) / cellW)));
+    const anchorR = Math.max(0, Math.min(maxR, Math.floor((e.clientY - rect.top) / cellH)));
+
+    setDrag({
+      source,
+      piece,
+      pointerId: e.pointerId,
+      x: e.clientX,
+      y: e.clientY,
+      anchorR,
+      anchorC,
+    });
+    setPreviewCell(null);
+  }
+
+  // Global pointer listeners during an active drag — survives the pointer
+  // leaving the source element and works on touch.
+  useEffect(() => {
+    if (!drag) return;
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerId !== drag.pointerId) return;
+      e.preventDefault();
+      const anchor = pointToAnchor(e.clientX, e.clientY, drag.anchorR, drag.anchorC);
+      setDrag((prev) => (prev ? { ...prev, x: e.clientX, y: e.clientY } : prev));
+      if (anchor && anchor[0] >= 0 && anchor[0] < G && anchor[1] >= 0 && anchor[1] < G) {
+        setPreviewCell([anchor[0], anchor[1]]);
+      } else {
+        setPreviewCell(null);
+      }
+    };
+    const onUp = (e: PointerEvent) => {
+      if (e.pointerId !== drag.pointerId) return;
+      const anchor = pointToAnchor(e.clientX, e.clientY, drag.anchorR, drag.anchorC);
+      const piece = drag.piece;
+      const source = drag.source;
+      setDrag(null);
+      setPreviewCell(null);
+      if (!anchor) return;
+      const [r, c] = anchor;
+      if (!fits(grid, piece.shape, r, c)) return;
+      commitPlacement(piece, source, r, c);
+    };
+    const onCancel = () => {
+      setDrag(null);
+      setPreviewCell(null);
+    };
+    window.addEventListener("pointermove", onMove, { passive: false });
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drag, grid]);
+
+  // Compute preview from the active drag
   const preview = new Set<string>();
   let previewOk = false;
   let previewColor = "";
-  if (hover && sel !== null && pieces[sel]) {
-    const p = pieces[sel]!;
-    const [hr, hc] = hover;
-    previewOk = fits(grid, p.shape, hr, hc);
-    previewColor = p.color;
-    for (const [dr, dc] of p.shape) {
+  if (drag && previewCell) {
+    const [hr, hc] = previewCell;
+    previewOk = fits(grid, drag.piece.shape, hr, hc);
+    previewColor = drag.piece.color;
+    for (const [dr, dc] of drag.piece.shape) {
       const r = hr + dr, c = hc + dc;
       if (r >= 0 && r < G && c >= 0 && c < G) preview.add(`${r}-${c}`);
     }
@@ -457,7 +541,7 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
           <div style={{ fontSize: 52 }}>🟨</div>
           <h2 className="text-xl font-bold">Block Blast</h2>
           <p className="text-sm max-w-xs" style={{ color: "var(--text-muted)" }}>
-            Select a piece, then tap the grid to place it. Fill complete rows or
+            Drag pieces onto the grid to place them. Fill complete rows or
             columns to clear them and earn coins! Pieces get harder and coin
             rewards decay as your total climbs — max {SCORE_CAP.toLocaleString()} coins.
           </p>
@@ -566,10 +650,12 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
           <div style={{ overflowX: "auto" }}>
             <div style={{ position: "relative", width: gridWidth, margin: "0 auto 20px" }}>
               <div
+                ref={boardRef}
                 style={{
                   display: "grid",
                   gridTemplateColumns: `repeat(${G}, ${CELL}px)`,
                   gap: GAP,
+                  touchAction: "none",
                 }}
               >
                 {Array.from({ length: G * G }, (_, i) => {
@@ -602,17 +688,15 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                   return (
                     <div
                       key={key}
-                      onClick={() => handleCell(r, c)}
-                      onMouseEnter={() => status === "playing" && setHover([r, c])}
-                      onMouseLeave={() => setHover(null)}
                       style={{
                         width: CELL,
                         height: CELL,
                         background: bg,
                         border: `1px solid ${border}`,
                         borderRadius: 4,
-                        cursor: status === "playing" && sel !== null ? "pointer" : "default",
+                        cursor: drag ? "grabbing" : "default",
                         transition: clearColor !== undefined ? "none" : "background 80ms",
+                        pointerEvents: "none",
                         ...animCss,
                       }}
                     />
@@ -660,10 +744,11 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                   }}>
                     Hold
                   </span>
-                  <button
-                    onClick={holdPiece}
-                    disabled={sel === null}
-                    title={sel !== null ? "Hold selected piece (swap if stored)" : "Select a piece first"}
+                  <div
+                    onPointerDown={(e) => {
+                      if (held) startDrag(e, { kind: "hold" }, held);
+                    }}
+                    title={held ? "Drag to place" : "Empty hold slot"}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -675,15 +760,17 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                       background: held
                         ? "color-mix(in oklab,var(--brand) 12%,var(--surface))"
                         : "var(--surface)",
-                      cursor: sel !== null ? "pointer" : "not-allowed",
-                      opacity: sel === null ? 0.4 : 1,
+                      cursor: held ? "grab" : "default",
+                      opacity: held && drag?.source.kind === "hold" ? 0.35 : 1,
                       transition: "opacity 150ms, border-color 150ms, background 150ms",
+                      touchAction: "none",
+                      userSelect: "none",
                     }}
                   >
                     {held ? <PieceMini piece={held} /> : (
                       <span style={{ fontSize: 20, color: "var(--text-subtle)", userSelect: "none" }}>∅</span>
                     )}
-                  </button>
+                  </div>
                 </div>
 
                 {/* Divider */}
@@ -693,7 +780,6 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                 <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flex: 1, justifyContent: "space-around" }}>
                   {([0, 1, 2] as const).map((idx) => {
                     const piece = pieces[idx];
-                    const isSelected = sel === idx;
 
                     if (!piece) return <div key={idx} style={{ width: 82, height: 82 }} />;
 
@@ -701,26 +787,28 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                     const maxR = Math.max(...shape.map(([r]) => r));
                     const maxC = Math.max(...shape.map(([, c]) => c));
                     const csz = Math.max(10, Math.min(20, Math.floor(68 / Math.max(maxR + 1, maxC + 1))));
+                    const isDragging = drag?.source.kind === "queue" && drag.source.idx === idx;
 
                     return (
-                      <button
+                      <div
                         key={idx}
-                        onClick={() => setSel(isSelected ? null : idx)}
+                        onPointerDown={(e) => startDrag(e, { kind: "queue", idx }, piece)}
+                        title="Drag onto the grid to place"
                         style={{
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                           padding: 8,
                           borderRadius: 10,
-                          border: `2px solid ${isSelected ? color : "var(--border)"}`,
-                          background: isSelected
-                            ? `color-mix(in oklab,${color} 18%,var(--surface))`
-                            : "var(--surface)",
-                          cursor: "pointer",
+                          border: `2px solid var(--border)`,
+                          background: "var(--surface)",
+                          cursor: isDragging ? "grabbing" : "grab",
                           minWidth: 82,
                           minHeight: 82,
-                          transition: "border-color 120ms, background 120ms, transform 120ms",
-                          transform: isSelected ? "scale(1.08)" : "scale(1)",
+                          transition: "border-color 120ms, background 120ms, transform 120ms, opacity 120ms",
+                          opacity: isDragging ? 0.35 : 1,
+                          touchAction: "none",
+                          userSelect: "none",
                         }}
                       >
                         <div
@@ -729,6 +817,7 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                             gridTemplateColumns: `repeat(${maxC + 1},${csz}px)`,
                             gridTemplateRows: `repeat(${maxR + 1},${csz}px)`,
                             gap: 2,
+                            pointerEvents: "none",
                           }}
                         >
                           {Array.from({ length: (maxR + 1) * (maxC + 1) }, (_, j) => {
@@ -740,21 +829,67 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                             );
                           })}
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
               </div>
 
               <p className="text-center text-xs mt-3" style={{ color: "var(--text-subtle)" }}>
-                {sel === null
-                  ? "Tap a piece to select · tap Hold to save for later"
-                  : "Tap the grid to place · Hold to swap · tap piece to deselect"}
+                Drag a piece onto the grid to place it
               </p>
             </>
           )}
         </>
       )}
+
+      {/* Drag ghost — floats with the pointer while dragging */}
+      {drag && (() => {
+        const { piece, x, y, anchorR, anchorC } = drag;
+        const maxR = Math.max(...piece.shape.map(([r]) => r));
+        const maxC = Math.max(...piece.shape.map(([, c]) => c));
+        const step = CELL + GAP;
+        return (
+          <div
+            style={{
+              position: "fixed",
+              left: x - anchorC * step - CELL / 2,
+              top: y - anchorR * step - CELL / 2,
+              pointerEvents: "none",
+              zIndex: 50,
+              opacity: 0.85,
+              filter: "drop-shadow(0 6px 14px rgba(0,0,0,0.35))",
+            }}
+          >
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: `repeat(${maxC + 1}, ${CELL}px)`,
+                gridTemplateRows: `repeat(${maxR + 1}, ${CELL}px)`,
+                gap: GAP,
+              }}
+            >
+              {Array.from({ length: (maxR + 1) * (maxC + 1) }, (_, j) => {
+                const pr = Math.floor(j / (maxC + 1));
+                const pc = j % (maxC + 1);
+                const on = piece.shape.some(([r, c]) => r === pr && c === pc);
+                return (
+                  <div
+                    key={j}
+                    style={{
+                      width: CELL,
+                      height: CELL,
+                      background: on ? piece.color : "transparent",
+                      border: on ? `1px solid ${piece.color}` : "none",
+                      borderRadius: 4,
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Lifetime stats */}
       {stats.gamesPlayed > 0 && (
