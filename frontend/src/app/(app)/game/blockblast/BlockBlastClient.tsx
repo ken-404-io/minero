@@ -461,41 +461,14 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
 
           {/* Grid */}
           <div style={{ overflowX: "auto" }}>
-            <div
-              style={{
-                position: "relative",
-                width: gridWidth,
-                height: gridWidth,
-                margin: "0 auto 28px",
-                perspective: "1600px",
-                perspectiveOrigin: "center 35%",
-                touchAction: "none",
-              }}
-            >
-              {/* Flat hit-test rect — boardAnchorAt reads its rect; cells render in the tilted layer below. */}
+            <div style={{ position: "relative", width: gridWidth, margin: "0 auto 20px" }}>
               <div
                 ref={boardRef}
-                style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
-              />
-
-              {/* Tilted decorative layer (cells + particles) */}
-              <div
                 style={{
-                  position: "absolute",
-                  inset: 0,
-                  transform: "rotateX(10deg)",
-                  transformOrigin: "center bottom",
-                  pointerEvents: "none",
-                  willChange: "transform",
-                }}
-              >
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
                   display: "grid",
                   gridTemplateColumns: `repeat(${G}, ${CELL}px)`,
                   gap: GAP,
+                  touchAction: "none",
                 }}
               >
                 {Array.from({ length: G * G }, (_, i) => {
@@ -600,8 +573,6 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                   })}
                 </div>
               )}
-              </div>
-              {/* /Tilted decorative layer */}
 
               {/* Score pop-up overlays */}
               {scorePops.map((pop) => (
