@@ -9,15 +9,15 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { IconArrowLeft, IconCoin, IconError, IconSparkles } from "@/components/icons";
+import { IconCoin, IconError, IconSparkles } from "@/components/icons";
 import {
-  PUZZLES,
   Puzzle,
   canFormWord,
   gridBounds,
   gridCells,
   isBonusWord,
   isPuzzleWord,
+  puzzleForLevel,
   utcDayIndex,
 } from "./words";
 import {
@@ -39,7 +39,10 @@ const COINS_PER_BONUS_WORD = 10;
 const COINS_FULL_CLEAR_BONUS = 100;
 
 const STATS_KEY = "minero_word_stats_v1";
-const PROGRESS_KEY = "minero_word_progress_v1";
+// v2: starting puzzle no longer rotates by day — old persisted "found"
+// words could pre-finish the new starting puzzle if they happened to
+// match its grid words, so we discard pre-v2 progress on first read.
+const PROGRESS_KEY = "minero_word_progress_v2";
 
 // Letter-fly animation: how long each letter takes to fly from the wheel
 // to its grid cell, and how long to wait between sequential letters.
@@ -253,50 +256,10 @@ function shuffle<T>(arr: readonly T[]): T[] {
   return out;
 }
 
-/** Deterministic puzzle for a (day, level) pair. The day seeds the start so
- *  every player sees the same opening puzzle on the same calendar day; level
- *  walks forward through the curated pool from there. */
-export function puzzleFor(dayIndex: number, level: number): Puzzle {
-  const OFFSET = 7;
-  const idx = (((dayIndex + OFFSET + level) % PUZZLES.length) + PUZZLES.length) % PUZZLES.length;
-  return PUZZLES[idx];
-}
 
 /* ============================================================
-   Local glyphs (HUD bits the shared icon set doesn't ship yet)
+   Local glyphs (small SVGs the shared icon set doesn't ship)
    ============================================================ */
-
-function GlyphStar({ size = 16 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
-      <path
-        fill="currentColor"
-        d="M12 2.6l2.95 5.97 6.59.96-4.77 4.65 1.13 6.56L12 17.77l-5.9 3.10 1.13-6.56-4.77-4.65 6.59-.96L12 2.6z"
-      />
-    </svg>
-  );
-}
-
-function GlyphShop({ size = 16 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden fill="none">
-      <path
-        d="M3 6h18l-2 12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L3 6z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-        fill="currentColor"
-        fillOpacity="0.18"
-      />
-      <path
-        d="M8 6V4a4 4 0 0 1 8 0v2"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
 
 function GlyphShuffle({ size = 18 }: { size?: number }) {
   return (
@@ -305,20 +268,6 @@ function GlyphShuffle({ size = 18 }: { size?: number }) {
         d="M16 4h4v4M4 20l16-16M20 16v4h-4M4 4l6 6m4 4l6 6"
         stroke="currentColor"
         strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function GlyphBulb({ size = 18 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden fill="none">
-      <path
-        d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.7.6 1 1.4 1 2.3v1h6v-1c0-.9.3-1.7 1-2.3A7 7 0 0 0 12 2z"
-        stroke="currentColor"
-        strokeWidth="1.6"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -569,12 +518,16 @@ function LetterWheel({
   onSelectionChange,
   onSubmit,
   svgRef,
+  shuffleNonce,
 }: {
   letters: string[];
   selection: number[];
   onSelectionChange: (next: number[]) => void;
   onSubmit: () => void;
   svgRef: React.MutableRefObject<SVGSVGElement | null>;
+  /** Bumped on every shuffle. We key the SVG by it so the spin keyframes
+   *  re-fire on each click without us having to remove/re-add a class. */
+  shuffleNonce: number;
 }) {
   const draggingRef = useRef(false);
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
@@ -673,6 +626,7 @@ function LetterWheel({
 
   return (
     <svg
+      key={shuffleNonce}
       ref={svgRef}
       viewBox={`0 0 ${WHEEL_VIEWBOX} ${WHEEL_VIEWBOX}`}
       width={WHEEL_VIEWBOX}
@@ -684,6 +638,14 @@ function LetterWheel({
         height: "auto",
         touchAction: "none",
         userSelect: "none",
+        // Re-fires on each remount via the `key` prop above. The first
+        // render (nonce 0) has no animation so the wheel doesn't spin
+        // on initial mount.
+        animation:
+          shuffleNonce > 0
+            ? "wordWheelSpin 480ms cubic-bezier(0.34, 1.56, 0.64, 1)"
+            : undefined,
+        transformOrigin: "center",
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -885,10 +847,7 @@ export default function WordClient({ playerName }: { playerName: string }) {
   );
 
   const [level, setLevel] = useState<number>(initialProgress.level);
-  const puzzle = useMemo(
-    () => puzzleFor(today.dayIndex, level),
-    [today.dayIndex, level],
-  );
+  const puzzle = useMemo(() => puzzleForLevel(level), [level]);
 
   const [phase, setPhase] = useState<Phase>("playing");
   const [wheelLetters, setWheelLetters] = useState<string[]>(() =>
@@ -922,6 +881,10 @@ export default function WordClient({ playerName }: { playerName: string }) {
     [selection, wheelLetters],
   );
 
+  // Bumped on every shuffle so LetterWheel can re-key its SVG and re-fire
+  // the spin keyframes without us touching DOM classes manually.
+  const [shuffleNonce, setShuffleNonce] = useState(0);
+
   /** Reshuffle the wheel letters; avoids returning the same order back. */
   const reshuffle = useCallback(() => {
     setWheelLetters((prev) => {
@@ -931,6 +894,7 @@ export default function WordClient({ playerName }: { playerName: string }) {
       }
       return shuffle(prev);
     });
+    setShuffleNonce((n) => n + 1);
   }, []);
 
   /* ----- flash messages ----- */
@@ -1154,7 +1118,7 @@ export default function WordClient({ playerName }: { playerName: string }) {
       LEVEL_INTERLUDE_MS;
     const t = window.setTimeout(() => {
       const nextLevel = level + 1;
-      const nextPuzzle = puzzleFor(today.dayIndex, nextLevel);
+      const nextPuzzle = puzzleForLevel(nextLevel);
       setLevel(nextLevel);
       setWheelLetters(shuffle(nextPuzzle.letters));
       setFoundWords(new Set());
@@ -1187,57 +1151,15 @@ export default function WordClient({ playerName }: { playerName: string }) {
       className="word-game-root"
       style={{
         minHeight: "calc(100vh - 56px)",
-        background: "linear-gradient(180deg, #2a2456 0%, #4a3fb0 60%, #6b5fd6 100%)",
+        background:
+          "linear-gradient(180deg, var(--bg) 0%, color-mix(in oklab, var(--brand) 8%, var(--bg)) 100%)",
         display: "flex",
         flexDirection: "column",
-        color: "#ffffff",
+        color: "var(--text)",
         position: "relative",
         overflow: "hidden",
       }}
     >
-      {/* Top HUD ------------------------------------------------ */}
-      <header
-        className="word-hud"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          padding: "12px 16px",
-        }}
-      >
-        <button
-          type="button"
-          aria-label="Back"
-          className="word-hud-btn"
-          style={hudButtonStyle}
-        >
-          <IconArrowLeft size={18} />
-        </button>
-        <div style={{ flex: 1 }} />
-        <span style={hudPillStyle}>
-          <span style={{ color: "#f5c542", display: "inline-flex" }}>
-            <GlyphStar size={14} />
-          </span>
-          <span style={{ marginLeft: 6, fontWeight: 700 }}>0</span>
-        </span>
-        <span style={hudPillStyle}>
-          <span style={{ color: "#f5c542", display: "inline-flex" }}>
-            <IconCoin size={14} />
-          </span>
-          <span style={{ marginLeft: 6, fontWeight: 700 }}>450</span>
-          <button
-            type="button"
-            aria-label="Shop"
-            style={{
-              ...hudPillButtonStyle,
-              marginLeft: 6,
-            }}
-          >
-            <GlyphShop size={14} />
-          </button>
-        </span>
-      </header>
-
       {/* Crossword surface ------------------------------------- */}
       <section
         className="word-grid-surface"
@@ -1307,11 +1229,11 @@ export default function WordClient({ playerName }: { playerName: string }) {
         }}
         aria-label="Letter wheel"
       >
-        {/* Side controls (left) */}
+        {/* Shuffle control (only side action retained) */}
         <div
           style={{
             display: "flex",
-            justifyContent: "space-between",
+            justifyContent: "center",
             alignItems: "center",
             width: "min(86vw, 360px)",
           }}
@@ -1324,24 +1246,6 @@ export default function WordClient({ playerName }: { playerName: string }) {
           >
             <GlyphShuffle size={18} />
           </button>
-          <button type="button" aria-label="Hint" style={hudButtonStyle}>
-            <GlyphBulb size={18} />
-            <span
-              style={{
-                position: "absolute",
-                bottom: -2,
-                right: -2,
-                background: "#f5c542",
-                color: "#1c1340",
-                fontSize: 10,
-                fontWeight: 700,
-                padding: "1px 5px",
-                borderRadius: 999,
-              }}
-            >
-              100
-            </span>
-          </button>
         </div>
 
         <LetterWheel
@@ -1350,6 +1254,7 @@ export default function WordClient({ playerName }: { playerName: string }) {
           onSelectionChange={setSelection}
           onSubmit={onWheelSubmit}
           svgRef={wheelSvgRef}
+          shuffleNonce={shuffleNonce}
         />
       </section>
 
@@ -1380,6 +1285,15 @@ export default function WordClient({ playerName }: { playerName: string }) {
           70%  { opacity: 1; transform: translateY(8px) rotate(2deg); }
           100% { opacity: 1; transform: translateY(0) rotate(0deg); }
         }
+        /* One-shot rotation on shuffle — the new letter order paints in
+           place, then the whole wheel spins once to acknowledge the
+           reshuffle. The cubic-bezier overshoots slightly so it lands
+           with a small bounce. */
+        @keyframes wordWheelSpin {
+          0%   { transform: rotate(-30deg) scale(0.94); }
+          60%  { transform: rotate(380deg) scale(1.02); }
+          100% { transform: rotate(360deg) scale(1); }
+        }
       `}</style>
     </div>
   );
@@ -1391,41 +1305,18 @@ export default function WordClient({ playerName }: { playerName: string }) {
 
 const hudButtonStyle: React.CSSProperties = {
   position: "relative",
-  width: 38,
-  height: 38,
+  width: 40,
+  height: 40,
   borderRadius: 999,
-  background: "rgba(255,255,255,0.18)",
-  border: "1px solid rgba(255,255,255,0.18)",
-  color: "#ffffff",
+  background: "var(--surface-2)",
+  border: "1px solid var(--border)",
+  color: "var(--text)",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
   cursor: "pointer",
 };
 
-const hudPillStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  background: "rgba(0,0,0,0.30)",
-  border: "1px solid rgba(255,255,255,0.10)",
-  borderRadius: 999,
-  padding: "5px 10px",
-  fontSize: 13,
-  color: "#ffffff",
-};
-
-const hudPillButtonStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: 22,
-  height: 22,
-  borderRadius: 999,
-  background: "#34c759",
-  color: "#ffffff",
-  border: "none",
-  cursor: "pointer",
-};
 
 /* ============================================================
    Re-exports kept so step 2+ can import without touching this
