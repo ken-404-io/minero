@@ -61,9 +61,16 @@ export function useDrag(onDrop: (state: DragState) => void) {
       source: DragSource,
       piece: ColoredPiece,
       srcCellPitch: number,
+      /**
+       * Element whose rect defines the piece's cell grid origin. If omitted
+       * we fall back to e.currentTarget — but for tray pieces with padding
+       * around the visual grid, pass the inner grid element so grab offsets
+       * are measured relative to the cells the user actually sees.
+       */
+      rectEl?: HTMLElement | null,
     ) => {
       const target = e.currentTarget;
-      const rect = target.getBoundingClientRect();
+      const rect = (rectEl ?? target).getBoundingClientRect();
       const tx = e.clientX - rect.left;
       const ty = e.clientY - rect.top;
       const grabCellC = Math.max(0, Math.floor(tx / srcCellPitch));
