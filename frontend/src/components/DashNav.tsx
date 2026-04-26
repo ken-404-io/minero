@@ -26,14 +26,22 @@ type NavItem = {
 };
 
 const PRIMARY: NavItem[] = [
-  { href: "/dashboard", label: "Mine",     Icon: IconPickaxe, shortcut: "g d" },
-  { href: "/earnings",  label: "Earnings", shortLabel: "Earn",   Icon: IconChart,   shortcut: "g e" },
-  { href: "/game",      label: "Game",     Icon: IconGame,    shortcut: "g g" },
-  { href: "/rewards",   label: "Rewards",  shortLabel: "Reward", Icon: IconGift,    shortcut: "g x" },
-  { href: "/referral",  label: "Invite",   Icon: IconUsers,   shortcut: "g r" },
-  { href: "/withdraw",     label: "Cash Out",    shortLabel: "Cash",   Icon: IconWallet,  shortcut: "g w" },
-  { href: "/leaderboard", label: "Leaderboard", shortLabel: "Ranks",  Icon: IconTrophy,  shortcut: "g l" },
-  { href: "/me",           label: "Me",          Icon: IconUser,    shortcut: "g m" },
+  { href: "/dashboard",   label: "Mine",        Icon: IconPickaxe, shortcut: "g d" },
+  { href: "/earnings",    label: "Earnings",    shortLabel: "Earn",  Icon: IconChart,   shortcut: "g e" },
+  { href: "/game",        label: "Game",        Icon: IconGame,    shortcut: "g g" },
+  { href: "/rewards",     label: "Rewards",     shortLabel: "Reward", Icon: IconGift,  shortcut: "g x" },
+  { href: "/referral",    label: "Invite",      Icon: IconUsers,   shortcut: "g r" },
+  { href: "/withdraw",    label: "Cash Out",    shortLabel: "Cash",  Icon: IconWallet,  shortcut: "g w" },
+  { href: "/leaderboard", label: "Leaderboard", shortLabel: "Ranks", Icon: IconTrophy,  shortcut: "g l" },
+  { href: "/me",          label: "Me",          Icon: IconUser,    shortcut: "g m" },
+];
+
+const MOBILE_NAV: NavItem[] = [
+  { href: "/dashboard", label: "Mine",   Icon: IconPickaxe },
+  { href: "/earnings",  label: "Earn",   Icon: IconChart   },
+  { href: "/game",      label: "Game",   Icon: IconGame    },
+  { href: "/rewards",   label: "Reward", Icon: IconGift    },
+  { href: "/me",        label: "Me",     Icon: IconUser    },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -162,24 +170,86 @@ export default function DashNav({ name, role, plan }: { name: string; role: stri
         </div>
       </aside>
 
-      {/* ===================== Mobile: bottom tab bar ===================== */}
+      {/* ===================== Mobile: bottom tab bar — Curved Wave Nav ===================== */}
       <nav className="mobile-nav lg:hidden" aria-label="Primary">
-        {PRIMARY.map((l) => {
-          const active = isActive(pathname, l.href);
-          return (
-            <Link
-              key={l.href}
-              href={l.href}
-              aria-current={active ? "page" : undefined}
-              aria-label={l.label}
-              className="mobile-nav-item"
-            >
-              <span className="mobile-nav-dot" aria-hidden />
-              <l.Icon size={22} />
-              <span className="mobile-nav-label">{l.shortLabel ?? l.label}</span>
-            </Link>
-          );
-        })}
+        {/* Wave SVG background */}
+        <svg
+          aria-hidden
+          className="mobile-nav-bg"
+          viewBox="0 0 375 64"
+          preserveAspectRatio="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            fill="var(--surface)"
+            d="M0,0 L135,0 C150,0 160,22 187.5,22 C215,22 225,0 240,0 L375,0 L375,64 L0,64 Z"
+          />
+          <path
+            fill="none"
+            stroke="var(--border)"
+            strokeWidth="1"
+            d="M0,0 L135,0 C150,0 160,22 187.5,22 C215,22 225,0 240,0 L375,0"
+          />
+        </svg>
+
+        <div className="mobile-nav-items">
+          {/* Left two tabs */}
+          {MOBILE_NAV.slice(0, 2).map((l) => {
+            const active = isActive(pathname, l.href);
+            return (
+              <Link
+                key={l.href}
+                href={l.href}
+                aria-current={active ? "page" : undefined}
+                aria-label={l.label}
+                className="mobile-nav-item"
+              >
+                <span className="mobile-nav-dot" aria-hidden />
+                <l.Icon size={22} />
+                <span className="mobile-nav-label">{l.label}</span>
+              </Link>
+            );
+          })}
+
+          {/* Center elevated tab */}
+          {(() => {
+            const l = MOBILE_NAV[2];
+            const active = isActive(pathname, l.href);
+            return (
+              <Link
+                href={l.href}
+                aria-current={active ? "page" : undefined}
+                aria-label={l.label}
+                className="mobile-nav-center"
+              >
+                <span className={`mobile-nav-center-btn${active ? " is-active" : ""}`} aria-hidden>
+                  <l.Icon size={26} />
+                </span>
+                <span className="mobile-nav-label" style={{ color: active ? "var(--brand)" : "var(--text-muted)" }}>
+                  {l.label}
+                </span>
+              </Link>
+            );
+          })()}
+
+          {/* Right two tabs */}
+          {MOBILE_NAV.slice(3).map((l) => {
+            const active = isActive(pathname, l.href);
+            return (
+              <Link
+                key={l.href}
+                href={l.href}
+                aria-current={active ? "page" : undefined}
+                aria-label={l.label}
+                className="mobile-nav-item"
+              >
+                <span className="mobile-nav-dot" aria-hidden />
+                <l.Icon size={22} />
+                <span className="mobile-nav-label">{l.label}</span>
+              </Link>
+            );
+          })}
+        </div>
       </nav>
     </>
   );

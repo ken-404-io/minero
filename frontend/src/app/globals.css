@@ -491,41 +491,61 @@ kbd {
 }
 
 /* ============================================================
-   Mobile bottom navigation (fixed, respects safe-area)
+   Mobile bottom navigation — Curved Wave Nav
    ============================================================ */
 .mobile-nav {
   position: fixed;
   left: 0; right: 0; bottom: 0;
   z-index: 40;
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  background: color-mix(in oklab, var(--surface) 94%, transparent);
-  border-top: 1px solid var(--border);
-  backdrop-filter: saturate(1.2) blur(14px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-  height: calc(var(--nav-mobile-h) + env(safe-area-inset-bottom, 0px));
+  overflow: visible;
 }
+
+/* Fills safe-area gap below the wave with the same surface color */
+.mobile-nav::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0; right: 0;
+  height: env(safe-area-inset-bottom, 0px);
+  background: var(--surface);
+}
+
+/* SVG wave shape — stretches full-width, sits above safe area */
+.mobile-nav-bg {
+  position: absolute;
+  bottom: env(safe-area-inset-bottom, 0px);
+  left: 0;
+  width: 100%;
+  height: var(--nav-mobile-h);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Flex row holding all five tabs */
+.mobile-nav-items {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: stretch;
+  height: var(--nav-mobile-h);
+  margin-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Regular tab item */
 .mobile-nav-item {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 2px;
+  padding-bottom: 10px;
   font-size: 0.625rem;
   font-weight: 500;
   color: var(--text-muted);
-  min-height: 48px;
   min-width: 0;
-  padding: 6px 2px;
-  transition: color var(--dur-fast) var(--ease-out);
   -webkit-tap-highlight-color: transparent;
-}
-.mobile-nav-label {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease-out);
 }
 .mobile-nav-item[aria-current="page"] {
   color: var(--brand);
@@ -541,8 +561,54 @@ kbd {
   border-radius: var(--radius-full);
   opacity: 0;
   transform: scaleX(0.3);
-  transition: transform var(--dur-base) var(--ease-out), opacity var(--dur-base) var(--ease-out);
+  transition: transform var(--dur-base) var(--ease-out),
+              opacity var(--dur-base) var(--ease-out);
   margin-bottom: 2px;
+}
+
+/* Center elevated tab */
+.mobile-nav-center {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  padding-bottom: 10px;
+  font-size: 0.625rem;
+  font-weight: 500;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The raised circle button */
+.mobile-nav-center-btn {
+  position: absolute;
+  top: -22px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 2px solid var(--border-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: background var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+.mobile-nav-center-btn.is-active {
+  background: var(--brand-weak);
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.mobile-nav-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Reserve bottom space so content doesn't hide behind mobile nav */
