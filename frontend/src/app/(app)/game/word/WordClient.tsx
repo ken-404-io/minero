@@ -1,17 +1,21 @@
 "use client";
 
 import {
+  PointerEvent as ReactPointerEvent,
+  useCallback,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
+import { IconArrowLeft, IconCoin } from "@/components/icons";
 import {
-  IconArrowLeft,
-  IconCoin,
-  IconSparkles,
-} from "@/components/icons";
-import { PUZZLES, Puzzle, utcDayIndex } from "./words";
+  PUZZLES,
+  Puzzle,
+  gridBounds,
+  gridCells,
+  utcDayIndex,
+} from "./words";
 
 /* ============================================================
    Config
@@ -334,12 +338,373 @@ export function wheelLetterPos(i: number, n: number): { x: number; y: number } {
 }
 
 /* ============================================================
+   Crossword grid
+   ------------------------------------------------------------
+   Renders a sparse rows×cols grid. Cells without a letter are
+   transparent placeholders; cells with a letter render an empty
+   white tile until the word is in `revealedSet`, after which
+   the tile flips to a violet gradient with the letter on top.
+   `tileRefs` is populated as cells mount so the parent can look
+   up viewport positions for fly-letter targets in step 3.
+   ============================================================ */
+
+function Crossword({
+  puzzle,
+  revealedSet,
+  tileRefs,
+}: {
+  puzzle: Puzzle;
+  revealedSet: Set<string>;
+  tileRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
+}) {
+  const { rows, cols } = useMemo(() => gridBounds(puzzle), [puzzle]);
+  const cells = useMemo(() => gridCells(puzzle), [puzzle]);
+
+  const revealedByIdx = useMemo(
+    () => puzzle.words.map((w) => revealedSet.has(w.word)),
+    [puzzle.words, revealedSet],
+  );
+
+  // Tile size scales down for wider grids so a 7-column puzzle still fits a
+  // narrow phone without overflowing.
+  const tilePx = cols >= 7 ? 34 : cols >= 6 ? 38 : 42;
+  const gapPx = 6;
+
+  return (
+    <div
+      role="grid"
+      aria-label="Crossword grid"
+      style={{
+        display: "grid",
+        gridTemplateRows: `repeat(${rows}, ${tilePx}px)`,
+        gridTemplateColumns: `repeat(${cols}, ${tilePx}px)`,
+        gap: gapPx,
+      }}
+    >
+      {Array.from({ length: rows * cols }).map((_, k) => {
+        const r = Math.floor(k / cols);
+        const c = k % cols;
+        const cell = cells.get(`${r},${c}`);
+        if (!cell) {
+          return <span key={k} aria-hidden style={{ width: tilePx, height: tilePx }} />;
+        }
+        const revealed = cell.wordIdx.some((i) => revealedByIdx[i]);
+        const cellKey = `${r},${c}`;
+        return (
+          <CrossTile
+            key={k}
+            cellKey={cellKey}
+            tileRefs={tileRefs}
+            letter={cell.letter}
+            revealed={revealed}
+            size={tilePx}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function CrossTile({
+  cellKey,
+  tileRefs,
+  letter,
+  revealed,
+  size,
+}: {
+  cellKey: string;
+  tileRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
+  letter: string;
+  revealed: boolean;
+  size: number;
+}) {
+  return (
+    <div
+      ref={(el) => {
+        if (el) tileRefs.current.set(cellKey, el);
+        else tileRefs.current.delete(cellKey);
+      }}
+      role="gridcell"
+      data-cell={cellKey}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 8,
+        background: revealed ? TILE_FILLED_BG : TILE_EMPTY_BG,
+        border: `1px solid ${revealed ? TILE_FILLED_BORDER : TILE_EMPTY_BORDER}`,
+        boxShadow: revealed
+          ? "inset 0 1px 0 rgba(255,255,255,0.30), 0 1px 2px rgba(0,0,0,0.18)"
+          : "inset 0 1px 0 rgba(255,255,255,0.6), 0 1px 1px rgba(0,0,0,0.06)",
+        color: revealed ? TILE_TEXT : "transparent",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontWeight: 800,
+        fontSize: size * 0.5,
+        textTransform: "uppercase",
+        lineHeight: 1,
+        letterSpacing: "0.02em",
+        transition: "background 220ms ease, color 220ms ease, border-color 220ms ease",
+      }}
+    >
+      {revealed ? letter.toUpperCase() : ""}
+    </div>
+  );
+}
+
+/* ============================================================
+   Letter wheel
+   ------------------------------------------------------------
+   Pointer-driven swipe selector. Letters are arranged on a
+   circle; the user presses, drags through neighbours, and
+   releases to submit. Backtracking over the previous letter
+   undoes the last hop. SVG hit-testing means the same code
+   handles touch, mouse, and pen.
+   ============================================================ */
+
+const HIT_RADIUS = WHEEL_LETTER_R + 6;
+
+function LetterWheel({
+  letters,
+  selection,
+  onSelectionChange,
+  onSubmit,
+  svgRef,
+}: {
+  letters: string[];
+  selection: number[];
+  onSelectionChange: (next: number[]) => void;
+  onSubmit: () => void;
+  svgRef: React.MutableRefObject<SVGSVGElement | null>;
+}) {
+  const draggingRef = useRef(false);
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
+
+  const positions = useMemo(
+    () => letters.map((_, i) => wheelLetterPos(i, letters.length)),
+    [letters],
+  );
+
+  const toViewBox = useCallback(
+    (clientX: number, clientY: number) => {
+      const svg = svgRef.current;
+      if (!svg) return null;
+      const rect = svg.getBoundingClientRect();
+      return {
+        x: ((clientX - rect.left) / rect.width) * WHEEL_VIEWBOX,
+        y: ((clientY - rect.top) / rect.height) * WHEEL_VIEWBOX,
+      };
+    },
+    [svgRef],
+  );
+
+  const hitLetter = useCallback(
+    (vx: number, vy: number): number => {
+      let best = -1;
+      let bestDist = HIT_RADIUS;
+      for (let i = 0; i < positions.length; i++) {
+        const d = Math.hypot(positions[i].x - vx, positions[i].y - vy);
+        if (d < bestDist) {
+          bestDist = d;
+          best = i;
+        }
+      }
+      return best;
+    },
+    [positions],
+  );
+
+  const updateSelection = useCallback(
+    (idx: number) => {
+      if (idx < 0) return;
+      // Drag-back-over-previous = undo last hop (Wordscapes behaviour).
+      if (selection.length >= 2 && selection[selection.length - 2] === idx) {
+        onSelectionChange(selection.slice(0, -1));
+        return;
+      }
+      if (selection.includes(idx)) return;
+      onSelectionChange([...selection, idx]);
+    },
+    [onSelectionChange, selection],
+  );
+
+  const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
+    const v = toViewBox(e.clientX, e.clientY);
+    if (!v) return;
+    draggingRef.current = true;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    setPointer(v);
+    const idx = hitLetter(v.x, v.y);
+    onSelectionChange(idx >= 0 ? [idx] : []);
+  };
+
+  const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (!draggingRef.current) return;
+    const v = toViewBox(e.clientX, e.clientY);
+    if (!v) return;
+    setPointer(v);
+    const idx = hitLetter(v.x, v.y);
+    if (idx >= 0) updateSelection(idx);
+  };
+
+  const finish = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    setPointer(null);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    onSubmit();
+  };
+
+  // Selection trail polyline points: each selected letter center plus the
+  // current pointer (only non-null mid-drag, so its presence drives the
+  // trailing segment without reading the dragging ref during render).
+  const linePoints = useMemo(() => {
+    const pts = selection.map((i) => `${positions[i].x},${positions[i].y}`);
+    if (pointer) pts.push(`${pointer.x},${pointer.y}`);
+    return pts.join(" ");
+  }, [positions, selection, pointer]);
+
+  return (
+    <svg
+      ref={svgRef}
+      viewBox={`0 0 ${WHEEL_VIEWBOX} ${WHEEL_VIEWBOX}`}
+      width={WHEEL_VIEWBOX}
+      height={WHEEL_VIEWBOX}
+      role="application"
+      aria-label="Letter wheel"
+      style={{
+        width: "min(86vw, 320px)",
+        height: "auto",
+        touchAction: "none",
+        userSelect: "none",
+      }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={finish}
+      onPointerCancel={finish}
+    >
+      {/* Hub */}
+      <circle
+        cx={WHEEL_CENTER}
+        cy={WHEEL_CENTER}
+        r={WHEEL_RING_R + WHEEL_LETTER_R + 8}
+        fill={WHEEL_HUB_BG}
+        stroke={WHEEL_HUB_STROKE}
+        strokeWidth={1}
+      />
+      {/* Selection trail (under the letter circles) */}
+      {selection.length > 0 && (
+        <polyline
+          points={linePoints}
+          fill="none"
+          stroke={WHEEL_LINE}
+          strokeWidth={8}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity={0.85}
+        />
+      )}
+      {/* Letter circles */}
+      {positions.map((p, i) => {
+        const selected = selection.includes(i);
+        return (
+          <g key={i}>
+            <circle
+              cx={p.x}
+              cy={p.y}
+              r={WHEEL_LETTER_R}
+              fill={selected ? WHEEL_LETTER_SELECTED_BG : WHEEL_LETTER_BG}
+              stroke={selected ? WHEEL_LETTER_SELECTED_BG : WHEEL_LETTER_STROKE}
+              strokeWidth={2}
+            />
+            <text
+              x={p.x}
+              y={p.y}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize={WHEEL_LETTER_R}
+              fontWeight={800}
+              fill={selected ? WHEEL_LETTER_SELECTED_TEXT : WHEEL_LETTER_TEXT}
+              style={{ textTransform: "uppercase", pointerEvents: "none" }}
+            >
+              {letters[i].toUpperCase()}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/* ============================================================
+   Selection preview + bonus dots
+   ============================================================ */
+
+function SelectionPreview({ word }: { word: string }) {
+  if (!word) {
+    return (
+      <span style={{ opacity: 0.6, fontSize: 13 }}>
+        Drag across the wheel to spell a word
+      </span>
+    );
+  }
+  return (
+    <span
+      style={{
+        background: WHEEL_LETTER_SELECTED_BG,
+        color: WHEEL_LETTER_SELECTED_TEXT,
+        padding: "6px 16px",
+        borderRadius: 999,
+        fontWeight: 800,
+        fontSize: 22,
+        letterSpacing: "0.10em",
+        textTransform: "uppercase",
+        boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
+      }}
+    >
+      {word}
+    </span>
+  );
+}
+
+function BonusDots({ found, total }: { found: number; total: number }) {
+  // Cap the visible row so very long bonus lists don't blow out the layout.
+  const slots = Math.min(8, Math.max(4, total));
+  const filled =
+    total === 0 ? 0 : Math.min(slots, Math.round((found / total) * slots));
+  return (
+    <>
+      {Array.from({ length: slots }).map((_, i) => (
+        <span
+          key={i}
+          style={{
+            width: 14,
+            height: 14,
+            borderRadius: 999,
+            background: i < filled ? BONUS_DOT_FILLED : BONUS_DOT_EMPTY,
+            boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.06)",
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
+/* ============================================================
    Main component
    ------------------------------------------------------------
-   Step 1 of the rewrite: layout shell only. Renders the four
-   regions (top bar, crossword surface, bonus dots, wheel) with
-   placeholders. No game logic, no animations — those land in
-   subsequent steps.
+   Step 2: wires the real grid + wheel into the layout. No
+   word validation or scoring yet — pointer-up just clears the
+   chain so the user can practice tracing letters and watch the
+   selection preview update.
    ============================================================ */
 
 export default function WordClient({ playerName }: { playerName: string }) {
@@ -385,28 +750,44 @@ export default function WordClient({ playerName }: { playerName: string }) {
   const sessionStartedRef = useRef(false);
   const finalizedRef = useRef<boolean>(initialProgress.finalized);
 
-  // Silence unused-binding lints until later steps wire these in.
+  /** Word currently traced on the wheel (derived from selection indices). */
+  const currentWord = useMemo(
+    () => selection.map((i) => wheelLetters[i]).join(""),
+    [selection, wheelLetters],
+  );
+
+  /** Reshuffle the wheel letters; avoids returning the same order back. */
+  const reshuffle = useCallback(() => {
+    setWheelLetters((prev) => {
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const next = shuffle(prev);
+        if (next.join("") !== prev.join("")) return next;
+      }
+      return shuffle(prev);
+    });
+  }, []);
+
+  /** Pointer-up on the wheel. Step 2 just clears the chain — validation
+   *  and scoring (which read currentWord and the puzzle) land in step 3. */
+  const onWheelSubmit = useCallback(() => {
+    setSelection([]);
+  }, []);
+
+  // Step-2 unused-binding silencers — these slots are populated in
+  // later steps. Removing them when the consumer lands keeps the diff
+  // surface small.
   void stats;
-  void puzzle;
   void phase;
   void setPhase;
   void setLevel;
-  void wheelLetters;
-  void setWheelLetters;
   void foundWords;
   void setFoundWords;
-  void foundBonus;
   void setFoundBonus;
-  void revealedWords;
   void setRevealedWords;
-  void selection;
-  void setSelection;
   void flash;
   void setFlash;
   void flights;
   void setFlights;
-  void wheelSvgRef;
-  void tileRefs;
   void sessionIdRef;
   void sessionStartedRef;
   void finalizedRef;
@@ -481,17 +862,11 @@ export default function WordClient({ playerName }: { playerName: string }) {
         }}
         aria-label="Crossword grid"
       >
-        <div
-          style={{
-            opacity: 0.55,
-            fontSize: 12,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-          }}
-        >
-          {/* Step 2 will replace this placeholder with the real grid. */}
-          Crossword grid placeholder
-        </div>
+        <Crossword
+          puzzle={puzzle}
+          revealedSet={revealedWords}
+          tileRefs={tileRefs}
+        />
       </section>
 
       {/* Bonus dot row ----------------------------------------- */}
@@ -501,22 +876,24 @@ export default function WordClient({ playerName }: { playerName: string }) {
           display: "flex",
           justifyContent: "center",
           gap: 8,
-          padding: "4px 16px 12px",
+          padding: "4px 16px 4px",
         }}
         aria-hidden
       >
-        {Array.from({ length: 5 }).map((_, i) => (
-          <span
-            key={i}
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 999,
-              background: BONUS_DOT_EMPTY,
-              boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.06)",
-            }}
-          />
-        ))}
+        <BonusDots found={foundBonus.size} total={puzzle.bonus.length} />
+      </div>
+
+      {/* Selection preview floats above the wheel ------------- */}
+      <div
+        style={{
+          minHeight: 38,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "4px 16px",
+        }}
+      >
+        <SelectionPreview word={currentWord} />
       </div>
 
       {/* Wheel area -------------------------------------------- */}
@@ -540,7 +917,12 @@ export default function WordClient({ playerName }: { playerName: string }) {
             width: "min(86vw, 360px)",
           }}
         >
-          <button type="button" aria-label="Shuffle letters" style={hudButtonStyle}>
+          <button
+            type="button"
+            aria-label="Shuffle letters"
+            onClick={reshuffle}
+            style={hudButtonStyle}
+          >
             <GlyphShuffle size={18} />
           </button>
           <button type="button" aria-label="Hint" style={hudButtonStyle}>
@@ -563,33 +945,14 @@ export default function WordClient({ playerName }: { playerName: string }) {
           </button>
         </div>
 
-        {/* Wheel placeholder — step 2 replaces this with the SVG wheel. */}
-        <div
-          style={{
-            width: "min(86vw, 320px)",
-            aspectRatio: "1 / 1",
-            borderRadius: "50%",
-            background: WHEEL_HUB_BG,
-            border: `1px solid ${WHEEL_HUB_STROKE}`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: WHEEL_LETTER_TEXT,
-            fontSize: 12,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-          }}
-        >
-          Wheel placeholder
-        </div>
+        <LetterWheel
+          letters={wheelLetters}
+          selection={selection}
+          onSelectionChange={setSelection}
+          onSubmit={onWheelSubmit}
+          svgRef={wheelSvgRef}
+        />
       </section>
-
-      {/* Selection / flash readout — populated in step 3 ------ */}
-      <div style={{ position: "absolute", top: 64, left: 0, right: 0, textAlign: "center" }}>
-        <span style={{ opacity: 0.6, fontSize: 12 }}>
-          <IconSparkles size={12} /> Step 1 — layout shell only
-        </span>
-      </div>
     </div>
   );
 }
