@@ -18,7 +18,7 @@ import {
   IconSparkles,
   IconTrophy,
   IconBell,
-  IconDiamond,
+  IconCoin,
 } from "@/components/icons";
 
 type NavItem = {
@@ -98,7 +98,7 @@ export default function DashNav({ name, role, plan }: { name: string; role: stri
         {/* Right controls */}
         <div className="flex items-center gap-2 relative z-10">
           <Link href="/game" className="mobile-topbar-coins" aria-label={`${coins} game coins`}>
-            <IconDiamond size={14} style={{ color: "#60a5fa" }} />
+            <IconCoin size={14} style={{ color: "var(--brand)" }} />
             <span className="font-semibold tabular-nums">{coins.toLocaleString()}</span>
           </Link>
           <button className="mobile-topbar-bell" aria-label="Notifications">
