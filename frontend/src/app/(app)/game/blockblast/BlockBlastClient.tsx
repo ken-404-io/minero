@@ -62,6 +62,17 @@ function PieceMini({ piece }: { piece: ColoredPiece }) {
 
 let _popId = 0;
 type ScorePop = { id: number; pts: number };
+type ComboPop = { id: number; label: string; color: string };
+
+// Combo on a chained-clear streak takes priority over the multi-line label;
+// on a fresh clear the label reflects how many lines went out at once.
+function pickComboLabel(ln: number, newCombo: number): { label: string; color: string } {
+  if (newCombo >= 2) return { label: `COMBO ${newCombo}x`, color: "#f97316" };
+  if (ln >= 4) return { label: "AMAZING!", color: "#a855f7" };
+  if (ln === 3) return { label: "TRIPLE!", color: "#ec4899" };
+  if (ln === 2) return { label: "DOUBLE!", color: "#06b6d4" };
+  return { label: "GREAT!", color: "#10b981" };
+}
 
 export default function BlockBlastClient({ playerName: _ }: { playerName: string }) {
   const sessionIdRef = useRef<string | null>(null);
@@ -74,6 +85,8 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
   const [clearingCells, setClearingCells] = useState<Map<string, string>>(new Map());
   const [settleCells, setSettleCells] = useState<Set<string>>(new Set());
   const [scorePops, setScorePops] = useState<ScorePop[]>([]);
+  const [comboPops, setComboPops] = useState<ComboPop[]>([]);
+  const [combo, setCombo] = useState(0);
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
   const [daily, setDaily] = useState<DailyData>({ date: todayStr(), plays: 0 });
 
@@ -137,6 +150,8 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
     setClearingCells(new Map());
     setSettleCells(new Set());
     setScorePops([]);
+    setComboPops([]);
+    setCombo(0);
     setStatus("playing");
     sessionIdRef.current = null;
     startGameSession("blockblast").then((r) => {
@@ -175,12 +190,25 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
     const { row, col } = anchor;
     const { grid: ng, cleared, lines: ln } = place(grid, piece.shape, piece.color, row, col);
 
+    // Combo streak — increments while the player keeps clearing on consecutive drops.
+    const newCombo = ln > 0 ? combo + 1 : 0;
+    const lineBonus = ln >= 4 ? 2 : ln === 3 ? 1.6 : ln === 2 ? 1.3 : 1;
+    const comboMult = 1 + Math.min(Math.max(newCombo - 1, 0), 5) * 0.2; // caps at 2x
+
     // Score decay: points earned shrink as current score approaches SCORE_CAP.
     const mult = scoreMultiplier(score);
     const basePts = piece.shape.length + ln * 10 + Math.max(0, ln - 1) * 5;
-    const pts = Math.max(1, Math.round(basePts * mult));
+    const pts = Math.max(1, Math.round(basePts * mult * lineBonus * comboMult));
     const newScore = score + pts;
     const newLines = lines + ln;
+
+    setCombo(newCombo);
+    if (ln > 0) {
+      const { label, color } = pickComboLabel(ln, newCombo);
+      const cpop: ComboPop = { id: ++_popId, label, color };
+      setComboPops((prev) => [...prev, cpop]);
+      setTimeout(() => setComboPops((prev) => prev.filter((p) => p.id !== cpop.id)), 1100);
+    }
 
     if (cleared.size > 0) {
       setClearingCells(new Map(cleared));
@@ -316,6 +344,13 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
         @keyframes bb-particle {
           0%   { transform: translate(0, 0)                       scale(1);    opacity: 0.95; }
           100% { transform: translate(var(--bb-px), var(--bb-py)) scale(0.25); opacity: 0;    }
+        }
+        @keyframes bb-combopop {
+          0%   { transform: translate(-50%, 14px)  scale(0.55); opacity: 0; }
+          18%  { transform: translate(-50%, 0)     scale(1.25); opacity: 1; }
+          38%  { transform: translate(-50%, -6px)  scale(1.05); opacity: 1; }
+          85%  { transform: translate(-50%, -52px) scale(1.0);  opacity: 1; }
+          100% { transform: translate(-50%, -78px) scale(0.85); opacity: 0; }
         }
       `}</style>
 
@@ -573,6 +608,29 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                   })}
                 </div>
               )}
+
+              {/* Combo / streak labels (GREAT, DOUBLE, COMBO Nx, …) */}
+              {comboPops.map((pop) => (
+                <div
+                  key={pop.id}
+                  style={{
+                    position: "absolute",
+                    top: "32%",
+                    left: "50%",
+                    fontWeight: 900,
+                    fontSize: "2.1rem",
+                    letterSpacing: "0.06em",
+                    color: pop.color,
+                    pointerEvents: "none",
+                    whiteSpace: "nowrap",
+                    textShadow: `0 3px 14px rgba(0,0,0,0.75), 0 0 18px ${pop.color}`,
+                    animation: "bb-combopop 1.05s cubic-bezier(0.2,0,0.4,1) forwards",
+                    zIndex: 11,
+                  }}
+                >
+                  {pop.label}
+                </div>
+              ))}
 
               {/* Score pop-up overlays */}
               {scorePops.map((pop) => (
