@@ -223,6 +223,96 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
     }
   }
 
+  function handleDrop(d: DragState) {
+    if (status !== "playing") return;
+    const piece = d.piece;
+
+    // Hold zone — only tray pieces can be sent to hold (you can't re-hold the held piece).
+    if (d.source.kind === "tray" && pointerOverHold(d)) {
+      const slot = d.source.slot;
+      const next: [ColoredPiece | null, ColoredPiece | null, ColoredPiece | null] = [pieces[0], pieces[1], pieces[2]];
+      next[slot] = held ?? null;
+      const finalPieces = next.every((p) => !p) ? threeNew(score) : next;
+      setHeld(piece);
+      setPieces(finalPieces);
+      return;
+    }
+
+    const anchor = boardAnchorAt(d);
+    if (!anchor || !fits(grid, piece.shape, anchor.row, anchor.col)) {
+      // Snap-back animation: ghost glides from the drop point back to the source tile.
+      setInvalidReturn({
+        id: ++_popId,
+        piece,
+        from: { x: d.pointer.x, y: d.pointer.y },
+        to: d.startRect,
+      });
+      setTimeout(() => setInvalidReturn(null), 220);
+      return;
+    }
+
+    const { row, col } = anchor;
+    const { grid: ng, cleared, lines: ln } = place(grid, piece.shape, piece.color, row, col);
+
+    // Score decay: points earned shrink as current score approaches SCORE_CAP.
+    const mult = scoreMultiplier(score);
+    const basePts = piece.shape.length + ln * 10 + Math.max(0, ln - 1) * 5;
+    const pts = Math.max(1, Math.round(basePts * mult));
+    const newScore = score + pts;
+    const newLines = lines + ln;
+
+    if (cleared.size > 0) {
+      setClearingCells(new Map(cleared));
+      setTimeout(() => setClearingCells(new Map()), 560);
+    }
+
+    const pop: ScorePop = { id: ++_popId, pts };
+    setScorePops((prev) => [...prev, pop]);
+    setTimeout(() => setScorePops((prev) => prev.filter((p) => p.id !== pop.id)), 1150);
+
+    // Consume the source.
+    let nextPieces: [ColoredPiece | null, ColoredPiece | null, ColoredPiece | null];
+    let nextHeld = held;
+    if (d.source.kind === "tray") {
+      const draft: [ColoredPiece | null, ColoredPiece | null, ColoredPiece | null] = [pieces[0], pieces[1], pieces[2]];
+      draft[d.source.slot] = null;
+      nextPieces = draft.every((p) => !p) ? threeNew(newScore) : draft;
+    } else {
+      nextPieces = [pieces[0], pieces[1], pieces[2]];
+      nextHeld = null;
+    }
+
+    const queueOver = nextPieces.every((p) => !p || !fitsAnywhere(ng, p.shape));
+    const heldFits = nextHeld !== null ? fitsAnywhere(ng, nextHeld.shape) : false;
+    const over = queueOver && !heldFits;
+
+    setGrid(ng);
+    setPieces(nextPieces);
+    setHeld(nextHeld);
+    setScore(newScore);
+    setLines(newLines);
+
+    if (over) {
+      setStatus("over");
+      const s: Stats = {
+        totalCoins: stats.totalCoins + newScore,
+        bestScore: Math.max(stats.bestScore, newScore),
+        gamesPlayed: stats.gamesPlayed + 1,
+        linesCleared: stats.linesCleared + newLines,
+      };
+      setStats(s);
+      saveStats(s);
+      if (sessionIdRef.current) {
+        const sid = sessionIdRef.current;
+        sessionIdRef.current = null;
+        finishGameSession(sid, newScore).then((r) => {
+          if (r.ok) emitBalanceChange();
+        });
+      }
+    }
+  }
+  handleDropRef.current = handleDrop;
+
   // Compute preview
   const preview = new Set<string>();
   let previewOk = false;
