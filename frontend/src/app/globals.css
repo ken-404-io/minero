@@ -584,7 +584,7 @@ kbd {
 /* The raised circle button */
 .mobile-nav-center-btn {
   position: absolute;
-  top: -22px;
+  top: -28px;
   width: 56px;
   height: 56px;
   border-radius: 50%;
