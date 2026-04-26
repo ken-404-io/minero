@@ -1,29 +1,17 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { apiJson } from "@/lib/api";
-import { IconArrowLeft } from "@/components/icons";
 import WordClient from "./WordClient";
 
 type Me = {
   user: { id: string; name: string };
 };
 
+// The word game owns the full viewport — no surrounding back-link strip
+// here, since that strip pushed the wheel off-screen on short phones. The
+// in-game UI renders its own compact back overlay.
 export default async function WordPage() {
   const me = await apiJson<Me>("/auth/me");
   if (!me) redirect("/login");
 
-  return (
-    <div>
-      <div className="px-4 pt-4 lg:px-8 lg:pt-6">
-        <Link
-          href="/game"
-          className="btn btn-ghost btn-sm"
-          style={{ paddingLeft: "0.5rem" }}
-        >
-          <IconArrowLeft size={16} /> All games
-        </Link>
-      </div>
-      <WordClient playerName={me.user.name} />
-    </div>
-  );
+  return <WordClient playerName={me.user.name} />;
 }

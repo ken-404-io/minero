@@ -9,7 +9,8 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { IconCoin, IconError, IconSparkles } from "@/components/icons";
+import Link from "next/link";
+import { IconArrowLeft, IconCoin, IconError, IconSparkles } from "@/components/icons";
 import {
   Puzzle,
   canFormWord,
@@ -395,13 +396,40 @@ function Crossword({
     [puzzle.words, revealedSet],
   );
 
-  // Tile size scales down for wider grids so a 7-column puzzle still fits a
-  // narrow phone without overflowing.
-  const tilePx = cols >= 7 ? 34 : cols >= 6 ? 38 : 42;
+  // Measure the parent surface and size each tile so the whole grid fits.
+  // We bound by both width and height: tilePx = floor(min((w - pad)/cols,
+  // (h - pad)/rows) - gap). The fallback before the observer fires picks
+  // a sensible mid-range value so the first paint isn't comically huge.
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const [tilePx, setTilePx] = useState<number>(38);
   const gapPx = 6;
+  useEffect(() => {
+    const el = wrapperRef.current?.parentElement; // the surface <section>
+    if (!el) return;
+    const recompute = () => {
+      const r = el.getBoundingClientRect();
+      const padX = 16;
+      const padY = 16;
+      const usableW = Math.max(0, r.width - padX);
+      const usableH = Math.max(0, r.height - padY);
+      const byW = (usableW - gapPx * (cols - 1)) / Math.max(1, cols);
+      const byH = (usableH - gapPx * (rows - 1)) / Math.max(1, rows);
+      const px = Math.floor(Math.max(20, Math.min(48, byW, byH)));
+      setTilePx(px);
+    };
+    recompute();
+    const ro = new ResizeObserver(recompute);
+    ro.observe(el);
+    window.addEventListener("orientationchange", recompute);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("orientationchange", recompute);
+    };
+  }, [rows, cols]);
 
   return (
     <div
+      ref={wrapperRef}
       role="grid"
       aria-label="Crossword grid"
       style={{
@@ -634,7 +662,9 @@ function LetterWheel({
       role="application"
       aria-label="Letter wheel"
       style={{
-        width: "min(86vw, 320px)",
+        // Bound by both width AND height so a very short viewport still
+        // shows the whole wheel without clipping.
+        width: "min(78vw, 32svh, 280px)",
         height: "auto",
         touchAction: "none",
         userSelect: "none",
@@ -1150,7 +1180,11 @@ export default function WordClient({ playerName }: { playerName: string }) {
     <div
       className="word-game-root"
       style={{
-        minHeight: "calc(100vh - 56px)",
+        // Fit the available main-content area without scroll. svh is the
+        // small-viewport unit — stable while the URL bar is showing on
+        // mobile, so the wheel never gets clipped.
+        height: "100svh",
+        maxHeight: "100svh",
         background:
           "linear-gradient(180deg, var(--bg) 0%, color-mix(in oklab, var(--brand) 8%, var(--bg)) 100%)",
         display: "flex",
@@ -1160,6 +1194,50 @@ export default function WordClient({ playerName }: { playerName: string }) {
         overflow: "hidden",
       }}
     >
+      {/* Compact back overlay (replaces the page-level back strip so the
+          wheel never pushes off-screen on short viewports). */}
+      <Link
+        href="/game"
+        aria-label="Back to all games"
+        style={{
+          position: "absolute",
+          top: 12,
+          left: 12,
+          zIndex: 5,
+          width: 36,
+          height: 36,
+          borderRadius: 999,
+          background: "var(--surface-2)",
+          border: "1px solid var(--border)",
+          color: "var(--text)",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          textDecoration: "none",
+        }}
+      >
+        <IconArrowLeft size={18} />
+      </Link>
+
+      {/* Level badge — small, top-right, just so the player can tell where
+          they are when the puzzle changes. */}
+      <span
+        aria-label={`Level ${level + 1}`}
+        style={{
+          position: "absolute",
+          top: 16,
+          right: 16,
+          zIndex: 5,
+          fontSize: 12,
+          fontWeight: 700,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          color: "var(--text-muted)",
+        }}
+      >
+        Lvl {level + 1}
+      </span>
+
       {/* Crossword surface ------------------------------------- */}
       <section
         className="word-grid-surface"
@@ -1169,7 +1247,11 @@ export default function WordClient({ playerName }: { playerName: string }) {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: "16px",
+          // Top padding leaves room for the back/level overlays; horizontal
+          // and bottom paddings stay tight so the grid claims as much of
+          // the available height as possible.
+          padding: "44px 12px 8px",
+          overflow: "hidden",
         }}
         aria-label="Crossword grid"
       >
@@ -1187,8 +1269,8 @@ export default function WordClient({ playerName }: { playerName: string }) {
         style={{
           display: "flex",
           justifyContent: "center",
-          gap: 8,
-          padding: "4px 16px 4px",
+          gap: 6,
+          padding: "2px 16px",
         }}
         aria-hidden
       >
@@ -1198,11 +1280,11 @@ export default function WordClient({ playerName }: { playerName: string }) {
       {/* Selection preview floats above the wheel ------------- */}
       <div
         style={{
-          minHeight: 38,
+          minHeight: 32,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: "4px 16px",
+          padding: "2px 16px",
         }}
       >
         {flash ? (
@@ -1216,11 +1298,11 @@ export default function WordClient({ playerName }: { playerName: string }) {
       <section
         className="word-wheel-surface"
         style={{
-          padding: "8px 16px 28px",
+          padding: "4px 16px calc(12px + env(safe-area-inset-bottom, 0px))",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: 12,
+          gap: 8,
           // Lock interaction while cells are mid-fall so a stray drag
           // doesn't queue a flight on tiles that aren't really there yet.
           pointerEvents: phase === "playing" ? "auto" : "none",
