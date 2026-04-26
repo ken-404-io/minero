@@ -427,3 +427,20 @@ export function IconCoin(p: IconProps) {
     </svg>
   );
 }
+
+export function IconBell(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+    </svg>
+  );
+}
+
+export function IconDiamond(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.58a2.41 2.41 0 0 0 3.41 0l7.59-7.58a2.41 2.41 0 0 0 0-3.41L13.7 2.71a2.41 2.41 0 0 0-3.41 0z" />
+    </svg>
+  );
+}
