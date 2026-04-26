@@ -146,21 +146,6 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
     });
   }
 
-  function holdPiece() {
-    if (sel === null) return;
-    const current = pieces[sel];
-    if (!current) return;
-
-    const next: [ColoredPiece | null, ColoredPiece | null, ColoredPiece | null] = [pieces[0], pieces[1], pieces[2]];
-    next[sel] = held ?? null;
-
-    const finalPieces = next.every((p) => !p) ? threeNew(score) : next;
-
-    setHeld(current);
-    setPieces(finalPieces);
-    setSel(held !== null ? sel : null);
-  }
-
   function handleCell(row: number, col: number) {
     if (status !== "playing" || sel === null) return;
     const piece = pieces[sel];
@@ -313,18 +298,21 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
   }
   handleDropRef.current = handleDrop;
 
-  // Compute preview
+  // Compute preview from the active drag (re-runs each pointermove via setDrag).
   const preview = new Set<string>();
   let previewOk = false;
   let previewColor = "";
-  if (hover && sel !== null && pieces[sel]) {
-    const p = pieces[sel]!;
-    const [hr, hc] = hover;
-    previewOk = fits(grid, p.shape, hr, hc);
-    previewColor = p.color;
-    for (const [dr, dc] of p.shape) {
-      const r = hr + dr, c = hc + dc;
-      if (r >= 0 && r < G && c >= 0 && c < G) preview.add(`${r}-${c}`);
+  if (drag && status === "playing") {
+    const anchor = boardAnchorAt(drag);
+    if (anchor) {
+      const p = drag.piece;
+      previewOk = fits(grid, p.shape, anchor.row, anchor.col);
+      previewColor = p.color;
+      for (const [dr, dc] of p.shape) {
+        const r = anchor.row + dr;
+        const c = anchor.col + dc;
+        if (r >= 0 && r < G && c >= 0 && c < G) preview.add(`${r}-${c}`);
+      }
     }
   }
 
@@ -590,9 +578,8 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
                     Hold
                   </span>
                   <button
-                    onClick={holdPiece}
-                    disabled={sel === null}
-                    title={sel !== null ? "Hold selected piece (swap if stored)" : "Select a piece first"}
+                    type="button"
+                    title="Drag a piece here to store it"
                     style={{
                       display: "flex",
                       alignItems: "center",
