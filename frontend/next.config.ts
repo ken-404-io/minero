@@ -41,6 +41,8 @@ const nextConfig: NextConfig = {
               "font-src 'self' data:",
               // Allow XHR/fetch to the API — uses the configured API URL.
               `connect-src 'self' ${apiUrl} https:`,
+              // Allow embedding the public snake game from iDev.Games.
+              "frame-src https://idev.games",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
