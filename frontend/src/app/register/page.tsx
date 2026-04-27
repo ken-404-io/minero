@@ -156,8 +156,8 @@ function RegisterForm() {
         </Link>
 
         <div className="w-full max-w-sm mx-auto my-auto">
-          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Create account</h1>
-          <p className="text-sm mt-1 mb-6" style={{ color: "var(--text-muted)" }}>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-center">Create account</h1>
+          <p className="text-sm mt-1 mb-6 text-center" style={{ color: "var(--text-muted)" }}>
             Start mining in under a minute.
           </p>
 
