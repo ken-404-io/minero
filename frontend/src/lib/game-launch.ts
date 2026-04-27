@@ -24,7 +24,7 @@ const listeners = new Set<() => void>();
 // Match the CSS keyframe durations so phase transitions don't snap the icon
 // from a mid-flight transform to the exit keyframe's start state.
 const FLY_DURATION_MS = 280;
-const EXIT_DURATION_MS = 320;
+const EXIT_DURATION_MS = 520;
 // Floor for how long we'll wait for the destination page to mount before
 // giving up and clearing the overlay (slow network, aborted nav, etc.).
 const SAFETY_TIMEOUT_MS = 8000;

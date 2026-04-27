@@ -916,7 +916,8 @@ kbd {
 }
 @keyframes glIconExit {
   0%   { transform: translate(var(--gl-tx), var(--gl-ty)) scale(1.5); opacity: 1; }
-  100% { transform: translate(var(--gl-tx), var(--gl-ty)) scale(5);   opacity: 0; }
+  60%  { transform: translate(var(--gl-tx), var(--gl-ty)) scale(5);   opacity: 0.85; }
+  100% { transform: translate(var(--gl-tx), var(--gl-ty)) scale(10);  opacity: 0; }
 }
 .game-launch-overlay {
   position: fixed;
@@ -929,7 +930,7 @@ kbd {
   animation: glOverlayIn 220ms var(--ease-out) both;
 }
 .game-launch-overlay[data-phase="exit"] {
-  animation: glOverlayOut 320ms var(--ease-out) forwards;
+  animation: glOverlayOut 520ms var(--ease-out) forwards;
 }
 .game-launch-icon {
   position: fixed;
@@ -952,7 +953,7 @@ kbd {
     glIconHold 1600ms ease-in-out 280ms infinite;
 }
 .game-launch-icon[data-phase="exit"] {
-  animation: glIconExit 320ms cubic-bezier(0.5, 0, 0.7, 0.2) forwards;
+  animation: glIconExit 520ms cubic-bezier(0.55, 0, 0.5, 1) forwards;
 }
 .game-launch-icon img {
   width: 65%;
