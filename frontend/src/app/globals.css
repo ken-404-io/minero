@@ -500,14 +500,14 @@ kbd {
   overflow: visible;
 }
 
-/* Fills safe-area gap below the wave with the same surface color */
+/* Fills safe-area gap below the wave with the nav background color */
 .mobile-nav::before {
   content: '';
   position: absolute;
   bottom: 0;
   left: 0; right: 0;
   height: env(safe-area-inset-bottom, 0px);
-  background: var(--surface);
+  background: #0a0a0a;
 }
 
 /* SVG wave shape — stretches full-width, sits above safe area */
