@@ -13,6 +13,8 @@ import {
   IconGift,
   IconMine,
   IconSparkles,
+  IconLayoutGrid,
+  IconLayoutList,
 } from "@/components/icons";
 
 /* ============================================================
@@ -425,6 +427,7 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     getRedeemedServer,
   );
 
+  const [view, setView] = useState<"list" | "grid">("list");
   const [now, setNow] = useState<number>(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -494,9 +497,31 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     <div className="mx-auto max-w-[1280px] px-4 py-6 lg:px-8 lg:py-8">
       <header className="mb-6 lg:mb-8">
         <span className="section-title">Play</span>
-        <h1 className="text-2xl lg:text-3xl font-bold tracking-tight mt-1">
-          Games
-        </h1>
+        <div className="flex items-center justify-between mt-1 gap-3">
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Games</h1>
+          <div className="flex items-center gap-1 shrink-0" role="group" aria-label="View mode">
+            <button
+              type="button"
+              onClick={() => setView("list")}
+              className="btn-icon"
+              aria-pressed={view === "list"}
+              aria-label="List view"
+              style={view === "list" ? { background: "var(--surface-3)", color: "var(--text)" } : {}}
+            >
+              <IconLayoutList size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("grid")}
+              className="btn-icon"
+              aria-pressed={view === "grid"}
+              aria-label="Grid view"
+              style={view === "grid" ? { background: "var(--surface-3)", color: "var(--text)" } : {}}
+            >
+              <IconLayoutGrid size={16} />
+            </button>
+          </div>
+        </div>
         <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
           Hi {firstName} — pick a game. Your scores stack up across them.
         </p>
@@ -534,117 +559,118 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
         </span>
       </Link>
 
-      {/* Game list — compact rows on mobile, full cards on md+ */}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
-        <GameCard
-          href="/game/trivia"
-          title="Trivia Quiz"
-          tagline="Answer fast, build streaks"
-          description="10 questions across mixed categories. Speed bonuses and streak multipliers boost your score."
-          icon={<IconBrain size={22} />}
-          logoSrc="/games/trivia.png"
-          status={
-            trivia.gamesPlayed > 0
-              ? `Best ${trivia.bestScore} · ${trivia.gamesPlayed} played`
-              : "New — give it a try"
-          }
-          ctaLabel="Play Trivia"
-          accent="brand"
-        />
-        <GameCard
-          href="/game/spin"
-          title="Daily Spin"
-          tagline="Free spin every 24h"
-          description="Give the wheel a whirl once a day for up to 250 free game coins. No skill required."
-          icon={<IconGift size={22} />}
-          logoSrc="/games/spin.png"
-          status={
-            spinReady
-              ? spin.spinsCompleted > 0
-                ? `Ready — last win +${spin.lastPrize}`
-                : "Ready — your first spin awaits"
-              : `Next spin in ${formatCountdown(spinCooldown)}`
-          }
-          statusIcon={spinReady ? <IconSparkles size={14} /> : <IconClock size={14} />}
-          ctaLabel={spinReady ? "Spin now" : "View wheel"}
-          accent={spinReady ? "success" : "muted"}
-        />
-
-        <GameCard
-          href="/game/memory"
-          title="Memory Match"
-          tagline="Flip-and-match card game"
-          description="Pair up the cards with as few moves as possible. Three difficulty tiers, scored on moves + time."
-          icon={<IconCopy size={22} />}
-          logoSrc="/games/memory.png"
-          status={
-            memoryWins > 0
-              ? `${memoryWins} cleared${
-                  memory.easy.bestMoves
-                    ? ` · Easy best ${memory.easy.bestMoves}`
-                    : ""
-                }`
-              : "New — start on Easy"
-          }
-          ctaLabel="Play Memory"
-          accent="brand"
-        />
-        <GameCard
-          href="/game/minesweeper"
-          title="Minesweeper"
-          tagline="Clear the board, dodge the mines"
-          description="Classic logic puzzle. Flag mines, reveal safe cells. Harder difficulties pay out more coins."
-          icon={<IconMine size={22} />}
-          logoSrc="/games/minesweeper.png"
-          status={
-            sweepWins > 0
-              ? `${sweepWins} cleared${
-                  sweepEasyBest
-                    ? ` · Easy best ${formatTimeShort(sweepEasyBest)}`
-                    : ""
-                }`
-              : "New — first click is always safe"
-          }
-          ctaLabel="Play Minesweeper"
-          accent="brand"
-        />
-
-        <GameCard
-          href="/game/word"
-          title="Word Game"
-          tagline="Daily 5-letter puzzle"
-          description="Guess the day's word in six tries. Fewer tries earn bigger payouts. One word per day."
-          icon={<IconBrain size={22} />}
-          logoSrc="/games/word.png"
-          status={
-            wordDoneToday
-              ? word.lastResult === "win"
-                ? `Solved today · next in ${formatCountdown(wordNextMs)}`
-                : `Missed today · next in ${formatCountdown(wordNextMs)}`
-              : word.gamesPlayed > 0
-                ? `Streak ${word.currentStreak} · best ${word.bestStreak}`
-                : "New — today's word is waiting"
-          }
-          statusIcon={wordDoneToday ? <IconClock size={14} /> : undefined}
-          ctaLabel={wordDoneToday ? "View result" : "Play today"}
-          accent={wordDoneToday ? "muted" : "brand"}
-        />
-        <GameCard
-          href="/game/blockblast"
-          title="Block Blast"
-          tagline="Place blocks, clear lines"
-          description="Drop pieces onto an 8×8 grid. Fill complete rows or columns to clear them. Game ends when no piece fits."
-          icon={<IconGame size={22} />}
-          logoSrc="/games/blockblast.png"
-          status={
-            blockblast.gamesPlayed > 0
-              ? `Best ${blockblast.bestScore} · ${blockblast.gamesPlayed} played`
-              : "New — tap a piece to start"
-          }
-          ctaLabel="Play Block Blast"
-          accent="brand"
-        />
-      </div>
+      {/* Game list or grid */}
+      {view === "list" ? (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
+          <GameCard
+            href="/game/trivia"
+            title="Trivia Quiz"
+            tagline="Answer fast, build streaks"
+            description="10 questions across mixed categories. Speed bonuses and streak multipliers boost your score."
+            icon={<IconBrain size={22} />}
+            logoSrc="/games/trivia.png"
+            status={
+              trivia.gamesPlayed > 0
+                ? `Best ${trivia.bestScore} · ${trivia.gamesPlayed} played`
+                : "New — give it a try"
+            }
+            ctaLabel="Play Trivia"
+            accent="brand"
+          />
+          <GameCard
+            href="/game/spin"
+            title="Daily Spin"
+            tagline="Free spin every 24h"
+            description="Give the wheel a whirl once a day for up to 250 free game coins. No skill required."
+            icon={<IconGift size={22} />}
+            logoSrc="/games/spin.png"
+            status={
+              spinReady
+                ? spin.spinsCompleted > 0
+                  ? `Ready — last win +${spin.lastPrize}`
+                  : "Ready — your first spin awaits"
+                : `Next spin in ${formatCountdown(spinCooldown)}`
+            }
+            statusIcon={spinReady ? <IconSparkles size={14} /> : <IconClock size={14} />}
+            ctaLabel={spinReady ? "Spin now" : "View wheel"}
+            accent={spinReady ? "success" : "muted"}
+          />
+          <GameCard
+            href="/game/memory"
+            title="Memory Match"
+            tagline="Flip-and-match card game"
+            description="Pair up the cards with as few moves as possible. Three difficulty tiers, scored on moves + time."
+            icon={<IconCopy size={22} />}
+            logoSrc="/games/memory.png"
+            status={
+              memoryWins > 0
+                ? `${memoryWins} cleared${memory.easy.bestMoves ? ` · Easy best ${memory.easy.bestMoves}` : ""}`
+                : "New — start on Easy"
+            }
+            ctaLabel="Play Memory"
+            accent="brand"
+          />
+          <GameCard
+            href="/game/minesweeper"
+            title="Minesweeper"
+            tagline="Clear the board, dodge the mines"
+            description="Classic logic puzzle. Flag mines, reveal safe cells. Harder difficulties pay out more coins."
+            icon={<IconMine size={22} />}
+            logoSrc="/games/minesweeper.png"
+            status={
+              sweepWins > 0
+                ? `${sweepWins} cleared${sweepEasyBest ? ` · Easy best ${formatTimeShort(sweepEasyBest)}` : ""}`
+                : "New — first click is always safe"
+            }
+            ctaLabel="Play Minesweeper"
+            accent="brand"
+          />
+          <GameCard
+            href="/game/word"
+            title="Word Game"
+            tagline="Daily 5-letter puzzle"
+            description="Guess the day's word in six tries. Fewer tries earn bigger payouts. One word per day."
+            icon={<IconBrain size={22} />}
+            logoSrc="/games/word.png"
+            status={
+              wordDoneToday
+                ? word.lastResult === "win"
+                  ? `Solved today · next in ${formatCountdown(wordNextMs)}`
+                  : `Missed today · next in ${formatCountdown(wordNextMs)}`
+                : word.gamesPlayed > 0
+                  ? `Streak ${word.currentStreak} · best ${word.bestStreak}`
+                  : "New — today's word is waiting"
+            }
+            statusIcon={wordDoneToday ? <IconClock size={14} /> : undefined}
+            ctaLabel={wordDoneToday ? "View result" : "Play today"}
+            accent={wordDoneToday ? "muted" : "brand"}
+          />
+          <GameCard
+            href="/game/blockblast"
+            title="Block Blast"
+            tagline="Place blocks, clear lines"
+            description="Drop pieces onto an 8×8 grid. Fill complete rows or columns to clear them. Game ends when no piece fits."
+            icon={<IconGame size={22} />}
+            logoSrc="/games/blockblast.png"
+            status={
+              blockblast.gamesPlayed > 0
+                ? `Best ${blockblast.bestScore} · ${blockblast.gamesPlayed} played`
+                : "New — tap a piece to start"
+            }
+            ctaLabel="Play Block Blast"
+            accent="brand"
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
+          <GameGridTile href="/game/trivia"     title="Trivia"      icon={<IconBrain size={28} />} logoSrc="/games/trivia.png"      accent="brand" />
+          <GameGridTile href="/game/spin"       title="Daily Spin"  icon={<IconGift size={28} />}  logoSrc="/games/spin.png"         accent={spinReady ? "success" : "muted"} badge={spinReady ? "!" : undefined} />
+          <GameGridTile href="/game/memory"     title="Memory"      icon={<IconCopy size={28} />}  logoSrc="/games/memory.png"       accent="brand" />
+          <GameGridTile href="/game/minesweeper" title="Minesweeper" icon={<IconMine size={28} />} logoSrc="/games/minesweeper.png"  accent="brand" />
+          <GameGridTile href="/game/word"       title="Word"        icon={<IconBrain size={28} />} logoSrc="/games/word.png"         accent={wordDoneToday ? "muted" : "brand"} badge={wordDoneToday ? undefined : "!"} />
+          <GameGridTile href="/game/blockblast" title="Block Blast" icon={<IconGame size={28} />}  logoSrc="/games/blockblast.png"   accent="brand" />
+        </div>
+      )}
 
       {/* Footer */}
       <div
@@ -664,15 +690,63 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
 
 type Accent = "brand" | "success" | "muted";
 
-function GameLogo({ src, fallback }: { src: string; fallback: React.ReactNode }) {
+function GameGridTile({
+  href,
+  title,
+  icon,
+  logoSrc,
+  accent,
+  badge,
+}: {
+  href: string;
+  title: string;
+  icon: React.ReactNode;
+  logoSrc?: string;
+  accent: Accent;
+  badge?: string;
+}) {
+  const accentColor =
+    accent === "success" ? "var(--success-fg)" : accent === "brand" ? "var(--brand)" : "var(--text-subtle)";
+
+  return (
+    <Link href={href} className="flex flex-col items-center gap-2 group">
+      <span
+        className="relative inline-flex h-16 w-16 items-center justify-center rounded-2xl transition-transform group-active:scale-95"
+        style={{
+          background: "linear-gradient(145deg, var(--surface-2), var(--surface-3))",
+          border: "1px solid var(--border)",
+          color: accentColor,
+        }}
+      >
+        {logoSrc ? <GameLogo src={logoSrc} fallback={icon} /> : icon}
+        {badge && (
+          <span
+            className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center rounded-full text-[10px] font-bold"
+            style={{ background: accentColor, color: "var(--bg)" }}
+          >
+            {badge}
+          </span>
+        )}
+      </span>
+      <span
+        className="text-xs font-medium text-center leading-tight w-full truncate px-1"
+        style={{ color: "var(--text-muted)" }}
+      >
+        {title}
+      </span>
+    </Link>
+  );
+}
+
+function GameLogo({ src, fallback, size = 28 }: { src: string; fallback: React.ReactNode; size?: number }) {
   const [failed, setFailed] = useState(false);
   if (failed) return <>{fallback}</>;
   return (
     <img
       src={src}
       alt=""
-      width={28}
-      height={28}
+      width={size}
+      height={size}
       className="object-contain"
       onError={() => setFailed(true)}
     />

@@ -437,3 +437,27 @@ export function IconBell(p: IconProps) {
   );
 }
 
+export function IconLayoutGrid(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+    </svg>
+  );
+}
+
+export function IconLayoutList(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <rect x="3" y="4" width="7" height="7" rx="1" />
+      <line x1="13" y1="6" x2="21" y2="6" />
+      <line x1="13" y1="9" x2="18" y2="9" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <line x1="13" y1="16" x2="21" y2="16" />
+      <line x1="13" y1="19" x2="18" y2="19" />
+    </svg>
+  );
+}
+
