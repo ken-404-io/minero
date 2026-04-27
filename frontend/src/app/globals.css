@@ -619,6 +619,70 @@ kbd {
   .has-mobile-nav { padding-bottom: 0; }
 }
 
+/* ── Game nav center button ───────────────────────────────────────── */
+.game-nav-btn {
+  position: absolute;
+  top: -28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@keyframes gnav-pulse-aura {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50%       { opacity: 1;   transform: scale(1.1); }
+}
+@keyframes gnav-ring1-pulse {
+  0%, 100% { opacity: 0.25; transform: scale(1); }
+  50%       { opacity: 0.55; transform: scale(1.07); }
+}
+@keyframes gnav-ring2-pulse {
+  0%, 100% { opacity: 0.12; transform: scale(1); }
+  50%       { opacity: 0.28; transform: scale(1.12); }
+}
+@keyframes gnav-spark-twinkle {
+  0%, 100% { opacity: 0.25; transform: scale(0.7); }
+  50%       { opacity: 0.95; transform: scale(1.5); }
+}
+@keyframes gnav-ray-flash {
+  0%, 100% { opacity: 0.15; }
+  50%       { opacity: 0.65; }
+}
+@keyframes gnav-flame-pulse {
+  0%, 100% { opacity: 0.4; transform: scaleX(0.8); }
+  50%       { opacity: 0.8; transform: scaleX(1.15); }
+}
+
+.gnav-aura  { animation: gnav-pulse-aura   2s   ease-in-out infinite; transform-origin: 28px 28px; }
+.gnav-ring1 { animation: gnav-ring1-pulse  2s   ease-in-out infinite; transform-origin: 28px 28px; }
+.gnav-ring2 { animation: gnav-ring2-pulse  2.6s ease-in-out infinite; transform-origin: 28px 28px; }
+
+.gnav-flame   { animation: gnav-flame-pulse 1.8s ease-in-out infinite; }
+.gnav-flame-l { transform-origin: 6px  27.75px; animation-delay: 0.2s; }
+.gnav-flame-r { transform-origin: 68px 27.75px; }
+
+.gnav-ray { animation: gnav-ray-flash 1.8s ease-in-out infinite; transform-origin: 28px 28px; }
+.gnav-ray-0 { animation-delay: 0s;    }
+.gnav-ray-1 { animation-delay: 0.22s; }
+.gnav-ray-2 { animation-delay: 0.44s; }
+.gnav-ray-3 { animation-delay: 0.66s; }
+.gnav-ray-4 { animation-delay: 0.88s; }
+.gnav-ray-5 { animation-delay: 1.1s;  }
+.gnav-ray-6 { animation-delay: 1.32s; }
+.gnav-ray-7 { animation-delay: 1.54s; }
+
+.gnav-spark { animation: gnav-spark-twinkle 1.6s ease-in-out infinite; transform-origin: 28px 28px; }
+.gnav-spark-0 { animation-delay: 0s;    }
+.gnav-spark-1 { animation-delay: 0.16s; }
+.gnav-spark-2 { animation-delay: 0.32s; }
+.gnav-spark-3 { animation-delay: 0.48s; }
+.gnav-spark-4 { animation-delay: 0.64s; }
+.gnav-spark-5 { animation-delay: 0.80s; }
+.gnav-spark-6 { animation-delay: 0.96s; }
+.gnav-spark-7 { animation-delay: 1.12s; }
+.gnav-spark-8 { animation-delay: 1.28s; }
+.gnav-spark-9 { animation-delay: 1.44s; }
+
 /* Desktop sidebar */
 .side-nav {
   display: none;
