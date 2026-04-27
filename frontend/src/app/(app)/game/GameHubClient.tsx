@@ -502,38 +502,6 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
         </p>
       </header>
 
-      {/* Combined stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <div className="kpi">
-          <span className="kpi-label">Available coins</span>
-          <span className="kpi-value kpi-value-brand flex items-center gap-1">
-            <IconCoin size={16} />
-            {availableCoins}
-          </span>
-        </div>
-        <div className="kpi">
-          <span className="kpi-label">Trivia best score</span>
-          <span className="kpi-value">{trivia.bestScore}</span>
-        </div>
-        <div className="kpi">
-          <span className="kpi-label">Spins completed</span>
-          <span className="kpi-value">{spin.spinsCompleted}</span>
-        </div>
-        <div className="kpi">
-          <span className="kpi-label">Next free spin</span>
-          <span
-            className="kpi-value"
-            style={{
-              fontFamily: "var(--font-mono), ui-monospace, Menlo, monospace",
-              fontSize: "var(--fs-20)",
-              color: spinReady ? "var(--success-fg)" : "var(--text)",
-            }}
-          >
-            {formatCountdown(spinCooldown)}
-          </span>
-        </div>
-      </div>
-
       {/* Redeem rewards CTA */}
       <Link
         href="/rewards"
