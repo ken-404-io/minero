@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { getGameBalance, GAME_BALANCE_CHANGED, importLegacyCoinsOnce } from "@/lib/game-session";
 import {
   IconArrowRight,
@@ -386,6 +387,18 @@ function formatTimeShort(ms: number) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+type LaunchState = {
+  x: number;
+  y: number;
+  size: number;
+  tx: number;
+  ty: number;
+  src?: string;
+  href: string;
+};
+
+type LaunchHandler = (href: string, rect: DOMRect, logoSrc?: string) => void;
+
 /* ============================================================
    Hub
    ============================================================ */
@@ -433,6 +446,35 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  const router = useRouter();
+  const [launching, setLaunching] = useState<LaunchState | null>(null);
+  const launchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (launchTimerRef.current) clearTimeout(launchTimerRef.current);
+    };
+  }, []);
+
+  const onLaunch = (href: string, rect: DOMRect, logoSrc?: string) => {
+    if (launching) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) {
+      router.push(href);
+      return;
+    }
+    const size = Math.max(rect.width, rect.height);
+    // Square the start area so non-square icon hosts still scale uniformly.
+    const x = rect.left + rect.width / 2 - size / 2;
+    const y = rect.top + rect.height / 2 - size / 2;
+    const tx = window.innerWidth / 2 - (x + size / 2);
+    const ty = window.innerHeight / 2 - (y + size / 2);
+    router.prefetch(href);
+    setLaunching({ x, y, size, tx, ty, src: logoSrc, href });
+    launchTimerRef.current = setTimeout(() => {
+      router.push(href);
+    }, 560);
+  };
 
   // Server-authoritative game-coin balance. Falls back to local sum until
   // the first fetch resolves, so the KPI never shows an empty skeleton.
@@ -495,6 +537,7 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-6 lg:px-8 lg:py-8">
+      {launching && <GameLaunchOverlay state={launching} />}
       <header className="mb-6 lg:mb-8">
         <span className="section-title">Play</span>
         <div className="flex items-center justify-between mt-1 gap-3">
@@ -576,6 +619,7 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
             }
             ctaLabel="Play Trivia"
             accent="brand"
+            onLaunch={onLaunch}
           />
           <GameCard
             href="/game/spin"
@@ -594,6 +638,7 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
             statusIcon={spinReady ? <IconSparkles size={14} /> : <IconClock size={14} />}
             ctaLabel={spinReady ? "Spin now" : "View wheel"}
             accent={spinReady ? "success" : "muted"}
+            onLaunch={onLaunch}
           />
           <GameCard
             href="/game/memory"
@@ -609,6 +654,7 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
             }
             ctaLabel="Play Memory"
             accent="brand"
+            onLaunch={onLaunch}
           />
           <GameCard
             href="/game/minesweeper"
@@ -624,6 +670,7 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
             }
             ctaLabel="Play Minesweeper"
             accent="brand"
+            onLaunch={onLaunch}
           />
           <GameCard
             href="/game/word"
@@ -644,6 +691,7 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
             statusIcon={wordDoneToday ? <IconClock size={14} /> : undefined}
             ctaLabel={wordDoneToday ? "View result" : "Play today"}
             accent={wordDoneToday ? "muted" : "brand"}
+            onLaunch={onLaunch}
           />
           <GameCard
             href="/game/blockblast"
@@ -659,16 +707,17 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
             }
             ctaLabel="Play Block Blast"
             accent="brand"
+            onLaunch={onLaunch}
           />
         </div>
       ) : (
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
-          <GameGridTile href="/game/trivia"     title="Trivia"      icon={<IconBrain size={28} />} logoSrc="/games/trivia.png"      accent="brand" />
-          <GameGridTile href="/game/spin"       title="Daily Spin"  icon={<IconGift size={28} />}  logoSrc="/games/spin.png"         accent={spinReady ? "success" : "muted"} badge={spinReady ? "!" : undefined} />
-          <GameGridTile href="/game/memory"     title="Memory"      icon={<IconCopy size={28} />}  logoSrc="/games/memory.png"       accent="brand" />
-          <GameGridTile href="/game/minesweeper" title="Minesweeper" icon={<IconMine size={28} />} logoSrc="/games/minesweeper.png"  accent="brand" />
-          <GameGridTile href="/game/word"       title="Word"        icon={<IconBrain size={28} />} logoSrc="/games/word.png"         accent={wordDoneToday ? "muted" : "brand"} badge={wordDoneToday ? undefined : "!"} />
-          <GameGridTile href="/game/blockblast" title="Block Blast" icon={<IconGame size={28} />}  logoSrc="/games/blockblast.png"   accent="brand" />
+          <GameGridTile href="/game/trivia"     title="Trivia"      icon={<IconBrain size={28} />} logoSrc="/games/trivia.png"      accent="brand" onLaunch={onLaunch} />
+          <GameGridTile href="/game/spin"       title="Daily Spin"  icon={<IconGift size={28} />}  logoSrc="/games/spin.png"         accent={spinReady ? "success" : "muted"} badge={spinReady ? "!" : undefined} onLaunch={onLaunch} />
+          <GameGridTile href="/game/memory"     title="Memory"      icon={<IconCopy size={28} />}  logoSrc="/games/memory.png"       accent="brand" onLaunch={onLaunch} />
+          <GameGridTile href="/game/minesweeper" title="Minesweeper" icon={<IconMine size={28} />} logoSrc="/games/minesweeper.png"  accent="brand" onLaunch={onLaunch} />
+          <GameGridTile href="/game/word"       title="Word"        icon={<IconBrain size={28} />} logoSrc="/games/word.png"         accent={wordDoneToday ? "muted" : "brand"} badge={wordDoneToday ? undefined : "!"} onLaunch={onLaunch} />
+          <GameGridTile href="/game/blockblast" title="Block Blast" icon={<IconGame size={28} />}  logoSrc="/games/blockblast.png"   accent="brand" onLaunch={onLaunch} />
         </div>
       )}
 
@@ -697,6 +746,7 @@ function GameGridTile({
   logoSrc,
   accent,
   badge,
+  onLaunch,
 }: {
   href: string;
   title: string;
@@ -704,13 +754,25 @@ function GameGridTile({
   logoSrc?: string;
   accent: Accent;
   badge?: string;
+  onLaunch: LaunchHandler;
 }) {
   const accentColor =
     accent === "success" ? "var(--success-fg)" : accent === "brand" ? "var(--brand)" : "var(--text-subtle)";
+  const iconRef = useRef<HTMLSpanElement>(null);
 
   return (
-    <Link href={href} className="flex flex-col items-center gap-2 group">
+    <Link
+      href={href}
+      className="flex flex-col items-center gap-2 group"
+      onClick={(e) => {
+        const el = iconRef.current;
+        if (!el || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        onLaunch(href, el.getBoundingClientRect(), logoSrc);
+      }}
+    >
       <span
+        ref={iconRef}
         className="relative inline-flex h-16 w-16 items-center justify-center rounded-2xl transition-transform group-active:scale-95"
         style={{
           background: "linear-gradient(145deg, var(--surface-2), var(--surface-3))",
@@ -764,6 +826,7 @@ function GameCard({
   statusIcon,
   ctaLabel,
   accent,
+  onLaunch,
 }: {
   href: string;
   title: string;
@@ -775,6 +838,7 @@ function GameCard({
   statusIcon?: React.ReactNode;
   ctaLabel: string;
   accent: Accent;
+  onLaunch: LaunchHandler;
 }) {
   const statusColor =
     accent === "success"
@@ -782,6 +846,7 @@ function GameCard({
       : accent === "brand"
         ? "var(--brand)"
         : "var(--text-muted)";
+  const iconRef = useRef<HTMLSpanElement>(null);
 
   return (
     <Link
@@ -791,9 +856,16 @@ function GameCard({
         background:
           "linear-gradient(165deg, color-mix(in oklab, var(--brand-weak) 45%, transparent), var(--surface))",
       }}
+      onClick={(e) => {
+        const el = iconRef.current;
+        if (!el || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        onLaunch(href, el.getBoundingClientRect(), logoSrc);
+      }}
     >
       <div className="flex items-center gap-3 md:items-start">
         <span
+          ref={iconRef}
           aria-hidden
           className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
           style={{ background: "var(--brand-weak)", color: "var(--brand)" }}
@@ -850,6 +922,28 @@ function GameCard({
         </span>
       </div>
     </Link>
+  );
+}
+
+/* ============================================================
+   Launch overlay: clones the icon and animates it to center
+   ============================================================ */
+
+function GameLaunchOverlay({ state }: { state: LaunchState }) {
+  const style = {
+    "--gl-x": `${state.x}px`,
+    "--gl-y": `${state.y}px`,
+    "--gl-size": `${state.size}px`,
+    "--gl-tx": `${state.tx}px`,
+    "--gl-ty": `${state.ty}px`,
+  } as React.CSSProperties;
+
+  return (
+    <div className="game-launch-overlay" aria-hidden role="presentation">
+      <span className="game-launch-icon" style={style}>
+        {state.src ? <img src={state.src} alt="" /> : null}
+      </span>
+    </div>
   );
 }
 
