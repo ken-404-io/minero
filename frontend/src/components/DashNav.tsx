@@ -213,7 +213,7 @@ export default function DashNav({ name, role, plan }: { name: string; role: stri
         >
           {/* Filled background — rounded top corners, smooth wave notch at center */}
           <path
-            fill="var(--surface)"
+            fill="#0a0a0a"
             d="M20,0 L120,0 C147,0 165,28 187.5,28 C210,28 228,0 255,0 L355,0 Q375,0 375,20 L375,64 L0,64 L0,20 Q0,0 20,0 Z"
           />
           {/* Border — traces only the top edge (sides are screen-flush) */}
