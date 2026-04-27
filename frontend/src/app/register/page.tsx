@@ -100,7 +100,7 @@ function RegisterForm() {
   const pwStrong = form.password.length >= 8;
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2">
+    <div className="h-screen overflow-hidden grid lg:grid-cols-2">
       {/* ==================== Left: brand panel (desktop only) ==================== */}
       <aside
         className="hidden lg:flex flex-col justify-between p-10 border-r"
@@ -143,7 +143,7 @@ function RegisterForm() {
       </aside>
 
       {/* ==================== Right: form ==================== */}
-      <main className="flex flex-col px-4 py-8 lg:p-10">
+      <main className="flex flex-col px-4 py-8 lg:p-10 overflow-y-auto">
         <Link href="/" className="lg:hidden inline-flex items-center gap-2 mb-8" aria-label="Minero home">
           <span
             aria-hidden
