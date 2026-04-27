@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { API_URL } from "@/lib/api-url";
-import { CLAIM_INTERVAL_MS } from "@/lib/mining";
 import AuthOverlay from "@/components/AuthOverlay";
 import {
   IconChart,
@@ -33,6 +32,7 @@ type User = {
 type Props = {
   user: User;
   planLabel: string;
+  claimIntervalMs: number;
   lastClaimAt: string | null;
 };
 
@@ -52,7 +52,7 @@ function formatJoined(iso: string) {
   }
 }
 
-export default function MeClient({ user, planLabel, lastClaimAt }: Props) {
+export default function MeClient({ user, planLabel, claimIntervalMs, lastClaimAt }: Props) {
   const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
   const [mineCountdown, setMineCountdown] = useState("");
@@ -61,7 +61,7 @@ export default function MeClient({ user, planLabel, lastClaimAt }: Props) {
     const lastClaim = lastClaimAt ? new Date(lastClaimAt) : null;
     function update() {
       if (!lastClaim) { setMineCountdown("Ready to mine!"); return; }
-      const remaining = Math.max(0, CLAIM_INTERVAL_MS - (Date.now() - lastClaim.getTime()));
+      const remaining = Math.max(0, claimIntervalMs - (Date.now() - lastClaim.getTime()));
       if (remaining === 0) {
         setMineCountdown("Ready to mine!");
       } else {

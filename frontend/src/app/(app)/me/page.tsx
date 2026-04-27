@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { apiJson } from "@/lib/api";
-import { getPlanConfig } from "@/lib/mining";
 import MeClient from "./MeClient";
 
 type Me = {
@@ -16,15 +15,19 @@ type Me = {
 };
 
 type LastClaimResp = { lastClaimAt: string | null; nextClaimAt: string | null };
+type PlanConfig = { label: string; ratePerClaim: number; dailyCap: number; price: number };
+type PublicConfig = { plans: Record<string, PlanConfig>; claimIntervalMs: number; withdrawalMinimum: number };
 
 export default async function MePage() {
-  const [me, lastClaimData] = await Promise.all([
+  const [me, lastClaimData, configData] = await Promise.all([
     apiJson<Me>("/auth/me"),
     apiJson<LastClaimResp>("/claim/last"),
+    apiJson<PublicConfig>("/config"),
   ]);
   if (!me) redirect("/login");
 
-  const plan = getPlanConfig(me.user.plan);
+  const planLabel = configData?.plans[me.user.plan]?.label ?? "Free (with ads)";
+  const claimIntervalMs = configData?.claimIntervalMs ?? 10 * 60 * 1000;
 
   return (
     <MeClient
@@ -36,7 +39,8 @@ export default async function MePage() {
         referralCode: me.user.referralCode,
         createdAt: me.user.createdAt,
       }}
-      planLabel={plan.label}
+      planLabel={planLabel}
+      claimIntervalMs={claimIntervalMs}
       lastClaimAt={lastClaimData?.lastClaimAt ?? null}
     />
   );
