@@ -13,18 +13,18 @@
   --neutral-400: #8e8e94;
   --neutral-500: #5c5c63;
   --neutral-600: #3d3d43;
-  --neutral-700: #2a2a2f;
-  --neutral-800: #1b1b1f;
-  --neutral-900: #111114;
+  --neutral-700: #222226;
+  --neutral-800: #141416;
+  --neutral-900: #0a0a0c;
 
   /* Semantic color tokens (dark) */
-  --bg:              var(--neutral-900);
-  --bg-elevated:     #17171a;
-  --surface:         #1b1b1f;
-  --surface-2:       #23232a;
-  --surface-3:       #2d2d35;
-  --border:          #2a2a31;
-  --border-strong:   #3a3a42;
+  --bg:              #0a0a0a;
+  --bg-elevated:     #0f0f0f;
+  --surface:         #111113;
+  --surface-2:       #18181c;
+  --surface-3:       #222228;
+  --border:          #1e1e24;
+  --border-strong:   #2c2c34;
   --text:            #ededef;
   --text-muted:      #a0a0a8;
   --text-subtle:     #6b6b74;
@@ -507,7 +507,7 @@ kbd {
   bottom: 0;
   left: 0; right: 0;
   height: env(safe-area-inset-bottom, 0px);
-  background: #0a0a0a;
+  background: var(--surface);
 }
 
 /* SVG wave shape — stretches full-width, sits above safe area */
