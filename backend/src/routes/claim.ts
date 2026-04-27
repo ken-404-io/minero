@@ -43,7 +43,7 @@ claimRoutes.post("/", async (c) => {
       severity: "low",
       details: { ip: getClientIp(c) },
     });
-    return c.json({ error: "Account suspended" }, 403);
+    return c.json({ error: "Your account has been suspended. Please contact support." }, 403);
   }
 
   const cfg = await getConfig();
@@ -77,7 +77,7 @@ claimRoutes.post("/", async (c) => {
     _sum: { amount: true },
   });
   const todayTotal = todayEarnings._sum.amount ?? 0;
-  if (todayTotal >= plan.dailyCap) return c.json({ error: "Daily cap reached" }, 403);
+  if (todayTotal >= plan.dailyCap) return c.json({ error: "You've reached your daily earning limit. Come back tomorrow!" }, 403);
 
   const amount = Math.min(plan.ratePerClaim, plan.dailyCap - todayTotal);
 
@@ -103,7 +103,7 @@ claimRoutes.post("/", async (c) => {
           severity: "high",
           details: { ip, deviceHash, otherClaimId: sameIpAndDevice.id },
         });
-        return c.json({ error: "Claim blocked" }, 403);
+        return c.json({ error: "Another account was detected on this device. Contact support if this is a mistake." }, 403);
       }
     }
 
