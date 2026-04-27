@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { apiJson } from "@/lib/api";
 import { IconArrowLeft } from "@/components/icons";
+import GameLaunchComplete from "@/components/GameLaunchComplete";
 import TriviaClient from "./TriviaClient";
 
 type Me = {
@@ -13,7 +14,8 @@ export default async function TriviaPage() {
   if (!me) redirect("/login");
 
   return (
-    <div>
+    <div className="game-page-enter">
+      <GameLaunchComplete href="/game/trivia" />
       <div className="px-4 pt-4 lg:px-8 lg:pt-6">
         <Link
           href="/game"
