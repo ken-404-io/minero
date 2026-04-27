@@ -20,6 +20,7 @@ import {
   IconBell,
   IconCoin,
 } from "@/components/icons";
+import GameNavIcon from "@/components/GameNavIcon";
 
 type NavItem = {
   href: string;
@@ -255,9 +256,7 @@ export default function DashNav({ name, role, plan }: { name: string; role: stri
                 aria-label={l.label}
                 className="mobile-nav-center"
               >
-                <span className={`mobile-nav-center-btn${active ? " is-active" : ""}`} aria-hidden>
-                  <l.Icon size={26} />
-                </span>
+                <GameNavIcon active={active} />
                 <span className="mobile-nav-label" style={{ color: active ? "var(--brand)" : "var(--text-muted)" }}>
                   {l.label}
                 </span>
