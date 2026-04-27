@@ -34,7 +34,7 @@ claimRoutes.post("/", async (c) => {
   const session = requireAuth(c);
   if (session instanceof Response) return session;
 
-  const user = await prisma.user.findUnique({ where: { id: session.userId } });
+  const user = await prisma.user.findUnique({ where: { id: session.userId }, select: { id: true, frozen: true, plan: true, balance: true, lastDeviceHash: true, referredBy: true, role: true } });
   if (!user) return c.json({ error: "Unauthorized" }, 401);
   if (user.frozen) {
     await raiseAlert({
@@ -81,10 +81,13 @@ claimRoutes.post("/", async (c) => {
 
   const amount = Math.min(plan.ratePerClaim, plan.dailyCap - todayTotal);
 
+  const isAdmin = user.role === "admin";
+
   // Same-IP another user within the last hour → block + alert.
   // Skip when the IP is a loopback or unresolvable address — those can't
   // uniquely identify a device (common in local dev or behind some proxies).
-  if (!isUntrackableIp(ip)) {
+  // Skip for admins so they can test the platform without triggering their own fraud rules.
+  if (!isAdmin && !isUntrackableIp(ip)) {
     const recentSameIp = await prisma.claim.findFirst({
       where: {
         ip,
@@ -106,7 +109,7 @@ claimRoutes.post("/", async (c) => {
   // Same-device another user within 24h → block + alert.
   // Skip when IP is untrackable (loopback/dev) — same browser fingerprint is
   // shared by all accounts on the same machine, so the check produces false positives.
-  if (deviceHash && !isUntrackableIp(ip)) {
+  if (!isAdmin && deviceHash && !isUntrackableIp(ip)) {
     const recentSameDevice = await prisma.claim.findFirst({
       where: {
         deviceHash,
