@@ -83,11 +83,31 @@ claimRoutes.post("/", async (c) => {
 
   const isAdmin = user.role === "admin";
 
-  // Same-IP another user within the last hour → block + alert.
-  // Skip when the IP is a loopback or unresolvable address — those can't
-  // uniquely identify a device (common in local dev or behind some proxies).
-  // Skip for admins so they can test the platform without triggering their own fraud rules.
+  // Fraud checks — skipped for admins and untrackable IPs (loopback/dev/proxies).
   if (!isAdmin && !isUntrackableIp(ip)) {
+    // Same IP + same device = strongest fraud signal → block.
+    // IP alone is too broad (shared routers, mobile carriers, offices).
+    if (deviceHash) {
+      const sameIpAndDevice = await prisma.claim.findFirst({
+        where: {
+          ip,
+          deviceHash,
+          userId: { not: user.id },
+          claimedAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) },
+        },
+      });
+      if (sameIpAndDevice) {
+        await raiseAlert({
+          userId: user.id,
+          type: "duplicate_device",
+          severity: "high",
+          details: { ip, deviceHash, otherClaimId: sameIpAndDevice.id },
+        });
+        return c.json({ error: "Claim blocked" }, 403);
+      }
+    }
+
+    // Same IP only (no device match) → flag for review but allow the claim.
     const recentSameIp = await prisma.claim.findFirst({
       where: {
         ip,
@@ -99,32 +119,10 @@ claimRoutes.post("/", async (c) => {
       await raiseAlert({
         userId: user.id,
         type: "duplicate_ip",
-        severity: "high",
+        severity: "low",
         details: { ip, otherClaimId: recentSameIp.id },
       });
-      return c.json({ error: "Claim blocked" }, 403);
-    }
-  }
-
-  // Same-device another user within 24h → block + alert.
-  // Skip when IP is untrackable (loopback/dev) — same browser fingerprint is
-  // shared by all accounts on the same machine, so the check produces false positives.
-  if (!isAdmin && deviceHash && !isUntrackableIp(ip)) {
-    const recentSameDevice = await prisma.claim.findFirst({
-      where: {
-        deviceHash,
-        userId: { not: user.id },
-        claimedAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) },
-      },
-    });
-    if (recentSameDevice) {
-      await raiseAlert({
-        userId: user.id,
-        type: "duplicate_device",
-        severity: "high",
-        details: { deviceHash, otherClaimId: recentSameDevice.id },
-      });
-      return c.json({ error: "Claim blocked" }, 403);
+      // Not blocked — shared IPs are common (NAT, mobile carriers, offices).
     }
   }
 
