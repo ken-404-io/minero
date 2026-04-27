@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { getGameBalance, GAME_BALANCE_CHANGED, importLegacyCoinsOnce } from "@/lib/game-session";
+import { startLaunch } from "@/lib/game-launch";
 import {
   IconArrowRight,
   IconBrain,
@@ -387,16 +388,6 @@ function formatTimeShort(ms: number) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-type LaunchState = {
-  x: number;
-  y: number;
-  size: number;
-  tx: number;
-  ty: number;
-  src?: string;
-  href: string;
-};
-
 type LaunchHandler = (href: string, rect: DOMRect, logoSrc?: string) => void;
 
 /* ============================================================
@@ -448,16 +439,10 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
   }, []);
 
   const router = useRouter();
-  const [launching, setLaunching] = useState<LaunchState | null>(null);
-  const launchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    return () => {
-      if (launchTimerRef.current) clearTimeout(launchTimerRef.current);
-    };
-  }, []);
+  const launchingRef = useRef(false);
 
   const onLaunch = (href: string, rect: DOMRect, logoSrc?: string) => {
-    if (launching) return;
+    if (launchingRef.current) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduce) {
       router.push(href);
@@ -469,11 +454,9 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     const y = rect.top + rect.height / 2 - size / 2;
     const tx = window.innerWidth / 2 - (x + size / 2);
     const ty = window.innerHeight / 2 - (y + size / 2);
-    router.prefetch(href);
-    setLaunching({ x, y, size, tx, ty, src: logoSrc, href });
-    launchTimerRef.current = setTimeout(() => {
-      router.push(href);
-    }, 560);
+    launchingRef.current = true;
+    startLaunch({ x, y, size, tx, ty, src: logoSrc, href });
+    router.push(href);
   };
 
   // Server-authoritative game-coin balance. Falls back to local sum until
@@ -537,7 +520,6 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-6 lg:px-8 lg:py-8">
-      {launching && <GameLaunchOverlay state={launching} />}
       <header className="mb-6 lg:mb-8">
         <span className="section-title">Play</span>
         <div className="flex items-center justify-between mt-1 gap-3">
@@ -925,25 +907,4 @@ function GameCard({
   );
 }
 
-/* ============================================================
-   Launch overlay: clones the icon and animates it to center
-   ============================================================ */
-
-function GameLaunchOverlay({ state }: { state: LaunchState }) {
-  const style = {
-    "--gl-x": `${state.x}px`,
-    "--gl-y": `${state.y}px`,
-    "--gl-size": `${state.size}px`,
-    "--gl-tx": `${state.tx}px`,
-    "--gl-ty": `${state.ty}px`,
-  } as React.CSSProperties;
-
-  return (
-    <div className="game-launch-overlay" aria-hidden role="presentation">
-      <span className="game-launch-icon" style={style}>
-        {state.src ? <img src={state.src} alt="" /> : null}
-      </span>
-    </div>
-  );
-}
 

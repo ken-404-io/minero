@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { apiJson } from "@/lib/api";
+import GameLaunchComplete from "@/components/GameLaunchComplete";
 import WordClient from "./WordClient";
 
 type Me = {
@@ -13,5 +14,10 @@ export default async function WordPage() {
   const me = await apiJson<Me>("/auth/me");
   if (!me) redirect("/login");
 
-  return <WordClient playerName={me.user.name} />;
+  return (
+    <div className="game-page-enter">
+      <GameLaunchComplete href="/game/word" />
+      <WordClient playerName={me.user.name} />
+    </div>
+  );
 }
