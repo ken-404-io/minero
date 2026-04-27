@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { API_URL } from "@/lib/api-url";
-import { IconGoogle, IconFacebook, IconGithub } from "@/components/brand-icons";
+import { IconGoogle } from "@/components/brand-icons";
 
 type Props = {
   /** Optional referral code to carry through OAuth state. */
@@ -12,15 +12,11 @@ type Props = {
 type ProviderInfo = { name: string; available: boolean };
 
 const LABELS: Record<string, { name: string; Icon: typeof IconGoogle }> = {
-  google:   { name: "Google",   Icon: IconGoogle },
-  facebook: { name: "Facebook", Icon: IconFacebook },
-  github:   { name: "GitHub",   Icon: IconGithub },
+  google: { name: "Google Account", Icon: IconGoogle },
 };
 
 const FALLBACK: ProviderInfo[] = [
-  { name: "google",   available: false },
-  { name: "facebook", available: false },
-  { name: "github",   available: false },
+  { name: "google", available: false },
 ];
 
 export default function OAuthButtons({ referralCode }: Props) {
@@ -37,9 +33,9 @@ export default function OAuthButtons({ referralCode }: Props) {
         const data = (await res.json()) as { providers: ProviderInfo[] | string[] };
         // Back-compat: older deploys returned a plain string[].
         const list: ProviderInfo[] = Array.isArray(data.providers)
-          ? data.providers.map((p) =>
-              typeof p === "string" ? { name: p, available: true } : p,
-            )
+          ? data.providers
+              .map((p) => (typeof p === "string" ? { name: p, available: true } : p))
+              .filter((p) => p.name === "google")
           : FALLBACK;
         if (!cancelled && list.length > 0) setProviders(list);
       } catch {
