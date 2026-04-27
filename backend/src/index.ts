@@ -86,7 +86,7 @@ app.use(
   cors({
     origin: (origin) => (frontendOrigins.includes(origin) ? origin : null),
     credentials: true,
-    allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization", "X-Device-Hash"],
   })
 );
