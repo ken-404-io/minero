@@ -18,6 +18,7 @@ import {
   IconArrowRight,
   IconError,
   IconCheck,
+  IconShield,
 } from "@/components/icons";
 
 type RegisterFields = "name" | "email" | "password" | "referralCode";
@@ -25,11 +26,12 @@ type RegisterFields = "name" | "email" | "password" | "referralCode";
 function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const refFromUrl = searchParams.get("ref")?.trim().toUpperCase() ?? "";
   const [form, setForm] = useState({
     name: "",
     email: "",
     password: "",
-    referralCode: searchParams.get("ref") ?? "",
+    referralCode: refFromUrl,
   });
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<RegisterFields, string>>>({});
   const [submitError, setSubmitError] = useState("");
@@ -259,24 +261,47 @@ function RegisterForm() {
             </div>
             <div>
               <label htmlFor="referralCode" className="input-label">
-                Referral code <span style={{ color: "var(--text-subtle)" }}>(optional)</span>
+                Referral code{" "}
+                {refFromUrl
+                  ? <span style={{ color: "var(--success-fg)", fontWeight: 600 }}>— Invite applied ✓</span>
+                  : <span style={{ color: "var(--text-subtle)" }}>(optional)</span>
+                }
               </label>
               <div className="relative">
-                <IconGift
-                  size={16}
-                  style={{ position: "absolute", left: 12, top: 14, color: "var(--text-subtle)" }}
-                />
+                {refFromUrl ? (
+                  <IconShield
+                    size={16}
+                    style={{ position: "absolute", left: 12, top: 14, color: "var(--success-fg)" }}
+                  />
+                ) : (
+                  <IconGift
+                    size={16}
+                    style={{ position: "absolute", left: 12, top: 14, color: "var(--text-subtle)" }}
+                  />
+                )}
                 <input
                   id="referralCode"
                   className="input font-mono"
-                  style={{ paddingLeft: 36 }}
+                  style={{
+                    paddingLeft: 36,
+                    opacity: refFromUrl ? 0.85 : 1,
+                    cursor: refFromUrl ? "not-allowed" : undefined,
+                    background: refFromUrl ? "var(--surface-2)" : undefined,
+                  }}
                   type="text"
                   value={form.referralCode}
-                  onChange={(e) => set("referralCode", e.target.value)}
+                  onChange={refFromUrl ? undefined : (e) => set("referralCode", e.target.value)}
+                  readOnly={!!refFromUrl}
                   placeholder="ABC123"
                   autoComplete="off"
+                  aria-describedby={refFromUrl ? "ref-locked-note" : undefined}
                 />
               </div>
+              {refFromUrl && (
+                <p id="ref-locked-note" className="text-xs mt-1" style={{ color: "var(--text-subtle)" }}>
+                  You were invited by a friend. This code is locked to credit them.
+                </p>
+              )}
             </div>
             <button className="btn btn-primary w-full btn-lg" type="submit" disabled={loading}>
               {loading ? "Creating account…" : (
