@@ -12,8 +12,6 @@ import {
   IconShare,
   IconTrend,
 } from "@/components/icons";
-import { CLAIM_INTERVAL_MS } from "@/lib/mining";
-
 type PlanConfig = { label: string; ratePerClaim: number; dailyCap: number; price: number };
 
 type Props = {
@@ -27,6 +25,7 @@ type Props = {
     streakCount: number;
   };
   plan: PlanConfig;
+  claimIntervalMs: number;
   lastClaimAt: string | Date | null;
   dailyEarned: number;
   referralCount: number;
@@ -35,6 +34,7 @@ type Props = {
 export default function DashboardClient({
   user,
   plan,
+  claimIntervalMs,
   lastClaimAt,
   dailyEarned,
   referralCount,
@@ -52,7 +52,7 @@ export default function DashboardClient({
         document.title = "⛏️ Ready to mine! — Minero";
         return;
       }
-      const remaining = Math.max(0, CLAIM_INTERVAL_MS - (Date.now() - lastClaim.getTime()));
+      const remaining = Math.max(0, claimIntervalMs - (Date.now() - lastClaim.getTime()));
       if (remaining === 0) {
         document.title = "⛏️ Ready to mine! — Minero";
       } else {
@@ -72,7 +72,7 @@ export default function DashboardClient({
   function handleClaim(amount: number, nextClaimAt: Date) {
     setBalance((b) => parseFloat((b + amount).toFixed(4)));
     setTodayEarned((t) => parseFloat((t + amount).toFixed(4)));
-    const prev = new Date(nextClaimAt.getTime() - 10 * 60 * 1000);
+    const prev = new Date(nextClaimAt.getTime() - claimIntervalMs);
     setLastClaim(prev);
   }
 
@@ -135,13 +135,14 @@ export default function DashboardClient({
                 <div className="flex flex-col items-center gap-6 py-6">
                   <div className="text-center">
                     <span className="section-title">Claim reward</span>
-                    <h2 className="text-xl font-semibold mt-1">Every 10 minutes</h2>
+                    <h2 className="text-xl font-semibold mt-1">Every {Math.round(claimIntervalMs / 60000)} minutes</h2>
                   </div>
                   <ClaimButton
                     lastClaimAt={lastClaim}
                     dailyEarned={todayEarned}
                     dailyCap={plan.dailyCap}
                     ratePerClaim={plan.ratePerClaim}
+                    claimIntervalMs={claimIntervalMs}
                     onClaim={handleClaim}
                   />
                 </div>
@@ -259,6 +260,7 @@ export default function DashboardClient({
               dailyEarned={todayEarned}
               dailyCap={plan.dailyCap}
               ratePerClaim={plan.ratePerClaim}
+              claimIntervalMs={claimIntervalMs}
               onClaim={handleClaim}
             />
           </section>

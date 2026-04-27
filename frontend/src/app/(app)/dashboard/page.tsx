@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { apiJson } from "@/lib/api";
-import { getPlanConfig } from "@/lib/mining";
 import DashboardClient from "./DashboardClient";
 
 type Me = {
@@ -44,18 +43,28 @@ type LastClaimResp = {
   claimIntervalMs?: number;
 };
 
+type PlanConfig = { label: string; ratePerClaim: number; dailyCap: number; price: number };
+type PublicConfig = {
+  plans: Record<string, PlanConfig>;
+  claimIntervalMs: number;
+  withdrawalMinimum: number;
+};
+
 export default async function DashboardPage() {
   const me = await apiJson<Me>("/auth/me");
   if (!me) redirect("/login");
 
   const user = me.user;
-  const plan = getPlanConfig(user.plan);
 
-  const [earningsData, referralsData, lastClaimData] = await Promise.all([
+  const [earningsData, referralsData, lastClaimData, configData] = await Promise.all([
     apiJson<EarningsResp>("/earnings?page=1"),
     apiJson<ReferralsResp>("/referrals"),
     apiJson<LastClaimResp>("/claim/last"),
+    apiJson<PublicConfig>("/config"),
   ]);
+
+  const plan = configData?.plans[user.plan] ?? configData?.plans["free"] ?? { label: "Free (with ads)", ratePerClaim: 0.02, dailyCap: 5.0, price: 0 };
+  const claimIntervalMs = configData?.claimIntervalMs ?? 10 * 60 * 1000;
 
   // Backend aggregates today's mining server-side so the dashboard tile is
   // correct even when paginated /earnings page 1 doesn't contain every row.
@@ -76,6 +85,7 @@ export default async function DashboardPage() {
         streakCount: user.streakCount ?? 0,
       }}
       plan={plan}
+      claimIntervalMs={claimIntervalMs}
       lastClaimAt={lastClaimAt}
       dailyEarned={dailyEarned}
       referralCount={referralCount}

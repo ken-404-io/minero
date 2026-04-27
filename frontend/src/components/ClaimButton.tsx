@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { CLAIM_INTERVAL_MS } from "@/lib/mining";
 import { API_URL } from "@/lib/api-url";
 import { deviceHeaders } from "@/lib/device";
 import { IconPickaxe, IconClock, IconCheck, IconError, IconBoltSmall } from "@/components/icons";
@@ -11,6 +10,7 @@ type Props = {
   dailyEarned: number;
   dailyCap: number;
   ratePerClaim: number;
+  claimIntervalMs: number;
   onClaim: (amount: number, nextClaimAt: Date) => void;
 };
 
@@ -61,6 +61,7 @@ export default function ClaimButton({
   dailyEarned,
   dailyCap,
   ratePerClaim,
+  claimIntervalMs,
   onClaim,
 }: Props) {
   const [claiming, setClaiming] = useState(false);
@@ -75,14 +76,14 @@ export default function ClaimButton({
   );
 
   const countdown = lastClaimAt
-    ? Math.max(0, CLAIM_INTERVAL_MS - (now - new Date(lastClaimAt).getTime()))
+    ? Math.max(0, claimIntervalMs - (now - new Date(lastClaimAt).getTime()))
     : 0;
 
   const capReached = dailyEarned >= dailyCap;
   const canClaim = countdown === 0 && !capReached;
   const dailyProgress = Math.min(100, (dailyEarned / dailyCap) * 100);
   const cooldownProgress = lastClaimAt
-    ? Math.max(0, Math.min(1, (CLAIM_INTERVAL_MS - countdown) / CLAIM_INTERVAL_MS))
+    ? Math.max(0, Math.min(1, (claimIntervalMs - countdown) / claimIntervalMs))
     : 1;
   const ringOffset = RING_CIRC * (1 - cooldownProgress);
 

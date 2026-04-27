@@ -20,7 +20,7 @@ import { achievementRoutes } from "./routes/achievements.js";
 import { gameRoutes } from "./routes/game.js";
 import { startQueue, stopQueue } from "./lib/queue.js";
 import { prisma } from "./lib/db.js";
-import { DEFAULT_PLANS, invalidateConfigCache } from "./lib/config.js";
+import { DEFAULT_PLANS, getConfig, invalidateConfigCache } from "./lib/config.js";
 
 /**
  * One-time backfill: when gameCoinsBalance was added via prisma db push, existing
@@ -104,6 +104,14 @@ app.use("*", sessionMiddleware);
 
 app.get("/", (c) => c.json({ service: "minero-backend", status: "ok" }));
 app.get("/health", (c) => c.json({ ok: true }));
+app.get("/config", async (c) => {
+  const cfg = await getConfig();
+  return c.json({
+    plans: cfg.plans,
+    claimIntervalMs: cfg.claimIntervalMs,
+    withdrawalMinimum: cfg.withdrawalMinimum,
+  });
+});
 
 // Always-accessible routes (auth, OTP, activation payment, webhook).
 app.route("/auth", authRoutes);

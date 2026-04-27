@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { apiJson } from "@/lib/api";
 import WithdrawClient from "./WithdrawClient";
-import { WITHDRAWAL_MINIMUM } from "@/lib/mining";
 
 type Me = {
   user: { balance: number; pendingBalance: number };
@@ -21,10 +20,13 @@ type WithdrawalsResp = {
   withdrawals: Withdrawal[];
 };
 
+type PublicConfig = { plans: Record<string, unknown>; claimIntervalMs: number; withdrawalMinimum: number };
+
 export default async function WithdrawPage() {
-  const [me, data] = await Promise.all([
+  const [me, data, configData] = await Promise.all([
     apiJson<Me>("/auth/me"),
     apiJson<WithdrawalsResp>("/withdraw"),
+    apiJson<PublicConfig>("/config"),
   ]);
 
   if (!me) redirect("/login");
@@ -34,7 +36,7 @@ export default async function WithdrawPage() {
       balance={me.user.balance}
       pendingBalance={me.user.pendingBalance}
       withdrawals={data?.withdrawals ?? []}
-      minimum={WITHDRAWAL_MINIMUM}
+      minimum={configData?.withdrawalMinimum ?? 300}
     />
   );
 }

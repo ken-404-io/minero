@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { apiJson } from "@/lib/api";
-import { AD_FREE_FEE_PHP } from "@/lib/mining";
 import {
   IconPickaxe,
   IconCheck,
@@ -14,9 +13,14 @@ import {
 } from "@/components/icons";
 
 type Me = { user: { id: string; name: string; role: string; plan: string } };
+type PublicConfig = { plans: Record<string, { price: number }>; claimIntervalMs: number; withdrawalMinimum: number };
 
 export default async function LandingPage() {
-  const me = await apiJson<Me>("/auth/me");
+  const [me, configData] = await Promise.all([
+    apiJson<Me>("/auth/me"),
+    apiJson<PublicConfig>("/config"),
+  ]);
+  const adFreeFeePhp = configData?.plans["paid"]?.price ?? 49;
   if (me) {
     if (me.user.role !== "admin" && me.user.plan !== "paid") redirect("/activate");
     redirect("/dashboard");
@@ -254,7 +258,7 @@ export default async function LandingPage() {
               </div>
               <div>
                 <div className="text-5xl font-bold" style={{ color: "var(--brand)" }}>
-                  ₱{AD_FREE_FEE_PHP}
+                  ₱{adFreeFeePhp}
                 </div>
                 <div className="text-xs mt-1" style={{ color: "var(--text-subtle)" }}>One-time · lifetime</div>
               </div>
