@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import ZoomPreventer from "@/components/ZoomPreventer";
 import CookieConsent from "@/components/CookieConsent";
@@ -77,6 +78,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {banner && <AnnouncementBanner message={banner} />}
         {children}
         <CookieConsent />
+        <Script
+          id="monetag-ad"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `(function(s){s.dataset.zone='10936404',s.src='https://ueuee.com/tag.min.js'})([document.documentElement,document.body].filter(Boolean).pop().appendChild(document.createElement('script')))`,
+          }}
+        />
       </body>
     </html>
   );
