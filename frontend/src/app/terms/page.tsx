@@ -9,7 +9,7 @@ export default function TermsPage() {
       </Link>
       <h1 className="text-3xl lg:text-4xl font-bold tracking-tight">Terms of service</h1>
       <p className="text-sm mt-1 mb-8" style={{ color: "var(--text-muted)" }}>
-        Last updated: April 2026 · Halvex Inc.
+        Last updated: April 2026 · Strong Fund Inc.
       </p>
 
       <div className="space-y-6 text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
@@ -33,7 +33,7 @@ export default function TermsPage() {
         </section>
         <section>
           <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>4. Earning &amp; withdrawals</h2>
-          <p>Earnings are ad-funded and subject to daily caps. Halvex Inc. reserves the right to adjust rates, caps, and withdrawal terms at any time. Minimum withdrawal is ₱300. Processing takes 3–7 business days. Pending earnings are not withdrawable.</p>
+          <p>Earnings are ad-funded and subject to daily caps. Strong Fund Inc. reserves the right to adjust rates, caps, and withdrawal terms at any time. Minimum withdrawal is ₱300. Processing takes 3–7 business days. Pending earnings are not withdrawable.</p>
         </section>
         <section>
           <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>5. Plans</h2>
@@ -41,11 +41,11 @@ export default function TermsPage() {
         </section>
         <section>
           <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>6. Account suspension</h2>
-          <p>Halvex Inc. reserves the right to freeze, suspend, or terminate any account that violates these terms, cancel pending withdrawals, and forfeit associated balances without prior notice.</p>
+          <p>Strong Fund Inc. reserves the right to freeze, suspend, or terminate any account that violates these terms, cancel pending withdrawals, and forfeit associated balances without prior notice.</p>
         </section>
         <section>
           <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>7. Platform availability</h2>
-          <p>We do not guarantee uninterrupted access. Halvex Inc. may suspend or discontinue Minero at any time.</p>
+          <p>We do not guarantee uninterrupted access. Strong Fund Inc. may suspend or discontinue Minero at any time.</p>
         </section>
         <section>
           <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>8. Governing law</h2>

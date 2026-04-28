@@ -9,7 +9,7 @@ export default function DisclaimerPage() {
       </Link>
       <h1 className="text-3xl lg:text-4xl font-bold tracking-tight">Earnings disclaimer</h1>
       <p className="text-sm mt-1 mb-8" style={{ color: "var(--text-muted)" }}>
-        Last updated: April 2026 · Halvex Inc.
+        Last updated: April 2026 · Strong Fund Inc.
       </p>
 
       <div className="space-y-6 text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
@@ -26,7 +26,7 @@ export default function DisclaimerPage() {
         </section>
         <section>
           <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>No guaranteed income</h2>
-          <p>Minero is an earning platform, not an investment product. There is no guaranteed return on plan purchases. Halvex Inc. makes no promises regarding the total amount you will earn.</p>
+          <p>Minero is an earning platform, not an investment product. There is no guaranteed return on plan purchases. Strong Fund Inc. makes no promises regarding the total amount you will earn.</p>
         </section>
         <section>
           <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>Activity required</h2>
@@ -34,7 +34,7 @@ export default function DisclaimerPage() {
         </section>
         <section>
           <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>Rate changes</h2>
-          <p>Halvex Inc. reserves the right to adjust earning rates, daily caps, referral commission rates, withdrawal minimums, and any other platform parameters at any time.</p>
+          <p>Strong Fund Inc. reserves the right to adjust earning rates, daily caps, referral commission rates, withdrawal minimums, and any other platform parameters at any time.</p>
         </section>
         <section>
           <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>Not a pyramid scheme</h2>

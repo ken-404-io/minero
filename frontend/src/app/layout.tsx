@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(APP_URL),
   title: "Minero — Earn Rewards Daily",
   description:
-    "Claim micro-rewards every 10 minutes, watch ads, and invite friends to earn more. Cash out to GCash or Maya once you hit ₱300. Sustainable ad-funded platform by Halvex Inc.",
+    "Claim micro-rewards every 10 minutes, watch ads, and invite friends to earn more. Cash out to GCash or Maya once you hit ₱300. Sustainable ad-funded platform by Strong Fund Inc.",
   openGraph: {
     type: "website",
     url: APP_URL,
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
       "Watch short ads, claim micro-rewards, and earn 10% on every friend you invite — forever. Cash out to GCash or Maya.",
   },
   keywords: ["earn money online philippines", "gcash rewards", "paid to watch ads", "minero", "tagamina"],
-  authors: [{ name: "Halvex Inc." }],
+  authors: [{ name: "Strong Fund Inc." }],
   robots: { index: true, follow: true },
   other: {
     monetag: "4c06290e7ec89777783b0ba42e7bd6cc",

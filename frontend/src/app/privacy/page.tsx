@@ -9,7 +9,7 @@ export default function PrivacyPage() {
       </Link>
       <h1 className="text-3xl lg:text-4xl font-bold tracking-tight">Privacy policy</h1>
       <p className="text-sm mt-1 mb-8" style={{ color: "var(--text-muted)" }}>
-        Last updated: April 2026 · Halvex Inc.
+        Last updated: April 2026 · Strong Fund Inc.
       </p>
 
       <div className="space-y-6 text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
@@ -50,7 +50,7 @@ export default function PrivacyPage() {
         <section>
           <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>7. Contact</h2>
           <p>
-            For privacy concerns or data requests, contact Halvex Inc. via our{" "}
+            For privacy concerns or data requests, contact Strong Fund Inc. via our{" "}
             <Link href="/contact" className="link-brand underline underline-offset-2">support page</Link>.
             Include &ldquo;Data Request&rdquo; in the subject line and send from your registered email address.
           </p>

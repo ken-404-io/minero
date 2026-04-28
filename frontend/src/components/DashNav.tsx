@@ -139,7 +139,7 @@ export default function DashNav({ name, role, plan }: { name: string; role: stri
           </span>
           <div className="flex flex-col leading-tight">
             <span className="font-semibold tracking-tight">Minero</span>
-            <span className="text-xs" style={{ color: "var(--text-subtle)" }}>by Halvex</span>
+            <span className="text-xs" style={{ color: "var(--text-subtle)" }}>by Strong Fund Inc</span>
           </div>
         </div>
 
