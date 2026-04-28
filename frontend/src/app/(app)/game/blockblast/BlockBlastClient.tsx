@@ -35,12 +35,11 @@ const CELL = 34;
 const GAP = 2;
 
 // Must mirror backend GAME_CONFIG.blockblast — used to preview the coin
-// total in the nav bar while the game is in progress.
-const BB_COINS_PER_SCORE = 0.1;
+// total in the nav bar while the game is in progress (score = coins, 1:1).
 const BB_MAX_SCORE = 5_000;
-const BB_MAX_COINS_SESSION = 500;
+const BB_MAX_COINS_SESSION = 5_000;
 function previewCoins(score: number): number {
-  return Math.min(Math.floor(Math.min(score, BB_MAX_SCORE) * BB_COINS_PER_SCORE), BB_MAX_COINS_SESSION);
+  return Math.min(Math.floor(Math.min(score, BB_MAX_SCORE)), BB_MAX_COINS_SESSION);
 }
 
 type Status = "idle" | "playing" | "over";

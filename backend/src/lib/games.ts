@@ -73,12 +73,12 @@ export const GAME_CONFIG: Record<GameKey, GameRewardConfig> = {
     coinsPerScore: 1,
   },
   blockblast: {
-    maxCoinsPerSession: 500,
+    maxCoinsPerSession: 5_000,
     minDurationMs: 20_000,
     dailyCoinCap: 2_500,
     cooldownMs: 15_000,
     maxScore: 5_000,
-    coinsPerScore: 0.1,
+    coinsPerScore: 1,
   },
 };
 
