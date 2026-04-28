@@ -12,11 +12,18 @@ export type SessionPayload = {
   role: string;
 };
 
+// Access token lifetime. Matches the session cookie's max-age (7d) so a
+// fresh login keeps the user signed in for a week without needing a
+// refresh round-trip. The 30-day refresh token (random hex stored in DB,
+// rotated on use) extends the effective session beyond that and survives
+// JWT_SECRET rotation across deploys.
+const ACCESS_TOKEN_TTL = "7d";
+
 export async function createSession(payload: SessionPayload): Promise<string> {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("15m")
+    .setExpirationTime(ACCESS_TOKEN_TTL)
     .sign(SECRET);
 }
 
