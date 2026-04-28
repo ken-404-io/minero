@@ -29,6 +29,7 @@ type Props = {
   lastClaimAt: string | Date | null;
   dailyEarned: number;
   referralCount: number;
+  claimsEnabled: boolean;
 };
 
 export default function DashboardClient({
@@ -38,6 +39,7 @@ export default function DashboardClient({
   lastClaimAt,
   dailyEarned,
   referralCount,
+  claimsEnabled,
 }: Props) {
   const [balance, setBalance] = useState(user.balance);
   const [todayEarned, setTodayEarned] = useState(dailyEarned);
@@ -143,8 +145,19 @@ export default function DashboardClient({
                     dailyCap={plan.dailyCap}
                     ratePerClaim={plan.ratePerClaim}
                     claimIntervalMs={claimIntervalMs}
+                    claimsEnabled={claimsEnabled}
                     onClaim={handleClaim}
                   />
+                  {!claimsEnabled && (
+                    <p
+                      className="text-xs text-center"
+                      style={{ color: "var(--text-muted)", maxWidth: 360 }}
+                    >
+                      Claims are temporarily paused. Your balance and cooldown
+                      stay accurate across devices — you can claim again as
+                      soon as they&apos;re re-enabled.
+                    </p>
+                  )}
                 </div>
               </section>
 
@@ -261,8 +274,19 @@ export default function DashboardClient({
               dailyCap={plan.dailyCap}
               ratePerClaim={plan.ratePerClaim}
               claimIntervalMs={claimIntervalMs}
+              claimsEnabled={claimsEnabled}
               onClaim={handleClaim}
             />
+            {!claimsEnabled && (
+              <p
+                className="text-xs text-center mt-3"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Claims are temporarily paused. Your balance and cooldown stay
+                accurate across devices — you can claim again as soon as
+                they&apos;re re-enabled.
+              </p>
+            )}
           </section>
 
           {/* Quick stats */}

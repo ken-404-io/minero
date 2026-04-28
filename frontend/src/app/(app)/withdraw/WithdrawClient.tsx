@@ -27,6 +27,7 @@ type Props = {
   pendingBalance: number;
   withdrawals: Withdrawal[];
   minimum: number;
+  withdrawalsEnabled: boolean;
 };
 
 function fmtDate(d: string | Date) {
@@ -50,6 +51,7 @@ export default function WithdrawClient({
   pendingBalance,
   withdrawals,
   minimum,
+  withdrawalsEnabled,
 }: Props) {
   const router = useRouter();
   const [form, setForm] = useState({ amount: "", method: "gcash", accountNumber: "", otp: "" });
@@ -179,6 +181,7 @@ export default function WithdrawClient({
                 balance={balance}
                 canWithdraw={canWithdraw}
                 hasPending={hasPending}
+                withdrawalsEnabled={withdrawalsEnabled}
                 success={success}
                 form={form}
                 setForm={setForm}
@@ -287,6 +290,7 @@ export default function WithdrawClient({
               balance={balance}
               canWithdraw={canWithdraw}
               hasPending={hasPending}
+              withdrawalsEnabled={withdrawalsEnabled}
               success={success}
               form={form}
               setForm={setForm}
@@ -358,6 +362,7 @@ function FormBody({
   balance,
   canWithdraw,
   hasPending,
+  withdrawalsEnabled,
   success,
   form,
   setForm,
@@ -374,6 +379,7 @@ function FormBody({
   balance: number;
   canWithdraw: boolean;
   hasPending: boolean;
+  withdrawalsEnabled: boolean;
   success: boolean;
   form: WithdrawForm;
   setForm: React.Dispatch<React.SetStateAction<WithdrawForm>>;
@@ -387,6 +393,20 @@ function FormBody({
   otpSending: boolean;
   onResetOtp: () => void;
 }) {
+  if (!withdrawalsEnabled) {
+    return (
+      <div className="alert alert-warning">
+        <IconInfo size={16} />
+        <div>
+          <div className="font-semibold">Withdrawals temporarily paused</div>
+          <div className="text-sm">
+            Your balance (₱{balance.toFixed(2)}) is safe. You can request a
+            cash-out as soon as withdrawals are re-enabled.
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (!canWithdraw) {
     return (
       <div>

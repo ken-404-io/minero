@@ -48,6 +48,8 @@ type PublicConfig = {
   plans: Record<string, PlanConfig>;
   claimIntervalMs: number;
   withdrawalMinimum: number;
+  claimsEnabled?: boolean;
+  withdrawalsEnabled?: boolean;
 };
 
 export default async function DashboardPage() {
@@ -72,6 +74,7 @@ export default async function DashboardPage() {
 
   const referralCount = referralsData?.referrals.length ?? 0;
   const lastClaimAt: string | null = lastClaimData?.lastClaimAt ?? null;
+  const claimsEnabled = configData?.claimsEnabled ?? true;
 
   return (
     <DashboardClient
@@ -89,6 +92,7 @@ export default async function DashboardPage() {
       lastClaimAt={lastClaimAt}
       dailyEarned={dailyEarned}
       referralCount={referralCount}
+      claimsEnabled={claimsEnabled}
     />
   );
 }

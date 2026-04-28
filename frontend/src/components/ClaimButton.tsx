@@ -11,6 +11,9 @@ type Props = {
   dailyCap: number;
   ratePerClaim: number;
   claimIntervalMs: number;
+  /** When false, claims are globally disabled by the admin. The button
+   *  shows a paused state so the user isn't surprised by a server error. */
+  claimsEnabled?: boolean;
   onClaim: (amount: number, nextClaimAt: Date) => void;
 };
 
@@ -62,6 +65,7 @@ export default function ClaimButton({
   dailyCap,
   ratePerClaim,
   claimIntervalMs,
+  claimsEnabled = true,
   onClaim,
 }: Props) {
   const [claiming, setClaiming] = useState(false);
@@ -80,7 +84,7 @@ export default function ClaimButton({
     : 0;
 
   const capReached = dailyEarned >= dailyCap;
-  const canClaim = countdown === 0 && !capReached;
+  const canClaim = countdown === 0 && !capReached && claimsEnabled;
   const dailyProgress = Math.min(100, (dailyEarned / dailyCap) * 100);
   const cooldownProgress = lastClaimAt
     ? Math.max(0, Math.min(1, (claimIntervalMs - countdown) / claimIntervalMs))
@@ -89,6 +93,10 @@ export default function ClaimButton({
 
   async function handleClaim() {
     if (!canClaim || claiming) return;
+    if (!claimsEnabled) {
+      setFlash({ kind: "error", text: "Claims are temporarily paused. Please try again later." });
+      return;
+    }
     setClaiming(true);
     setFlash(null);
     try {
@@ -115,6 +123,8 @@ export default function ClaimButton({
 
   const liveMessage = canClaim
     ? `Ready to claim ₱${ratePerClaim}`
+    : !claimsEnabled
+    ? "Claims temporarily paused"
     : capReached
     ? "Daily cap reached"
     : `Next claim in ${formatCountdown(countdown)}`;
@@ -161,7 +171,9 @@ export default function ClaimButton({
           onClick={handleClaim}
           disabled={!canClaim || claiming}
           aria-label={
-            capReached
+            !claimsEnabled
+              ? "Claims temporarily paused"
+              : capReached
               ? "Daily cap reached"
               : canClaim
               ? `Claim ₱${ratePerClaim}`
@@ -187,6 +199,12 @@ export default function ClaimButton({
               <span className="text-xs font-mono" style={{ color: "var(--brand-fg)", opacity: 0.75 }}>
                 ₱{ratePerClaim.toFixed(3)}
               </span>
+            </>
+          ) : !claimsEnabled ? (
+            <>
+              <IconError size={28} />
+              <span className="text-sm">Paused</span>
+              <span className="text-xs" style={{ color: "var(--text-subtle)" }}>by admin</span>
             </>
           ) : capReached ? (
             <>
