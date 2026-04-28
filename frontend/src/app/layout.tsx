@@ -5,6 +5,7 @@ import "./globals.css";
 import ZoomPreventer from "@/components/ZoomPreventer";
 import CookieConsent from "@/components/CookieConsent";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
+import AdBlockGuard from "@/components/AdBlockGuard";
 import { serverApiUrl } from "@/lib/api";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -78,6 +79,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {banner && <AnnouncementBanner message={banner} />}
         {children}
         <CookieConsent />
+        <AdBlockGuard />
         <Script
           id="monetag-ad"
           src="https://ueuee.com/tag.min.js"
