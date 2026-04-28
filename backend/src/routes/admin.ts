@@ -157,9 +157,64 @@ adminRoutes.get("/users", async (c) => {
   return c.json({ users, total, page, pages: Math.ceil(total / limit) });
 });
 
+adminRoutes.get("/users/:id", async (c) => {
+  const guard = requireAdmin(c);
+  if (guard instanceof Response) return guard;
+
+  const id = c.req.param("id");
+
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      balance: true,
+      pendingBalance: true,
+      plan: true,
+      role: true,
+      frozen: true,
+      createdAt: true,
+      legacyImported: true,
+      legacyImportedCoins: true,
+      _count: { select: { claims: true, earnings: true, withdrawals: true, referrals: true } },
+    },
+  });
+  if (!user) return c.json({ error: "Not found" }, 404);
+
+  const [recentClaims, recentWithdrawals] = await Promise.all([
+    prisma.claim.findMany({
+      where: { userId: id },
+      orderBy: { claimedAt: "desc" },
+      take: 20,
+      select: { id: true, amount: true, claimedAt: true },
+    }),
+    prisma.withdrawal.findMany({
+      where: { userId: id },
+      orderBy: { requestedAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        amount: true,
+        method: true,
+        accountNumber: true,
+        status: true,
+        requestedAt: true,
+        processedAt: true,
+        adminNote: true,
+      },
+    }),
+  ]);
+
+  return c.json({ user, recentClaims, recentWithdrawals });
+});
+
 const userPatchSchema = z.object({
   frozen: z.boolean().optional(),
   role: z.enum(["user", "admin"]).optional(),
+  plan: z.enum(["free", "paid"]).optional(),
+  balanceAdjustment: z.number().optional(),
+  balanceReason: z.string().max(200).optional(),
 });
 
 adminRoutes.patch("/users/:id", async (c) => {
@@ -180,18 +235,45 @@ adminRoutes.patch("/users/:id", async (c) => {
     return c.json({ error: parsed.error.flatten().fieldErrors }, 400);
   }
 
-  const user = await prisma.user.update({
-    where: { id },
-    data: parsed.data,
-    select: { id: true, frozen: true, role: true },
+  const { frozen, role, plan, balanceAdjustment, balanceReason } = parsed.data;
+
+  const target = await prisma.user.findUnique({ where: { id } });
+  if (!target) return c.json({ error: "User not found" }, 404);
+
+  await prisma.$transaction(async (tx) => {
+    const updateData: Record<string, unknown> = {};
+    if (frozen !== undefined) updateData.frozen = frozen;
+    if (role !== undefined) updateData.role = role;
+    if (plan !== undefined) updateData.plan = plan;
+
+    if (balanceAdjustment !== undefined && balanceAdjustment !== 0) {
+      updateData.balance = { increment: balanceAdjustment };
+      // Log as an earning for audit trail
+      await tx.earning.create({
+        data: {
+          userId: id,
+          amount: Math.abs(balanceAdjustment),
+          type: "admin_adjustment",
+          status: balanceAdjustment > 0 ? "approved" : "rejected",
+          meta: balanceReason ? JSON.stringify({ reason: balanceReason, by: guard.userId }) : JSON.stringify({ by: guard.userId }),
+        },
+      });
+    }
+
+    await tx.user.update({ where: { id }, data: updateData });
+
+    if (frozen === true) {
+      await tx.withdrawal.updateMany({
+        where: { userId: id, status: "pending" },
+        data: { status: "rejected", adminNote: "Account frozen" },
+      });
+    }
   });
 
-  if (parsed.data.frozen === true) {
-    await prisma.withdrawal.updateMany({
-      where: { userId: id, status: "pending" },
-      data: { status: "rejected", adminNote: "Account frozen" },
-    });
-  }
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, frozen: true, role: true, plan: true, balance: true },
+  });
 
   return c.json({ user });
 });
@@ -526,6 +608,12 @@ const configUpdateSchema = z.object({
   maxReferralsPerDay: z.number().int().min(1).max(1000).optional(),
   withdrawalMinimum: z.number().min(0).max(100_000).optional(),
   estimatedAdRevenuePerClaim: z.number().min(0).max(10).optional(),
+  // Site-wide controls
+  maintenanceMode: z.boolean().optional(),
+  announcementBanner: z.string().max(500).optional(),
+  registrationEnabled: z.boolean().optional(),
+  claimsEnabled: z.boolean().optional(),
+  withdrawalsEnabled: z.boolean().optional(),
 });
 
 adminRoutes.put("/config", async (c) => {
@@ -555,6 +643,16 @@ adminRoutes.put("/config", async (c) => {
     await setConfigValue("withdrawalMinimum", updates.withdrawalMinimum, guard.userId);
   if (updates.estimatedAdRevenuePerClaim !== undefined)
     await setConfigValue("estimatedAdRevenuePerClaim", updates.estimatedAdRevenuePerClaim, guard.userId);
+  if (updates.maintenanceMode !== undefined)
+    await setConfigValue("maintenanceMode", updates.maintenanceMode ? "1" : "0", guard.userId);
+  if (updates.announcementBanner !== undefined)
+    await setConfigValue("announcementBanner", updates.announcementBanner, guard.userId);
+  if (updates.registrationEnabled !== undefined)
+    await setConfigValue("registrationEnabled", updates.registrationEnabled ? "1" : "0", guard.userId);
+  if (updates.claimsEnabled !== undefined)
+    await setConfigValue("claimsEnabled", updates.claimsEnabled ? "1" : "0", guard.userId);
+  if (updates.withdrawalsEnabled !== undefined)
+    await setConfigValue("withdrawalsEnabled", updates.withdrawalsEnabled ? "1" : "0", guard.userId);
 
   const cfg = await getConfig();
   return c.json({ ok: true, config: cfg });

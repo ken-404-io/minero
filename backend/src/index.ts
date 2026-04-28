@@ -113,6 +113,19 @@ app.get("/config", async (c) => {
   });
 });
 
+// Public site-status config — no auth required (used by the frontend to show
+// the maintenance page and announcement banner before the user is authenticated).
+app.get("/config/public", async (c) => {
+  const cfg = await getConfig();
+  return c.json({
+    maintenanceMode: cfg.maintenanceMode,
+    announcementBanner: cfg.announcementBanner,
+    registrationEnabled: cfg.registrationEnabled,
+    claimsEnabled: cfg.claimsEnabled,
+    withdrawalsEnabled: cfg.withdrawalsEnabled,
+  });
+});
+
 // Always-accessible routes (auth, OTP, activation payment, webhook).
 app.route("/auth", authRoutes);
 app.route("/auth/oauth", oauthRoutes);

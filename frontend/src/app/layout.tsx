@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ZoomPreventer from "@/components/ZoomPreventer";
 import CookieConsent from "@/components/CookieConsent";
+import AnnouncementBanner from "@/components/AnnouncementBanner";
+import { serverApiUrl } from "@/lib/api";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -44,7 +46,20 @@ export const viewport: Viewport = {
   colorScheme: "dark",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+async function getAnnouncementBanner(): Promise<string> {
+  try {
+    const res = await fetch(`${serverApiUrl()}/config/public`, { next: { revalidate: 60 } });
+    if (!res.ok) return "";
+    const data = await res.json() as { announcementBanner?: string };
+    return data.announcementBanner ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const banner = await getAnnouncementBanner();
+
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body className="min-h-screen flex flex-col" suppressHydrationWarning>
@@ -56,6 +71,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           Skip to content
         </a>
         <ZoomPreventer />
+        {banner && <AnnouncementBanner message={banner} />}
         {children}
         <CookieConsent />
       </body>

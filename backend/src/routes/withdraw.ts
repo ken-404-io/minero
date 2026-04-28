@@ -21,6 +21,11 @@ withdrawRoutes.post("/", async (c) => {
   const session = requireAuth(c);
   if (session instanceof Response) return session;
 
+  const cfg = await getConfig();
+  if (!cfg.withdrawalsEnabled) {
+    return c.json({ error: "Withdrawals are temporarily disabled. Please check back later." }, 503);
+  }
+
   // 3 withdrawal requests per user per hour.
   const rl = rateLimit(`withdraw:${session.userId}`, 3, 60 * 60 * 1000);
   if (!rl.ok) {
