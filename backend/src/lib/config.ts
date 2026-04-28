@@ -26,6 +26,12 @@ export const DEFAULTS = {
   otpTtlMs: 10 * 60 * 1000,
   otpDigits: 6,
   estimatedAdRevenuePerClaim: 0.03, // mock provider CPM-based estimate
+  // Site-wide controls (admin-toggleable without redeploy)
+  maintenanceMode: false,
+  announcementBanner: "",
+  registrationEnabled: true,
+  claimsEnabled: true,
+  withdrawalsEnabled: true,
 };
 
 const KEYS = {
@@ -36,6 +42,11 @@ const KEYS = {
   maxReferralsPerDay: "max_referrals_per_day",
   withdrawalMinimum: "withdrawal_minimum",
   estimatedAdRevenuePerClaim: "est_ad_revenue_per_claim",
+  maintenanceMode: "maintenance_mode",
+  announcementBanner: "announcement_banner",
+  registrationEnabled: "registration_enabled",
+  claimsEnabled: "claims_enabled",
+  withdrawalsEnabled: "withdrawals_enabled",
 } as const;
 
 const CACHE_TTL_MS = 60_000;
@@ -64,6 +75,21 @@ async function loadAll(): Promise<typeof DEFAULTS> {
   parsed.maxReferralsPerDay       = num(KEYS.maxReferralsPerDay)      ?? parsed.maxReferralsPerDay;
   parsed.withdrawalMinimum        = num(KEYS.withdrawalMinimum)       ?? parsed.withdrawalMinimum;
   parsed.estimatedAdRevenuePerClaim = num(KEYS.estimatedAdRevenuePerClaim) ?? parsed.estimatedAdRevenuePerClaim;
+
+  const bool = (k: string) => {
+    const v = map.get(k);
+    if (!v) return undefined;
+    return v === "1" || v === "true";
+  };
+
+  const boolDefined = (k: string, def: boolean) => bool(k) ?? def;
+  parsed.maintenanceMode    = boolDefined(KEYS.maintenanceMode,    parsed.maintenanceMode);
+  parsed.registrationEnabled = boolDefined(KEYS.registrationEnabled, parsed.registrationEnabled);
+  parsed.claimsEnabled      = boolDefined(KEYS.claimsEnabled,      parsed.claimsEnabled);
+  parsed.withdrawalsEnabled = boolDefined(KEYS.withdrawalsEnabled, parsed.withdrawalsEnabled);
+
+  const banner = map.get(KEYS.announcementBanner);
+  if (banner !== undefined) parsed.announcementBanner = banner;
 
   return parsed;
 }

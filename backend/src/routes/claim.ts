@@ -34,6 +34,11 @@ claimRoutes.post("/", async (c) => {
   const session = requireAuth(c);
   if (session instanceof Response) return session;
 
+  const cfg = await getConfig();
+  if (!cfg.claimsEnabled) {
+    return c.json({ error: "Claims are temporarily disabled. Please check back later." }, 503);
+  }
+
   const user = await prisma.user.findUnique({ where: { id: session.userId }, select: { id: true, frozen: true, plan: true, balance: true, lastDeviceHash: true, referredBy: true, role: true } });
   if (!user) return c.json({ error: "Unauthorized" }, 401);
   if (user.frozen) {

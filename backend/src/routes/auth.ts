@@ -106,6 +106,11 @@ const registerSchema = z.object({
 });
 
 authRoutes.post("/register", async (c) => {
+  const cfg = await getConfig();
+  if (!cfg.registrationEnabled) {
+    return c.json({ error: "New registrations are temporarily paused. Please try again later." }, 503);
+  }
+
   const ip = getClientIp(c);
   // 5 registrations per IP per hour to prevent mass account creation.
   const rl = rateLimit(`register:${ip}`, 5, 60 * 60 * 1000);

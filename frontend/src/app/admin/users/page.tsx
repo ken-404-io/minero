@@ -14,7 +14,7 @@ type AdminUser = {
   role: string;
   frozen: boolean;
   createdAt: string;
-  _count: { claims: number; earnings?: number; withdrawals?: number };
+  _count: { claims: number; earnings: number; withdrawals: number; referrals: number };
 };
 
 type UsersResp = {

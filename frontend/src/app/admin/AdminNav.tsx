@@ -13,6 +13,7 @@ import {
   IconWarning,
   IconBoltSmall,
   IconCoins,
+  IconFlag,
 } from "@/components/icons";
 
 const LINKS = [
@@ -22,6 +23,7 @@ const LINKS = [
   { href: "/admin/payments",    label: "Payments",    Icon: IconCoins },
   { href: "/admin/alerts",      label: "Fraud alerts", Icon: IconWarning },
   { href: "/admin/rates",       label: "Rates",       Icon: IconBoltSmall },
+  { href: "/admin/site",        label: "Site",        Icon: IconFlag },
 ];
 
 function isActive(pathname: string, href: string) {
