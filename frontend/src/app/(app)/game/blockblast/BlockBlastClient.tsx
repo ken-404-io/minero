@@ -34,6 +34,15 @@ import { useDrag, type DragState } from "./useDrag";
 const CELL = 34;
 const GAP = 2;
 
+// Must mirror backend GAME_CONFIG.blockblast — used to preview the coin
+// total in the nav bar while the game is in progress.
+const BB_COINS_PER_SCORE = 0.1;
+const BB_MAX_SCORE = 5_000;
+const BB_MAX_COINS_SESSION = 500;
+function previewCoins(score: number): number {
+  return Math.min(Math.floor(Math.min(score, BB_MAX_SCORE) * BB_COINS_PER_SCORE), BB_MAX_COINS_SESSION);
+}
+
 type Status = "idle" | "playing" | "over";
 
 function PieceMini({ piece }: { piece: ColoredPiece }) {
@@ -328,9 +337,9 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
     setScore(newScore);
     setLines(newLines);
 
-    // Emit a provisional live balance so the nav bar updates every drop.
-    // On game-over, finishGameSession replaces this with the server-confirmed value.
-    emitBalanceChange(baseBalanceRef.current + newScore);
+    // Emit a provisional live balance (applying the same 0.1× conversion the
+    // server uses) so the nav bar updates every drop without resetting at game-over.
+    emitBalanceChange(baseBalanceRef.current + previewCoins(newScore));
 
     if (over) {
       setStatus("over");
