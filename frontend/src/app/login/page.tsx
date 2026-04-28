@@ -138,7 +138,7 @@ function LoginInner() {
         </div>
 
         <div className="text-xs" style={{ color: "var(--text-subtle)" }}>
-          © 2026 Halvex Inc. · Minero
+          © 2026 Strong Fund Inc. · Minero
         </div>
       </aside>
 

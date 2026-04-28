@@ -12,7 +12,7 @@ export default function ContactPage() {
 
       <h1 className="text-3xl lg:text-4xl font-bold tracking-tight">Contact &amp; Support</h1>
       <p className="text-sm mt-1 mb-8" style={{ color: "var(--text-muted)" }}>
-        Halvex Inc. · Minero support
+        Strong Fund Inc. · Minero support
       </p>
 
       <div className="space-y-6">

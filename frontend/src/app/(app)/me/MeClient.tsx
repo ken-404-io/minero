@@ -264,7 +264,7 @@ export default function MeClient({ user, planLabel, claimIntervalMs, lastClaimAt
           className="mt-4 mb-8 text-center text-[11px]"
           style={{ color: "var(--text-subtle)" }}
         >
-          Minero by Halvex · ID {user.id.slice(0, 8).toUpperCase()}
+          Minero by Strong Fund Inc · ID {user.id.slice(0, 8).toUpperCase()}
         </p>
       </section>
     </div>

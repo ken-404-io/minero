@@ -27,7 +27,7 @@ async function main() {
   const passwordHash = await bcrypt.hash(password, 12);
   const admin = await prisma.user.create({
     data: {
-      name: "Halvex Admin",
+      name: "Strong Fund Inc",
       email: "admin@minero.ph",
       passwordHash,
       referralCode: "ADMIN0",

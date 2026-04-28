@@ -272,7 +272,7 @@ export default async function LandingPage() {
             >
               <IconPickaxe size={14} />
             </span>
-            <span>© 2026 Halvex Inc. · Minero</span>
+            <span>© 2026 Strong Fund Inc. · Minero</span>
           </div>
           <div className="flex flex-wrap gap-4">
             <Link href="/terms" className="hover:underline underline-offset-2">Terms</Link>
