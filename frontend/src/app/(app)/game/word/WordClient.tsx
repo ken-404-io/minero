@@ -1053,21 +1053,24 @@ export default function WordClient({ playerName }: { playerName: string }) {
       return;
     }
 
-    // Lazy-start the server session on the first valid attempt today.
-    // Use a ref-stored promise so concurrent finds wait for the same start.
+    // Lazy-start the server session on the first valid find — and on
+    // every find after a previous session was closed (replay within the
+    // daily cap). The promise ref dedups concurrent starts; on failure
+    // it's cleared so a later word can retry instead of being silently
+    // locked out. We deliberately don't gate on finalizedRef anymore:
+    // the puzzle's "completed" UI state is kept, but new finds still
+    // open a fresh session and bank coins.
     function ensureSession(): Promise<string | null> {
       if (sessionIdRef.current) return Promise.resolve(sessionIdRef.current);
       if (sessionStartPromiseRef.current) return sessionStartPromiseRef.current;
-      if (finalizedRef.current) return Promise.resolve(null);
       sessionStartedRef.current = true;
       const p = startGameSession("word").then((r) => {
         if (r.ok) {
           sessionIdRef.current = r.sessionId;
+          setSessionError(null);
           return r.sessionId;
         }
-        // Most common cause: 24h cooldown after the previous daily
-        // puzzle. Surface this so the user knows their finds won't
-        // credit coins this round.
+        sessionStartPromiseRef.current = null;
         setSessionError(r.error || "Couldn't start a scoring session");
         return null;
       });
@@ -1188,6 +1191,11 @@ export default function WordClient({ playerName }: { playerName: string }) {
       // not re-credit anything for those — it just closes the session).
       const sid = sessionIdRef.current;
       sessionIdRef.current = null;
+      // Clear the cached start promise too, otherwise the next find
+      // would resolve to this just-finished sessionId and the credit
+      // call would 409. Subsequent finds will start a fresh session.
+      sessionStartPromiseRef.current = null;
+      sessionStartedRef.current = false;
       if (sid) {
         if (solved && COINS_FULL_CLEAR_BONUS > 0) {
           void creditGameSession(sid, COINS_FULL_CLEAR_BONUS).then(() => {
