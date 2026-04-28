@@ -16,7 +16,6 @@ import {
   IconMail,
   IconShield,
   IconSparkles,
-  IconTrophy,
   IconUsers,
   IconWallet,
 } from "@/components/icons";
@@ -196,12 +195,6 @@ export default function MeClient({ user, planLabel, claimIntervalMs, lastClaimAt
             icon={<IconUsers size={20} />}
             label="Refer & Earn"
             caption={user.referralCode ? `Code ${user.referralCode}` : "Invite friends"}
-          />
-          <MenuRow
-            href="/leaderboard"
-            icon={<IconTrophy size={20} />}
-            label="Leaderboard"
-            caption="Top miners & recruiters"
           />
           <MenuRow
             href="/achievements"

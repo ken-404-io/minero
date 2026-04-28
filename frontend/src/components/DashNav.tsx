@@ -15,7 +15,6 @@ import {
   IconGame,
   IconGift,
   IconUser,
-  IconTrophy,
   IconCoin,
 } from "@/components/icons";
 import GameNavIcon from "@/components/GameNavIcon";
@@ -36,7 +35,6 @@ const PRIMARY: NavItem[] = [
   { href: "/rewards",     label: "Rewards",     shortLabel: "Reward", Icon: IconGift,  shortcut: "g x" },
   { href: "/referral",    label: "Invite",      Icon: IconUsers,   shortcut: "g r" },
   { href: "/withdraw",    label: "Cash Out",    shortLabel: "Cash",  Icon: IconWallet,  shortcut: "g w" },
-  { href: "/leaderboard", label: "Leaderboard", shortLabel: "Ranks", Icon: IconTrophy,  shortcut: "g l" },
   { href: "/me",          label: "Me",          Icon: IconUser,    shortcut: "g m" },
 ];
 
