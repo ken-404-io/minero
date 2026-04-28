@@ -6,6 +6,7 @@ import { IconCoin, IconTrophy } from "@/components/icons";
 import {
   startGameSession,
   finishGameSession,
+  getGameBalance,
   emitBalanceChange,
 } from "@/lib/game-session";
 import {
@@ -90,6 +91,18 @@ function pickComboLabel(ln: number, newCombo: number): { label: string; color: s
 
 export default function BlockBlastClient({ playerName: _ }: { playerName: string }) {
   const sessionIdRef = useRef<string | null>(null);
+  // Server-confirmed balance just before this game started — used to emit a
+  // live provisional total (baseBalance + currentScore) while playing.
+  const baseBalanceRef = useRef<number>(0);
+
+  async function initSession() {
+    const [sessionResult, balResult] = await Promise.all([
+      startGameSession("blockblast"),
+      getGameBalance(),
+    ]);
+    if (sessionResult.ok) sessionIdRef.current = sessionResult.sessionId;
+    baseBalanceRef.current = balResult?.balance ?? 0;
+  }
   const [status, setStatus] = useState<Status>("idle");
   const [grid, setGrid] = useState<(string | null)[][]>(emptyGrid);
   const [pieces, setPieces] = useState<[ColoredPiece | null, ColoredPiece | null, ColoredPiece | null]>([null, null, null]);
@@ -175,9 +188,7 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
       setPieces(threeNew(0));
       setStatus("playing");
       sessionIdRef.current = null;
-      startGameSession("blockblast").then((r) => {
-        if (r.ok) sessionIdRef.current = r.sessionId;
-      });
+      void initSession();
     } else {
       // No plays left today — go straight to the limit-reached banner.
       setStatus("over");
@@ -206,9 +217,7 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
     setCombo(0);
     setStatus("playing");
     sessionIdRef.current = null;
-    startGameSession("blockblast").then((r) => {
-      if (r.ok) sessionIdRef.current = r.sessionId;
-    });
+    void initSession();
   }
 
   function handlePlayAgain() {
@@ -319,6 +328,10 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
     setScore(newScore);
     setLines(newLines);
 
+    // Emit a provisional live balance so the nav bar updates every drop.
+    // On game-over, finishGameSession replaces this with the server-confirmed value.
+    emitBalanceChange(baseBalanceRef.current + newScore);
+
     if (over) {
       setStatus("over");
       const s: Stats = {
@@ -332,9 +345,8 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
       if (sessionIdRef.current) {
         const sid = sessionIdRef.current;
         sessionIdRef.current = null;
-        finishGameSession(sid, newScore).then((r) => {
-          if (r.ok) emitBalanceChange();
-        });
+        // finishGameSession emits the server-confirmed balance internally.
+        void finishGameSession(sid, newScore);
       }
     }
   }
