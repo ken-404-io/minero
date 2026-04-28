@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="40" fill="#111114"/>
+  <rect width="192" height="192" rx="40" fill="#3a2a05"/>
+  <!-- Pickaxe icon centred -->
+  <g transform="translate(48,48) scale(4)" stroke="#f0b429" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M3 21l7-7"/>
+    <path d="M14.5 9.5l-5 5"/>
+    <path d="M17 3l-4 4 4 4 4-4-4-4z"/>
+    <path d="M7 17l-4 4"/>
+  </g>
+</svg>

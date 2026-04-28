@@ -13,6 +13,7 @@ import {
   IconInfo,
   IconLock,
   IconLogout,
+  IconMail,
   IconShield,
   IconSparkles,
   IconTrophy,
@@ -228,6 +229,12 @@ export default function MeClient({ user, planLabel, claimIntervalMs, lastClaimAt
             href="/disclaimer"
             icon={<IconInfo size={20} />}
             label="Disclaimer"
+          />
+          <MenuRow
+            href="/contact"
+            icon={<IconMail size={20} />}
+            label="Contact Support"
+            caption="Questions, disputes, data requests"
             isLast={!isAdmin}
           />
           {isAdmin && (

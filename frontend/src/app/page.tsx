@@ -361,6 +361,7 @@ export default async function LandingPage() {
             <Link href="/terms" className="hover:underline underline-offset-2">Terms</Link>
             <Link href="/privacy" className="hover:underline underline-offset-2">Privacy</Link>
             <Link href="/disclaimer" className="hover:underline underline-offset-2">Disclaimer</Link>
+            <Link href="/contact" className="hover:underline underline-offset-2">Contact</Link>
           </div>
         </div>
       </footer>
