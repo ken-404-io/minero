@@ -153,6 +153,13 @@ export default function TriviaClient({ playerName }: { playerName: string }) {
   const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tickTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Server-authoritative result. coinsEarned is what actually hit the user's
+  // balance; null while the finish call is pending; -1 if the session never
+  // started (cooldown / daily cap / network) or the finish failed.
+  const [serverCoins, setServerCoins] = useState<number | null>(null);
+  const [coinsCapped, setCoinsCapped] = useState(false);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+
   const total = questions.length || QUESTIONS_PER_ROUND;
   const current = questions[index];
 
@@ -180,8 +187,18 @@ export default function TriviaClient({ playerName }: { playerName: string }) {
     setLastDelta(0);
     setStage("playing");
     sessionIdRef.current = null;
+    setServerCoins(null);
+    setCoinsCapped(false);
+    setSessionError(null);
     startGameSession("trivia").then((r) => {
-      if (r.ok) sessionIdRef.current = r.sessionId;
+      if (r.ok) {
+        sessionIdRef.current = r.sessionId;
+      } else {
+        // Common cases: cooldown (30s), daily cap (3,000 coins), or
+        // network failure. The user can still finish the round, but the
+        // banner makes it explicit that no coins will be credited.
+        setSessionError(r.error || "Could not start a scoring session");
+      }
     });
   }, [clearTimers]);
 
@@ -198,18 +215,48 @@ export default function TriviaClient({ playerName }: { playerName: string }) {
     clearTimers();
     const nextIdx = index + 1;
     if (nextIdx >= questions.length) {
-      const prev = getStatsSnapshot();
-      writeStats({
-        bestScore: Math.max(prev.bestScore, scoreRef.current),
-        totalCoins: prev.totalCoins + scoreRef.current,
-        gamesPlayed: prev.gamesPlayed + 1,
-        totalCorrect: prev.totalCorrect + correctRef.current,
-      });
-      if (sessionIdRef.current) {
-        const sid = sessionIdRef.current;
-        sessionIdRef.current = null;
+      const sid = sessionIdRef.current;
+      sessionIdRef.current = null;
+      if (sid) {
+        // Block the done screen on the finish call so the user sees the
+        // real coinsEarned (and any cap message) instead of a stale
+        // localStorage approximation.
         finishGameSession(sid, scoreRef.current).then((r) => {
-          if (r.ok) emitBalanceChange();
+          if (r.ok) {
+            setServerCoins(r.coinsEarned);
+            setCoinsCapped(r.capped);
+            // Local stats now track the SERVER's coinsEarned so the
+            // per-game KPI matches the navbar gameCoinsBalance.
+            const prev = getStatsSnapshot();
+            writeStats({
+              bestScore: Math.max(prev.bestScore, scoreRef.current),
+              totalCoins: prev.totalCoins + r.coinsEarned,
+              gamesPlayed: prev.gamesPlayed + 1,
+              totalCorrect: prev.totalCorrect + correctRef.current,
+            });
+            emitBalanceChange(r.balance);
+          } else {
+            setServerCoins(0);
+            setSessionError(r.error || "Could not credit coins for this round");
+            // Score-only update (no coins, no totals inflation).
+            const prev = getStatsSnapshot();
+            writeStats({
+              bestScore: Math.max(prev.bestScore, scoreRef.current),
+              totalCoins: prev.totalCoins,
+              gamesPlayed: prev.gamesPlayed + 1,
+              totalCorrect: prev.totalCorrect + correctRef.current,
+            });
+          }
+        });
+      } else {
+        // Session never started — show 0 coins earned and the existing error.
+        setServerCoins(0);
+        const prev = getStatsSnapshot();
+        writeStats({
+          bestScore: Math.max(prev.bestScore, scoreRef.current),
+          totalCoins: prev.totalCoins,
+          gamesPlayed: prev.gamesPlayed + 1,
+          totalCorrect: prev.totalCorrect + correctRef.current,
         });
       }
       setStage("done");
@@ -311,6 +358,7 @@ export default function TriviaClient({ playerName }: { playerName: string }) {
           onSkip={() => submit(null)}
           onNext={advance}
           lastDelta={lastDelta}
+          sessionError={sessionError}
         />
       )}
 
@@ -322,6 +370,9 @@ export default function TriviaClient({ playerName }: { playerName: string }) {
           bestStreak={bestStreak}
           stats={stats}
           onReplay={startGame}
+          serverCoins={serverCoins}
+          coinsCapped={coinsCapped}
+          sessionError={sessionError}
         />
       )}
     </div>
@@ -471,6 +522,7 @@ function PlayingView({
   onSkip,
   onNext,
   lastDelta,
+  sessionError,
 }: {
   question: TriviaQuestion;
   index: number;
@@ -484,6 +536,7 @@ function PlayingView({
   onSkip: () => void;
   onNext: () => void;
   lastDelta: number;
+  sessionError: string | null;
 }) {
   const progressPct = ((index + (stage === "reveal" ? 1 : 0)) / total) * 100;
   const timerPct = (secondsLeft / SECONDS_PER_QUESTION) * 100;
@@ -494,6 +547,15 @@ function PlayingView({
 
   return (
     <div className="mx-auto max-w-[820px] px-4 py-6 lg:px-8 lg:py-8">
+      {sessionError && (
+        <div className="alert alert-warning mb-3" role="alert">
+          <IconError size={14} />
+          <span className="text-xs">
+            <strong>No coins this round:</strong> {sessionError}. You can keep
+            playing for the score, but no game coins will be credited.
+          </span>
+        </div>
+      )}
       {/* Top meta */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
@@ -688,6 +750,9 @@ function DoneView({
   bestStreak,
   stats,
   onReplay,
+  serverCoins,
+  coinsCapped,
+  sessionError,
 }: {
   score: number;
   correct: number;
@@ -695,9 +760,14 @@ function DoneView({
   bestStreak: number;
   stats: Stats;
   onReplay: () => void;
+  serverCoins: number | null;
+  coinsCapped: boolean;
+  sessionError: string | null;
 }) {
   const pct = Math.round((correct / total) * 100);
   const isNewBest = score > 0 && score >= stats.bestScore;
+  const coinsDisplay = serverCoins ?? 0;
+  const awaiting = serverCoins === null;
 
   const title = useMemo(() => {
     if (pct === 100) return "Flawless!";
@@ -733,11 +803,36 @@ function DoneView({
           style={{ fontSize: "var(--fs-48)", color: "var(--brand)", lineHeight: 1 }}
         >
           <IconCoin size={32} />
-          {score}
+          {awaiting ? "…" : coinsDisplay}
+        </div>
+        <div className="text-xs mb-1" style={{ color: "var(--text-subtle)" }}>
+          coins credited to your balance
+          {isNewBest ? " · new personal best score!" : ""}
         </div>
         <div className="text-xs mb-4" style={{ color: "var(--text-subtle)" }}>
-          coins earned{isNewBest ? " · new personal best!" : ""}
+          Score: <span className="font-mono">{score}</span>
         </div>
+        {sessionError && (
+          <div className="alert alert-warning mb-4 text-left" role="alert">
+            <IconError size={14} />
+            <div>
+              <div className="font-semibold text-sm">No coins credited</div>
+              <div className="text-xs">
+                {sessionError}. Your score and stats were saved, but no game
+                coins were added to your balance for this round.
+              </div>
+            </div>
+          </div>
+        )}
+        {coinsCapped && !sessionError && (
+          <div className="alert alert-info mb-4 text-left" role="status">
+            <IconCheck size={14} />
+            <div className="text-xs">
+              You hit today&apos;s trivia coin cap — only the remaining
+              budget was credited. Come back tomorrow for more!
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-3 gap-2 mb-5">
           <div className="kpi" style={{ padding: "0.75rem" }}>

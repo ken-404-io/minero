@@ -41,6 +41,7 @@ import {
 import {
   startGameSession,
   finishGameSession,
+  creditGameSession,
   emitBalanceChange,
   getGameBalance,
 } from "@/lib/game-session";
@@ -71,6 +72,15 @@ const DIFFICULTIES: Record<Difficulty, DifficultySpec> = {
     multiplier: 1.5,
   },
   hard: { id: "hard", label: "Hard", pairs: 15, cols: 5, rows: 6, multiplier: 2 },
+};
+
+// Coins credited per matched pair (real-time, banked to the user's
+// balance immediately so quitting mid-game doesn't lose progress). The
+// score-based finish at end-of-game adds a speed bonus on top.
+const COINS_PER_PAIR_BY_DIFF: Record<Difficulty, number> = {
+  easy: 5,
+  medium: 8,
+  hard: 12,
 };
 
 const FLIP_BACK_MS = 900;
@@ -326,7 +336,15 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
   const resetBoard = useCallback(
     (targetDiff: Difficulty) => {
       clearFlipTimer();
+      // Close any in-flight session so its per-pair credits stay banked
+      // even if the user changes difficulty mid-game.
+      const sid = sessionIdRef.current;
       sessionIdRef.current = null;
+      if (sid) {
+        void finishGameSession(sid, 0).then((r) => {
+          if (r.ok) emitBalanceChange(r.balance);
+        });
+      }
       baseBalanceRef.current = 0;
       previewRef.current = 0;
       const next = DIFFICULTIES[targetDiff];
@@ -376,18 +394,29 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
             ? elapsedMs
             : Math.min(prevDiff.bestTimeMs, elapsedMs),
       };
-      writeStats({
-        ...prev,
-        totalCoins: prev.totalCoins + score,
-        [difficulty]: nextDiff,
-      });
       if (sessionIdRef.current) {
         const sid = sessionIdRef.current;
         sessionIdRef.current = null;
         finishGameSession(sid, score).then((r) => {
-          if (!r.ok) emitBalanceChange();
+          // Server is the source of truth for the per-pair credits + the
+          // score-based finish bonus. Update local stats with the actual
+          // total so the page's "Total coins" KPI matches the navbar.
+          const credited = r.ok ? r.coinsEarned : previewRef.current;
+          writeStats({
+            ...prev,
+            totalCoins: prev.totalCoins + credited,
+            [difficulty]: nextDiff,
+          });
+          if (r.ok) emitBalanceChange(r.balance);
+          else emitBalanceChange();
         });
       } else {
+        // No active session — only the local score is recorded.
+        writeStats({
+          ...prev,
+          totalCoins: prev.totalCoins + previewRef.current,
+          [difficulty]: nextDiff,
+        });
         emitBalanceChange();
       }
     },
@@ -452,22 +481,23 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
         setSecondPick(null);
         setLocked(false);
 
-        // Provisional live coin update for this match.
-        const elapsed = Date.now() - (startedAt ?? Date.now());
-        const newScore = computeScore(spec, nextMoves, elapsed);
-        const newPreview = previewCoins(newScore);
-        const delta = Math.max(0, newPreview - previewRef.current);
-        previewRef.current = newPreview;
-        emitBalanceChange(baseBalanceRef.current + newPreview);
-
-        if (delta > 0) {
-          const popId = ++popIdRef.current;
-          setScorePops((prev) => [...prev, { id: popId, amount: delta }]);
-          setTimeout(() => {
-            setScorePops((prev) => prev.filter((p) => p.id !== popId));
-          }, 1200);
+        // Real-time per-pair credit. The server banks these coins
+        // immediately, so quitting mid-game keeps every match the user
+        // already earned. Speed-bonus reward gets added at finish.
+        const perPair = COINS_PER_PAIR_BY_DIFF[difficulty];
+        previewRef.current += perPair;
+        const sid = sessionIdRef.current;
+        if (sid) {
+          void creditGameSession(sid, perPair);
         }
 
+        const popId = ++popIdRef.current;
+        setScorePops((prev) => [...prev, { id: popId, amount: perPair }]);
+        setTimeout(() => {
+          setScorePops((prev) => prev.filter((p) => p.id !== popId));
+        }, 1200);
+
+        const elapsed = Date.now() - (startedAt ?? Date.now());
         if (nextMatches >= spec.pairs) {
           finishGame(elapsed, nextMoves);
         }
@@ -506,6 +536,18 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
   }, [difficulty, resetBoard]);
 
   const handleQuit = useCallback(() => {
+    // Persist any partial-game progress: close the open session so the
+    // already-credited per-pair coins stay banked. (Per-pair credits
+    // already hit the user's balance in real time, so no additional
+    // coins are awarded here — finish just marks the session done.)
+    const sid = sessionIdRef.current;
+    sessionIdRef.current = null;
+    if (sid) {
+      void finishGameSession(sid, 0).then((r) => {
+        if (r.ok) emitBalanceChange(r.balance);
+      });
+    }
+
     const map = new Map<number, string>();
     cards.forEach((card) => {
       const dx = (Math.random() - 0.5) * 900;

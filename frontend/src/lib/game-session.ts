@@ -24,6 +24,10 @@ export type FinishSessionResult =
   | { ok: true; sessionId: string; coinsEarned: number; balance: number; capped: boolean }
   | { ok: false; error: string; status: number };
 
+export type CreditSessionResult =
+  | { ok: true; credited: number; sessionTotal: number; balance: number; capped: boolean }
+  | { ok: false; error: string; status: number };
+
 export type BalanceResult = {
   balance: number;
   today: Record<string, number>;
@@ -124,6 +128,47 @@ export async function finishGameSession(
     };
   } catch {
     pendingFinishes.delete(finishId);
+    return { ok: false, error: "Network error", status: 0 };
+  }
+}
+
+/**
+ * Credit `deltaCoins` to the user's balance mid-session. Used by progressive
+ * games (word, memory) so each match / found word lands real coins
+ * immediately — the user's progress isn't lost if they quit before the
+ * round ends. Server clamps the delta against per-session and per-day caps,
+ * so the returned `credited` may be less than what was requested.
+ */
+export async function creditGameSession(
+  sessionId: string,
+  deltaCoins: number,
+): Promise<CreditSessionResult> {
+  try {
+    const res = await fetch(`${API_URL}/game/session/credit`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, deltaCoins }),
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      credited?: number;
+      sessionTotal?: number;
+      balance?: number;
+      capped?: boolean;
+      error?: string;
+    };
+    if (!res.ok || typeof data.credited !== "number") {
+      return { ok: false, error: data.error ?? "Failed to credit", status: res.status };
+    }
+    if (typeof data.balance === "number") emitBalanceChange(data.balance);
+    return {
+      ok: true,
+      credited: data.credited,
+      sessionTotal: data.sessionTotal ?? 0,
+      balance: data.balance ?? 0,
+      capped: Boolean(data.capped),
+    };
+  } catch {
     return { ok: false, error: "Network error", status: 0 };
   }
 }
