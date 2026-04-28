@@ -64,9 +64,33 @@ export default function DashNav({ name, role, plan }: { name: string; role: stri
       const bal = await getGameBalance();
       if (bal !== null) setCoins(bal.balance);
     }
+
+    // If the event carries the new balance, use it immediately (no extra fetch).
+    // Fall back to a network fetch when the event has no detail (legacy callers).
+    function onBalanceChange(e: Event) {
+      const detail = (e as CustomEvent<{ balance?: number } | undefined>).detail;
+      if (typeof detail?.balance === "number") {
+        setCoins(detail.balance);
+      } else {
+        void fetchCoins();
+      }
+    }
+
     fetchCoins();
-    window.addEventListener(GAME_BALANCE_CHANGED, fetchCoins);
-    return () => window.removeEventListener(GAME_BALANCE_CHANGED, fetchCoins);
+    window.addEventListener(GAME_BALANCE_CHANGED, onBalanceChange);
+
+    // Refresh when the tab becomes visible (handles alt-tab / background tabs).
+    const onVisible = () => { if (document.visibilityState === "visible") void fetchCoins(); };
+    document.addEventListener("visibilitychange", onVisible);
+
+    // Periodic poll every 60 s so balance stays in sync even if an event is missed.
+    const poll = setInterval(fetchCoins, 60_000);
+
+    return () => {
+      window.removeEventListener(GAME_BALANCE_CHANGED, onBalanceChange);
+      document.removeEventListener("visibilitychange", onVisible);
+      clearInterval(poll);
+    };
   }, []);
 
   async function logout() {

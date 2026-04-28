@@ -111,11 +111,15 @@ export async function finishGameSession(
     if (!res.ok || typeof data.coinsEarned !== "number") {
       return { ok: false, error: data.error ?? "Failed to finish session", status: res.status };
     }
+    const balance = data.balance ?? 0;
+    // Emit immediately with the authoritative balance so the nav bar updates
+    // without needing a separate API call.
+    emitBalanceChange(balance);
     return {
       ok: true,
       sessionId: data.sessionId ?? sessionId,
       coinsEarned: data.coinsEarned,
-      balance: data.balance ?? 0,
+      balance,
       capped: Boolean(data.capped),
     };
   } catch {
@@ -134,12 +138,16 @@ export async function getGameBalance(): Promise<BalanceResult | null> {
   }
 }
 
-/** Fired when the server balance should be re-fetched (after a finish/redeem). */
+/** Fired when the server balance changes. Detail carries the new balance if known. */
 export const GAME_BALANCE_CHANGED = "minero:game-balance-change";
 
-export function emitBalanceChange() {
+export function emitBalanceChange(newBalance?: number) {
   if (typeof window !== "undefined") {
-    window.dispatchEvent(new Event(GAME_BALANCE_CHANGED));
+    window.dispatchEvent(
+      new CustomEvent(GAME_BALANCE_CHANGED, {
+        detail: typeof newBalance === "number" ? { balance: newBalance } : undefined,
+      }),
+    );
   }
 }
 

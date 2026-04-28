@@ -46,7 +46,6 @@ withdrawRoutes.post("/", async (c) => {
   }
 
   const { amount, method, accountNumber, otp } = parsed.data;
-  const cfg = await getConfig();
   if (amount < cfg.withdrawalMinimum) {
     return c.json({ error: `Minimum withdrawal is ₱${cfg.withdrawalMinimum}` }, 400);
   }

@@ -478,7 +478,14 @@ export default function GameHubClient({ playerName }: { playerName: string }) {
     importLegacyCoinsOnce().finally(() => {
       if (!cancelled) void refresh();
     });
-    const onChange = () => { void refresh(); };
+    const onChange = (e: Event) => {
+      const detail = (e as CustomEvent<{ balance?: number } | undefined>).detail;
+      if (typeof detail?.balance === "number") {
+        if (!cancelled) setServerBalance(detail.balance);
+      } else {
+        void refresh();
+      }
+    };
     window.addEventListener(GAME_BALANCE_CHANGED, onChange);
     return () => {
       cancelled = true;
