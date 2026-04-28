@@ -357,9 +357,15 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
       if (sessionIdRef.current) {
         const sid = sessionIdRef.current;
         sessionIdRef.current = null;
+        // finishGameSession internally emits the server-confirmed balance on
+        // success. On failure we still force a refresh so the nav stays in sync.
         finishGameSession(sid, score).then((r) => {
-          if (r.ok) emitBalanceChange();
+          if (!r.ok) emitBalanceChange();
         });
+      } else {
+        // No session was started (e.g., cooldown or network failure during
+        // session start) — refresh the nav so it shows the current real balance.
+        emitBalanceChange();
       }
     },
     [difficulty, spec],
