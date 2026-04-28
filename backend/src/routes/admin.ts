@@ -177,7 +177,7 @@ adminRoutes.get("/users/:id", async (c) => {
       createdAt: true,
       legacyImported: true,
       legacyImportedCoins: true,
-      _count: { select: { claims: true, earnings: true, withdrawals: true, referrals: true } },
+      _count: { select: { claims: true, earnings: true, withdrawals: true, referralsGiven: true } },
     },
   });
   if (!user) return c.json({ error: "Not found" }, 404);
@@ -253,9 +253,10 @@ adminRoutes.patch("/users/:id", async (c) => {
         data: {
           userId: id,
           amount: Math.abs(balanceAdjustment),
-          type: "admin_adjustment",
+          type: balanceReason
+            ? `admin_adjustment: ${balanceReason.slice(0, 100)}`
+            : "admin_adjustment",
           status: balanceAdjustment > 0 ? "approved" : "rejected",
-          meta: balanceReason ? JSON.stringify({ reason: balanceReason, by: guard.userId }) : JSON.stringify({ by: guard.userId }),
         },
       });
     }

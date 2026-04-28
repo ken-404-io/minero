@@ -51,7 +51,6 @@ claimRoutes.post("/", async (c) => {
     return c.json({ error: "Your account has been suspended. Please contact support." }, 403);
   }
 
-  const cfg = await getConfig();
   const plan = await getPlanConfig(user.plan);
   const now = new Date();
   const ip = getClientIp(c);

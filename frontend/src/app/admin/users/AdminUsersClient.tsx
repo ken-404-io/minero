@@ -29,7 +29,7 @@ type User = {
   role: string;
   frozen: boolean;
   createdAt: string | Date;
-  _count: { claims: number; earnings: number; withdrawals: number; referrals: number };
+  _count: { claims: number; earnings: number; withdrawals: number; referralsGiven: number };
 };
 
 type Claim = { id: string; amount: number; claimedAt: string };
@@ -554,7 +554,7 @@ function UserDrawer({
                       ["Total claims", u._count.claims],
                       ["Total earnings", u._count.earnings],
                       ["Withdrawals", u._count.withdrawals],
-                      ["Referrals", u._count.referrals],
+                      ["Referrals", u._count.referralsGiven],
                     ].map(([label, val]) => (
                       <div
                         key={String(label)}
