@@ -34,6 +34,9 @@ export const metadata: Metadata = {
   keywords: ["earn money online philippines", "gcash rewards", "paid to watch ads", "minero", "tagamina"],
   authors: [{ name: "Halvex Inc." }],
   robots: { index: true, follow: true },
+  other: {
+    monetag: "4c06290e7ec89777783b0ba42e7bd6cc",
+  },
 };
 
 export const viewport: Viewport = {
