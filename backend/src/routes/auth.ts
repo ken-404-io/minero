@@ -22,6 +22,11 @@ import {
 import { getConfig } from "../lib/config.js";
 import { getClientIp, getDeviceHash } from "../lib/request.js";
 import { raiseAlert } from "../lib/fraud.js";
+import {
+  checkDeviceAvailableForSignup,
+  countAccountsOnDevice,
+  raiseDeviceFraudAlert,
+} from "../lib/deviceFraud.js";
 import { rateLimit } from "../lib/rateLimit.js";
 import { processStreak } from "../lib/streak.js";
 import { welcomeHtml } from "../lib/email.js";
@@ -84,6 +89,32 @@ authRoutes.post("/login", async (c) => {
 
   const deviceHash = getDeviceHash(c);
   if (deviceHash) {
+    // If this device is signing into a different account than the one it's
+    // bound to, raise a fraud alert. Admins are exempt — they routinely
+    // log into multiple accounts during support.
+    if (user.role !== "admin") {
+      const accountsOnDevice = await countAccountsOnDevice(deviceHash);
+      if (accountsOnDevice > 0) {
+        const otherAccount = await prisma.user.findFirst({
+          where: {
+            frozen: false,
+            id: { not: user.id },
+            OR: [{ signupDevice: deviceHash }, { lastDeviceHash: deviceHash }],
+          },
+          select: { id: true },
+        });
+        if (otherAccount) {
+          await raiseDeviceFraudAlert({
+            attemptedEmail: email,
+            attemptedUserId: user.id,
+            existingUserId: otherAccount.id,
+            ip,
+            deviceHash,
+            via: "login",
+          });
+        }
+      }
+    }
     await prisma.user.update({
       where: { id: user.id },
       data: { lastDeviceHash: deviceHash },
@@ -133,6 +164,32 @@ authRoutes.post("/register", async (c) => {
 
   const { name, email, password, referralCode } = parsed.data;
   const deviceHash = getDeviceHash(c);
+
+  // Anti-fraud: registration requires a device fingerprint, and that
+  // device may not already be linked to another non-frozen account.
+  // Without this gate, one user could spin up unlimited accounts to farm
+  // ad-supported claims and referral commissions.
+  if (!deviceHash) {
+    return c.json(
+      { error: "Your browser blocks the security check we use to prevent duplicate accounts. Enable JavaScript and disable strict tracking protection, then try again." },
+      400,
+    );
+  }
+
+  const deviceCheck = await checkDeviceAvailableForSignup(deviceHash);
+  if (!deviceCheck.ok) {
+    await raiseDeviceFraudAlert({
+      attemptedEmail: email,
+      existingUserId: deviceCheck.existingUserId,
+      ip,
+      deviceHash,
+      via: "register",
+    });
+    return c.json(
+      { error: "An account already exists on this device. Please sign in to your existing account, or contact support if you believe this is a mistake." },
+      409,
+    );
+  }
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) return c.json({ error: "Email already registered" }, 409);

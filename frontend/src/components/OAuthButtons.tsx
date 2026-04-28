@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { API_URL } from "@/lib/api-url";
+import { getDeviceHash } from "@/lib/device";
 import { IconGoogle } from "@/components/brand-icons";
 
 type Props = {
@@ -73,13 +74,26 @@ export default function OAuthButtons({ referralCode }: Props) {
               </button>
             );
           }
-          const href =
+          const onClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+            // Intercept the click so we can append the device fingerprint
+            // to the URL — top-level navigations can't carry headers, and
+            // the backend needs the hash to enforce one-account-per-device.
+            e.preventDefault();
+            const dh = await getDeviceHash();
+            const params = new URLSearchParams();
+            if (referralCode) params.set("ref", referralCode);
+            if (dh) params.set("dh", dh);
+            const qs = params.toString();
+            window.location.href = `${API_URL}/auth/oauth/${p.name}${qs ? `?${qs}` : ""}`;
+          };
+          const fallbackHref =
             `${API_URL}/auth/oauth/${p.name}` +
             (referralCode ? `?ref=${encodeURIComponent(referralCode)}` : "");
           return (
             <a
               key={p.name}
-              href={href}
+              href={fallbackHref}
+              onClick={onClick}
               className="btn btn-secondary"
               aria-label={`Continue with ${meta.name}`}
             >

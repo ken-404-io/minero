@@ -13,6 +13,7 @@ import {
   DEFAULTS,
   type PlanConfigMap,
 } from "../lib/config.js";
+import { createNotification, broadcastNotification } from "../lib/notifications.js";
 
 export const adminRoutes = new Hono();
 
@@ -356,6 +357,14 @@ adminRoutes.patch("/withdrawals/:id", async (c) => {
         accountNumber: withdrawal.accountNumber,
       }),
     });
+    await createNotification({
+      userId: withdrawal.userId,
+      type: "withdrawal_approved",
+      title: "Withdrawal approved",
+      body: `Your ₱${withdrawal.amount.toFixed(2)} withdrawal to ${withdrawal.method.toUpperCase()} has been approved and is on its way.`,
+      link: "/withdraw",
+      createdBy: guard.userId,
+    });
   } else {
     await prisma.$transaction([
       prisma.withdrawal.update({
@@ -375,6 +384,16 @@ adminRoutes.patch("/withdrawals/:id", async (c) => {
         amount: withdrawal.amount,
         adminNote,
       }),
+    });
+    await createNotification({
+      userId: withdrawal.userId,
+      type: "withdrawal_rejected",
+      title: "Withdrawal rejected",
+      body: adminNote
+        ? `Your ₱${withdrawal.amount.toFixed(2)} withdrawal was rejected: ${adminNote}. The amount has been refunded to your balance.`
+        : `Your ₱${withdrawal.amount.toFixed(2)} withdrawal was rejected. The amount has been refunded to your balance.`,
+      link: "/withdraw",
+      createdBy: guard.userId,
     });
   }
 
@@ -575,6 +594,114 @@ adminRoutes.patch("/plans/:id", async (c) => {
   }
 
   return c.json({ ok: true });
+});
+
+// ============================================================
+//  Notifications — admin broadcast / targeted send
+// ============================================================
+
+const adminNotificationSchema = z.object({
+  title: z.string().min(1).max(120),
+  body: z.string().min(1).max(1000),
+  link: z.string().max(500).optional(),
+  /** Send to a single user. Mutually exclusive with `broadcast`. */
+  userId: z.string().min(1).optional(),
+  /** Send to every non-frozen user. */
+  broadcast: z.boolean().optional(),
+});
+
+adminRoutes.post("/notifications", async (c) => {
+  const guard = requireAdmin(c);
+  if (guard instanceof Response) return guard;
+
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON" }, 400); }
+
+  const parsed = adminNotificationSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.flatten().fieldErrors }, 400);
+
+  const { title, body: msgBody, link, userId, broadcast } = parsed.data;
+
+  if (!userId && !broadcast) {
+    return c.json({ error: "Provide a userId or set broadcast: true" }, 400);
+  }
+  if (userId && broadcast) {
+    return c.json({ error: "Choose either userId or broadcast, not both" }, 400);
+  }
+
+  if (userId) {
+    const target = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    if (!target) return c.json({ error: "User not found" }, 404);
+    await createNotification({
+      userId,
+      type: "admin",
+      title,
+      body: msgBody,
+      link: link || null,
+      createdBy: guard.userId,
+    });
+    return c.json({ ok: true, sent: 1 });
+  }
+
+  const sent = await broadcastNotification({
+    type: "admin",
+    title,
+    body: msgBody,
+    link: link || null,
+    createdBy: guard.userId,
+  });
+  return c.json({ ok: true, sent });
+});
+
+/** Recent admin-sent notifications, grouped by (createdAt, title, body) so a
+ *  broadcast looks like one row regardless of how many users received it. */
+adminRoutes.get("/notifications", async (c) => {
+  const guard = requireAdmin(c);
+  if (guard instanceof Response) return guard;
+
+  const limit = Math.min(50, Math.max(1, parseInt(c.req.query("limit") ?? "20")));
+
+  // Pull recent admin notifications, dedupe by (title, body, second-truncated createdAt)
+  // because broadcasts fan out one row per user.
+  const recent = await prisma.notification.findMany({
+    where: { type: "admin" },
+    orderBy: { createdAt: "desc" },
+    take: limit * 50,
+    select: { id: true, title: true, body: true, link: true, createdAt: true, createdBy: true, readAt: true },
+  });
+
+  const groups = new Map<string, {
+    title: string;
+    body: string;
+    link: string | null;
+    sentAt: Date;
+    sentBy: string | null;
+    recipients: number;
+    reads: number;
+  }>();
+
+  for (const n of recent) {
+    const bucket = Math.floor(n.createdAt.getTime() / 1000);
+    const key = `${bucket}|${n.title}|${n.body}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.recipients += 1;
+      if (n.readAt) existing.reads += 1;
+    } else {
+      groups.set(key, {
+        title: n.title,
+        body: n.body,
+        link: n.link,
+        sentAt: n.createdAt,
+        sentBy: n.createdBy,
+        recipients: 1,
+        reads: n.readAt ? 1 : 0,
+      });
+    }
+    if (groups.size >= limit) break;
+  }
+
+  return c.json({ notifications: Array.from(groups.values()) });
 });
 
 // ============================================================

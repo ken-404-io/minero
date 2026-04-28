@@ -14,8 +14,14 @@ import {
   listOAuthProviders,
 } from "../lib/oauth.js";
 import { getClientIp, getDeviceHash } from "../lib/request.js";
+import {
+  checkDeviceAvailableForSignup,
+  raiseDeviceFraudAlert,
+} from "../lib/deviceFraud.js";
 
 export const oauthRoutes = new Hono();
+
+const DEVICE_HASH_RE = /^[a-f0-9]{16,128}$/i;
 
 const STATE_COOKIE = "oauth_state";
 
@@ -55,7 +61,13 @@ oauthRoutes.get("/:provider", (c) => {
   const state = generateState();
   // Optional ?ref=CODE for invite tracking; carried through state cookie.
   const ref = c.req.query("ref") ?? "";
-  const payload = JSON.stringify({ state, ref });
+  // Optional ?dh=<hex> — client-computed device fingerprint. Stored in the
+  // state cookie so the callback can enforce one-account-per-device parity
+  // with the email/password register flow. Headers can't be set on a
+  // top-level navigation, hence the query param.
+  const dhRaw = c.req.query("dh") ?? "";
+  const dh = DEVICE_HASH_RE.test(dhRaw) ? dhRaw.toLowerCase() : "";
+  const payload = JSON.stringify({ state, ref, dh });
   setCookie(c, STATE_COOKIE, payload, stateCookieOpts());
 
   return c.redirect(provider.authorizeUrl(state));
@@ -75,7 +87,7 @@ oauthRoutes.get("/:provider/callback", async (c) => {
   if (!code || !state || !cookieRaw) {
     return c.redirect(`${frontendOrigin()}/login?error=bad_callback`);
   }
-  let parsed: { state?: string; ref?: string };
+  let parsed: { state?: string; ref?: string; dh?: string };
   try {
     parsed = JSON.parse(cookieRaw) as typeof parsed;
   } catch {
@@ -84,6 +96,13 @@ oauthRoutes.get("/:provider/callback", async (c) => {
   if (parsed.state !== state) {
     return c.redirect(`${frontendOrigin()}/login?error=state_mismatch`);
   }
+
+  // Prefer the fingerprint we captured on the start request (set in the
+  // state cookie). Fall back to the header if the start request was a
+  // direct API call. Either may be empty — registration enforces presence.
+  const stateDh = parsed.dh && DEVICE_HASH_RE.test(parsed.dh) ? parsed.dh.toLowerCase() : null;
+  const headerDh = getDeviceHash(c);
+  const deviceHash = stateDh ?? headerDh;
 
   let profile;
   try {
@@ -136,13 +155,31 @@ oauthRoutes.get("/:provider/callback", async (c) => {
       if (referrer && !referrer.frozen) referrerId = referrer.id;
     }
 
+    const ip = getClientIp(c);
+
+    // One-account-per-device enforcement, parity with /auth/register.
+    // No fingerprint = no signup (the user might be using a privacy
+    // browser; we'd rather fail closed than let abuse through).
+    if (!deviceHash) {
+      return c.redirect(`${frontendOrigin()}/login?error=device_required`);
+    }
+
+    const deviceCheck = await checkDeviceAvailableForSignup(deviceHash);
+    if (!deviceCheck.ok) {
+      await raiseDeviceFraudAlert({
+        attemptedEmail: profile.email,
+        existingUserId: deviceCheck.existingUserId,
+        ip,
+        deviceHash,
+        via: "oauth",
+      });
+      return c.redirect(`${frontendOrigin()}/login?error=device_in_use`);
+    }
+
     let code = generateReferralCode();
     while (await prisma.user.findUnique({ where: { referralCode: code } })) {
       code = generateReferralCode();
     }
-
-    const ip = getClientIp(c);
-    const deviceHash = getDeviceHash(c);
 
     user = await prisma.user.create({
       data: {
@@ -163,6 +200,32 @@ oauthRoutes.get("/:provider/callback", async (c) => {
         data: { referrerId, referralId: user.id },
       });
     }
+  } else if (deviceHash && user.role !== "admin") {
+    // Existing account logging in via OAuth. Update lastDeviceHash and
+    // raise a fraud alert if this device is already bound to another
+    // non-frozen account.
+    const otherAccount = await prisma.user.findFirst({
+      where: {
+        frozen: false,
+        id: { not: user.id },
+        OR: [{ signupDevice: deviceHash }, { lastDeviceHash: deviceHash }],
+      },
+      select: { id: true },
+    });
+    if (otherAccount) {
+      await raiseDeviceFraudAlert({
+        attemptedEmail: profile.email,
+        attemptedUserId: user.id,
+        existingUserId: otherAccount.id,
+        ip: getClientIp(c),
+        deviceHash,
+        via: "login",
+      });
+    }
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastDeviceHash: deviceHash },
+    });
   }
 
   if (user.frozen) {
