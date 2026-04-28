@@ -43,11 +43,21 @@ export const emailProvider: EmailProvider = process.env.RESEND_API_KEY
 
 // ── Email templates ───────────────────────────────────────────────────────────
 
+function appUrl(): string {
+  return (process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
+}
+
+function appDisplayUrl(): string {
+  return appUrl().replace(/^https?:\/\//, "") || "minero";
+}
+
 function layout(title: string, body: string): string {
+  const url = appUrl();
+  const display = appDisplayUrl();
   return `<!DOCTYPE html><html><body style="font-family:sans-serif;max-width:520px;margin:40px auto;color:#111">
 <h2 style="color:#16a34a">${title}</h2>${body}
 <hr style="margin-top:32px;border:none;border-top:1px solid #e5e7eb"/>
-<p style="color:#6b7280;font-size:13px">— The Minero Team · <a href="https://minero.app" style="color:#16a34a">minero.app</a></p>
+<p style="color:#6b7280;font-size:13px">— The Minero Team${url ? ` · <a href="${url}" style="color:#16a34a">${display}</a>` : ""}</p>
 </body></html>`;
 }
 
@@ -104,6 +114,16 @@ export function planUpgradedHtml(params: { name: string; amountPaid: number }): 
   <li>Same claim rate and daily cap — you're just not watching ads anymore.</li>
 </ul>
 <p>Thanks for supporting Minero.</p>`,
+  );
+}
+
+export function passwordResetHtml(params: { code: string; ttlMinutes: number }): string {
+  return layout(
+    "Reset your Minero password",
+    `<p>We received a request to reset the password on your Minero account.</p>
+<p>Enter this code on the reset page:</p>
+<p style="font-size:32px;letter-spacing:8px;font-weight:700;font-family:ui-monospace,Menlo,monospace;background:#f3f4f6;padding:14px 20px;border-radius:8px;display:inline-block;letter-spacing:0.15em">${params.code}</p>
+<p style="color:#6b7280">This code expires in <strong>${params.ttlMinutes} minutes</strong>. If you did not request a password reset, you can safely ignore this email — your password will not change.</p>`,
   );
 }
 

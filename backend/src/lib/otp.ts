@@ -3,8 +3,9 @@ import { prisma } from "./db.js";
 import { getConfig } from "./config.js";
 import { enqueue, QUEUE_EMAIL, QUEUE_SMS } from "./queue.js";
 import { smsProvider } from "./sms.js";
+import { passwordResetHtml } from "./email.js";
 
-export type OtpPurpose = "withdraw" | "login" | "change_password";
+export type OtpPurpose = "withdraw" | "login" | "change_password" | "password_reset";
 
 // Destination channel. Email lands in the inbox via the email provider;
 // sms goes through one of the SMS providers (see sms.ts).
@@ -64,10 +65,15 @@ export async function issueOtp(params: {
   });
 
   if (channel === "email") {
+    const isReset = params.purpose === "password_reset";
     await enqueue(QUEUE_EMAIL, {
       to: params.destination,
-      subject: `Your Minero verification code: ${code}`,
-      html: otpEmailHtml(code, ttlMinutes),
+      subject: isReset
+        ? "Reset your Minero password"
+        : `Your Minero verification code: ${code}`,
+      html: isReset
+        ? passwordResetHtml({ code, ttlMinutes })
+        : otpEmailHtml(code, ttlMinutes),
     });
   } else {
     await enqueue(QUEUE_SMS, {

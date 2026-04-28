@@ -140,9 +140,42 @@ app.onError((err, c) => {
 
 app.notFound((c) => c.json({ error: "Not found" }, 404));
 
+function warnMisconfigs() {
+  if (process.env.NODE_ENV !== "production") return;
+
+  const warn = (msg: string) => console.warn(`\x1b[33m[config-warning]\x1b[0m ${msg}`);
+
+  const smsProvider = (process.env.SMS_PROVIDER ?? "").toLowerCase();
+  const hasSmsCreds =
+    (smsProvider === "semaphore" && process.env.SEMAPHORE_API_KEY) ||
+    (smsProvider === "twilio" &&
+      process.env.TWILIO_ACCOUNT_SID &&
+      process.env.TWILIO_AUTH_TOKEN &&
+      process.env.TWILIO_FROM) ||
+    (!smsProvider && process.env.SEMAPHORE_API_KEY);
+
+  if (!hasSmsCreds) {
+    warn("SMS_PROVIDER is not configured. OTP codes will only be logged to the console.");
+    warn("Withdrawals require a working OTP — users will be unable to cash out.");
+    warn("Set SMS_PROVIDER=semaphore and SEMAPHORE_API_KEY, or SMS_PROVIDER=twilio.");
+  }
+
+  const paymongoKey = process.env.PAYMONGO_SECRET_KEY ?? "";
+  if (!paymongoKey || paymongoKey.startsWith("sk_test_")) {
+    warn("PAYMONGO_SECRET_KEY is a test key or missing. Payments will not be charged.");
+    warn("Replace with a live key from https://dashboard.paymongo.com/developers");
+  }
+
+  if (!process.env.RESEND_API_KEY) {
+    warn("RESEND_API_KEY is not set. Transactional emails will only be logged to the console.");
+    warn("Users will not receive welcome emails, withdrawal confirmations, or password reset codes.");
+  }
+}
+
 const port = Number(process.env.PORT ?? 4000);
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`minero-backend listening on http://localhost:${info.port}`);
+  warnMisconfigs();
   migratePlanConfig();
   backfillGameCoinsBalance();
   // Fire-and-forget; enqueue() lazy-starts on first use if this hasn't

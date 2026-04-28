@@ -26,6 +26,7 @@ import { rateLimit } from "../lib/rateLimit.js";
 import { processStreak } from "../lib/streak.js";
 import { welcomeHtml } from "../lib/email.js";
 import { enqueue, QUEUE_EMAIL } from "../lib/queue.js";
+import { issueOtp, verifyOtp } from "../lib/otp.js";
 
 export const authRoutes = new Hono();
 
@@ -406,6 +407,78 @@ authRoutes.get("/login-history", async (c) => {
   });
 
   return c.json({ history });
+});
+
+// ── Forgot / reset password ──────────────────────────────────────────────────
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email().trim().toLowerCase(),
+});
+
+authRoutes.post("/forgot-password", async (c) => {
+  const ip = getClientIp(c);
+  // 3 reset requests per IP per 15 minutes — prevents email flooding.
+  const rl = rateLimit(`forgot-password:${ip}`, 3, 15 * 60 * 1000);
+  if (!rl.ok) {
+    c.header("Retry-After", String(Math.ceil(rl.retryAfterMs / 1000)));
+    return c.json({ error: "Too many requests. Try again later." }, 429);
+  }
+
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON" }, 400); }
+
+  const parsed = forgotPasswordSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: "Enter a valid email address." }, 400);
+
+  const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+
+  // Always return success — never reveal whether an email is registered.
+  if (!user || user.frozen || !user.passwordHash) {
+    return c.json({ ok: true });
+  }
+
+  await issueOtp({ userId: user.id, purpose: "password_reset", destination: user.email });
+  return c.json({ ok: true });
+});
+
+const resetPasswordSchema = z.object({
+  email: z.string().email().trim().toLowerCase(),
+  code: z.string().regex(/^\d{4,8}$/),
+  newPassword: z.string().min(8).max(100),
+});
+
+authRoutes.post("/reset-password", async (c) => {
+  const ip = getClientIp(c);
+  // 5 attempts per IP per 15 minutes — prevents brute-forcing the OTP.
+  const rl = rateLimit(`reset-password:${ip}`, 5, 15 * 60 * 1000);
+  if (!rl.ok) {
+    c.header("Retry-After", String(Math.ceil(rl.retryAfterMs / 1000)));
+    return c.json({ error: "Too many attempts. Try again later." }, 429);
+  }
+
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON" }, 400); }
+
+  const parsed = resetPasswordSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.flatten().fieldErrors }, 400);
+
+  const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+  if (!user || user.frozen) return c.json({ error: "Invalid or expired code." }, 400);
+
+  const otpResult = await verifyOtp({ userId: user.id, purpose: "password_reset", code: parsed.data.code });
+  if (!otpResult.ok) return c.json({ error: "Invalid or expired code." }, 400);
+
+  const newHash = await bcrypt.hash(parsed.data.newPassword, 12);
+  await prisma.$transaction([
+    prisma.user.update({ where: { id: user.id }, data: { passwordHash: newHash } }),
+    // Invalidate all sessions so an attacker who triggered the reset loses access.
+    prisma.refreshToken.updateMany({
+      where: { userId: user.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    }),
+  ]);
+
+  return c.json({ ok: true });
 });
 
 // ── Delete account ───────────────────────────────────────────────────────────
