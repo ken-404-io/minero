@@ -172,6 +172,7 @@ adminRoutes.get("/users/:id", async (c) => {
       email: true,
       balance: true,
       pendingBalance: true,
+      gameCoinsBalance: true,
       plan: true,
       role: true,
       frozen: true,
@@ -216,6 +217,8 @@ const userPatchSchema = z.object({
   plan: z.enum(["free", "paid"]).optional(),
   balanceAdjustment: z.number().optional(),
   balanceReason: z.string().max(200).optional(),
+  gameCoinsAdjustment: z.number().int().optional(),
+  gameCoinsReason: z.string().max(200).optional(),
 });
 
 adminRoutes.patch("/users/:id", async (c) => {
@@ -236,7 +239,15 @@ adminRoutes.patch("/users/:id", async (c) => {
     return c.json({ error: parsed.error.flatten().fieldErrors }, 400);
   }
 
-  const { frozen, role, plan, balanceAdjustment, balanceReason } = parsed.data;
+  const {
+    frozen,
+    role,
+    plan,
+    balanceAdjustment,
+    balanceReason,
+    gameCoinsAdjustment,
+    gameCoinsReason,
+  } = parsed.data;
 
   const target = await prisma.user.findUnique({ where: { id } });
   if (!target) return c.json({ error: "User not found" }, 404);
@@ -262,6 +273,37 @@ adminRoutes.patch("/users/:id", async (c) => {
       });
     }
 
+    if (gameCoinsAdjustment !== undefined && gameCoinsAdjustment !== 0) {
+      // Block deductions that would underflow the balance.
+      const fresh = await tx.user.findUnique({
+        where: { id },
+        select: { gameCoinsBalance: true },
+      });
+      const current = fresh?.gameCoinsBalance ?? 0;
+      if (gameCoinsAdjustment < 0 && current + gameCoinsAdjustment < 0) {
+        throw new Error(
+          `gameCoinsAdjustment of ${gameCoinsAdjustment} would underflow balance ${current}`,
+        );
+      }
+      updateData.gameCoinsBalance = { increment: gameCoinsAdjustment };
+      // Audit trail: a finished GameSession with gameKey="admin_adjust"
+      // and the reason in meta. Keeps every coin movement in one table.
+      await tx.gameSession.create({
+        data: {
+          userId: id,
+          gameKey: "admin_adjust",
+          startedAt: new Date(),
+          finishedAt: new Date(),
+          score: 0,
+          coinsEarned: gameCoinsAdjustment,
+          meta: JSON.stringify({
+            adjustedBy: guard.userId,
+            reason: gameCoinsReason ?? null,
+          }),
+        },
+      });
+    }
+
     await tx.user.update({ where: { id }, data: updateData });
 
     if (frozen === true) {
@@ -274,7 +316,14 @@ adminRoutes.patch("/users/:id", async (c) => {
 
   const user = await prisma.user.findUnique({
     where: { id },
-    select: { id: true, frozen: true, role: true, plan: true, balance: true },
+    select: {
+      id: true,
+      frozen: true,
+      role: true,
+      plan: true,
+      balance: true,
+      gameCoinsBalance: true,
+    },
   });
 
   return c.json({ user });

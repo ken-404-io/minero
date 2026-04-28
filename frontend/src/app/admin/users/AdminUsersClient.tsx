@@ -25,6 +25,7 @@ type User = {
   email: string;
   balance: number;
   pendingBalance: number;
+  gameCoinsBalance?: number;
   plan: string;
   role: string;
   frozen: boolean;
@@ -323,6 +324,8 @@ function UserDrawer({
   const [tab, setTab] = useState<"overview" | "claims" | "withdrawals">("overview");
   const [balanceAmount, setBalanceAmount] = useState("");
   const [balanceReason, setBalanceReason] = useState("");
+  const [coinsAmount, setCoinsAmount] = useState("");
+  const [coinsReason, setCoinsReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -347,6 +350,17 @@ function UserDrawer({
     await handleAction({ balanceAdjustment: n, balanceReason });
     setBalanceAmount("");
     setBalanceReason("");
+  }
+
+  async function applyCoins() {
+    const n = parseInt(coinsAmount, 10);
+    if (!Number.isFinite(n) || n === 0) {
+      setMsg("Enter a non-zero whole number of coins.");
+      return;
+    }
+    await handleAction({ gameCoinsAdjustment: n, gameCoinsReason: coinsReason });
+    setCoinsAmount("");
+    setCoinsReason("");
   }
 
   return (
@@ -458,9 +472,15 @@ function UserDrawer({
 
             {tab === "overview" && (
               <div className="flex flex-col gap-5 px-5 py-5">
-                {/* Balance adjustment */}
+                {/* Cash balance adjustment */}
                 <section>
-                  <h3 className="text-sm font-semibold mb-3">Adjust balance</h3>
+                  <h3 className="text-sm font-semibold mb-1">Adjust cash balance</h3>
+                  <p className="text-xs mb-3" style={{ color: "var(--text-subtle)" }}>
+                    Current: <span className="font-mono font-semibold">₱{(u.balance ?? 0).toFixed(2)}</span>
+                    {typeof u.pendingBalance === "number" && (
+                      <> · Pending: <span className="font-mono">₱{u.pendingBalance.toFixed(2)}</span></>
+                    )}
+                  </p>
                   <div className="flex gap-2 mb-2">
                     <input
                       type="number"
@@ -484,6 +504,39 @@ function UserDrawer({
                     className="input w-full text-sm"
                     value={balanceReason}
                     onChange={(e) => setBalanceReason(e.target.value)}
+                  />
+                </section>
+
+                {/* Game coins adjustment */}
+                <section>
+                  <h3 className="text-sm font-semibold mb-1">Adjust game coins</h3>
+                  <p className="text-xs mb-3" style={{ color: "var(--text-subtle)" }}>
+                    Current: <span className="font-mono font-semibold">{(u.gameCoinsBalance ?? 0).toLocaleString()} coins</span>
+                    {" · "}Used to redeem rewards in-app.
+                  </p>
+                  <div className="flex gap-2 mb-2">
+                    <input
+                      type="number"
+                      step="1"
+                      placeholder="Coins (+ add, − deduct)"
+                      className="input flex-1"
+                      value={coinsAmount}
+                      onChange={(e) => setCoinsAmount(e.target.value)}
+                    />
+                    <button
+                      onClick={applyCoins}
+                      disabled={saving}
+                      className="btn btn-primary btn-sm"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Reason (optional, recorded in audit log)"
+                    className="input w-full text-sm"
+                    value={coinsReason}
+                    onChange={(e) => setCoinsReason(e.target.value)}
                   />
                 </section>
 
