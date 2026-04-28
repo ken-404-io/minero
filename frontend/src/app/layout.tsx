@@ -80,10 +80,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <CookieConsent />
         <Script
           id="monetag-ad"
+          src="https://ueuee.com/tag.min.js"
+          data-zone="10936404"
           strategy="afterInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `(function(s){s.dataset.zone='10936404',s.src='https://ueuee.com/tag.min.js'})([document.documentElement,document.body].filter(Boolean).pop().appendChild(document.createElement('script')))`,
-          }}
         />
       </body>
     </html>
