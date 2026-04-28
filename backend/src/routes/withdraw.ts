@@ -7,6 +7,7 @@ import { verifyOtp } from "../lib/otp.js";
 import { rateLimit } from "../lib/rateLimit.js";
 import { withdrawalSubmittedHtml } from "../lib/email.js";
 import { enqueue, QUEUE_EMAIL } from "../lib/queue.js";
+import { createNotification } from "../lib/notifications.js";
 
 export const withdrawRoutes = new Hono();
 
@@ -80,6 +81,14 @@ withdrawRoutes.post("/", async (c) => {
     to: user.email,
     subject: "Withdrawal Request Received — Minero",
     html: withdrawalSubmittedHtml({ name: user.name, amount, method }),
+  });
+
+  await createNotification({
+    userId: user.id,
+    type: "withdrawal_submitted",
+    title: "Withdrawal request received",
+    body: `Your ₱${amount.toFixed(2)} withdrawal to ${method.toUpperCase()} is pending review.`,
+    link: "/withdraw",
   });
 
   return c.json({ ok: true });

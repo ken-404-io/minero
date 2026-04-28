@@ -53,6 +53,7 @@ model User {
   refreshTokens    RefreshToken[]
   adImpressions    AdImpression[]
   gameSessions     GameSession[]
+  notifications    Notification[]
 }
 
 model Earning {
@@ -246,4 +247,25 @@ model PlatformConfig {
   value     String   // JSON-encoded
   updatedAt DateTime @updatedAt
   updatedBy String?
+}
+
+/// In-app notifications shown in the bell dropdown.
+/// type drives the icon/color in the UI. link is an optional in-app
+/// destination (e.g. "/withdraw") the notification deep-links to when
+/// clicked. createdBy identifies the admin user for "admin" broadcasts.
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String    // "mining_ready" | "withdrawal_submitted" | "withdrawal_approved" | "withdrawal_rejected" | "admin"
+  title     String
+  body      String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  createdBy String?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
 }

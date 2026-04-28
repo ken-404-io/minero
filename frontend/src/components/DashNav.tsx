@@ -17,10 +17,10 @@ import {
   IconUser,
   IconSparkles,
   IconTrophy,
-  IconBell,
   IconCoin,
 } from "@/components/icons";
 import GameNavIcon from "@/components/GameNavIcon";
+import NotificationBell from "@/components/NotificationBell";
 
 type NavItem = {
   href: string;
@@ -126,10 +126,7 @@ export default function DashNav({ name, role, plan }: { name: string; role: stri
             <IconCoin size={14} style={{ color: "var(--brand)" }} />
             <span className="font-semibold tabular-nums">{coins.toLocaleString()}</span>
           </Link>
-          <button className="mobile-topbar-bell" aria-label="Notifications">
-            <IconBell size={20} />
-            <span className="mobile-topbar-bell-dot" aria-hidden />
-          </button>
+          <NotificationBell variant="mobile" />
         </div>
       </header>
 
@@ -215,6 +212,7 @@ export default function DashNav({ name, role, plan }: { name: string; role: stri
               {role === "admin" ? "Administrator" : plan === "paid" ? "Ad-Free" : "Member"}
             </div>
           </div>
+          <NotificationBell variant="desktop" />
           <button
             onClick={logout}
             aria-label="Sign out"

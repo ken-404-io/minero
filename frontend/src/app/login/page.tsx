@@ -23,6 +23,12 @@ function humanizeOAuthError(code: string | null): string | null {
   if (code === "state_mismatch") return "Sign-in was interrupted. Please try again.";
   if (code === "account_suspended") return "Your account is suspended.";
   if (code === "bad_callback") return "Sign-in failed. Please try again.";
+  if (code === "device_in_use") {
+    return "An account already exists on this device. Please sign in to your existing account, or contact support if you believe this is a mistake.";
+  }
+  if (code === "device_required") {
+    return "Your browser blocks the security check we use to prevent duplicate accounts. Disable strict tracking protection (or try a different browser) and retry.";
+  }
   if (code.startsWith("email_uses_")) {
     const other = code.slice("email_uses_".length);
     return `That email already signed in with ${other}. Use ${other} to continue.`;

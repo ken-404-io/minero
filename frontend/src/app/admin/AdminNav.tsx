@@ -14,6 +14,7 @@ import {
   IconBoltSmall,
   IconCoins,
   IconFlag,
+  IconBell,
 } from "@/components/icons";
 
 const LINKS = [
@@ -22,6 +23,7 @@ const LINKS = [
   { href: "/admin/withdrawals", label: "Withdrawals", Icon: IconWallet },
   { href: "/admin/payments",    label: "Payments",    Icon: IconCoins },
   { href: "/admin/alerts",      label: "Fraud alerts", Icon: IconWarning },
+  { href: "/admin/notifications", label: "Notify",   Icon: IconBell },
   { href: "/admin/rates",       label: "Rates",       Icon: IconBoltSmall },
   { href: "/admin/site",        label: "Site",        Icon: IconFlag },
 ];
