@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -18,6 +19,7 @@ import {
   IconClock,
   IconSparkles,
   IconArrowRight,
+  IconArrowLeft,
   IconCoin,
 } from "@/components/icons";
 import {
@@ -868,6 +870,9 @@ function DoneView({
               <kbd>Enter</kbd>
             </span>
           </button>
+          <Link href="/game" className="btn btn-secondary btn-lg">
+            <IconArrowLeft size={18} /> Quit Game
+          </Link>
         </div>
       </section>
     </div>
