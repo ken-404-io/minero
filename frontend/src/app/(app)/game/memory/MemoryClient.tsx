@@ -76,29 +76,19 @@ const DIFFICULTIES: Record<Difficulty, DifficultySpec> = {
 
 // Coins credited per matched pair (real-time, banked to the user's
 // balance immediately so quitting mid-game doesn't lose progress). The
-// score-based finish at end-of-game adds a speed bonus on top.
+// end-of-game total = pairs × this value, so the displayed reward
+// always matches what the user actually banked. No score-based finish
+// bonus on top — finish just closes the session.
 const COINS_PER_PAIR_BY_DIFF: Record<Difficulty, number> = {
-  easy: 5,
-  medium: 8,
-  hard: 12,
+  easy: 8,
+  medium: 12,
+  hard: 16,
 };
 
 const FLIP_BACK_MS = 900;
 const SCORE_BASE = 1000;
 const SCORE_MOVE_PENALTY = 8;
 const SCORE_TIME_PENALTY = 2;
-
-// Mirrors the backend scoreToCoins formula for memory
-const MEMORY_COINS_PER_SCORE = 0.3;
-const MEMORY_MAX_SCORE = 1_000;
-const MEMORY_MAX_COINS_SESSION = 300;
-
-function previewCoins(score: number): number {
-  return Math.min(
-    Math.floor(Math.min(score, MEMORY_MAX_SCORE) * MEMORY_COINS_PER_SCORE),
-    MEMORY_MAX_COINS_SESSION,
-  );
-}
 
 type IconComp = (p: SVGProps<SVGSVGElement> & { size?: number }) => React.ReactNode;
 
@@ -305,6 +295,7 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [now, setNow] = useState<number>(() => Date.now());
   const [finalScore, setFinalScore] = useState<number>(0);
+  const [finalCoinsServer, setFinalCoinsServer] = useState<number | null>(null);
   const [finalElapsedMs, setFinalElapsedMs] = useState<number>(0);
   const [hydrated, setHydrated] = useState(false);
 
@@ -397,11 +388,12 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
       if (sessionIdRef.current) {
         const sid = sessionIdRef.current;
         sessionIdRef.current = null;
-        finishGameSession(sid, score).then((r) => {
-          // Server is the source of truth for the per-pair credits + the
-          // score-based finish bonus. Update local stats with the actual
-          // total so the page's "Total coins" KPI matches the navbar.
+        // Pass score=0 so the backend doesn't compute a separate score-
+        // based bonus on top of per-pair credits — the displayed total
+        // then equals exactly (pairs × COINS_PER_PAIR_BY_DIFF[difficulty]).
+        finishGameSession(sid, 0).then((r) => {
           const credited = r.ok ? r.coinsEarned : previewRef.current;
+          setFinalCoinsServer(credited);
           writeStats({
             ...prev,
             totalCoins: prev.totalCoins + credited,
@@ -411,7 +403,9 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
           else emitBalanceChange();
         });
       } else {
-        // No active session — only the local score is recorded.
+        // No active session — fall back to whatever per-pair credits we
+        // managed to send (likely 0 if start failed).
+        setFinalCoinsServer(previewRef.current);
         writeStats({
           ...prev,
           totalCoins: prev.totalCoins + previewRef.current,
@@ -571,7 +565,11 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
 
   const currentDiffStats = stats[difficulty];
   const firstName = playerName?.split(/\s+/)[0] || "Miner";
-  const finalCoins = previewCoins(finalScore);
+  // Display the server-credited total (= per-pair × matched pairs) so the
+  // "Total coins" shown on the win screen matches what actually hit the
+  // user's balance. Falls back to per-pair sum while the finish call is
+  // in flight.
+  const finalCoins = finalCoinsServer ?? previewRef.current;
 
   const boardDisabled =
     locked ||

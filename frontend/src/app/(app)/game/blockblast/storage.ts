@@ -16,7 +16,10 @@ export const EMPTY_STATS: Stats = {
 
 export const STORAGE_KEY = "minero_blockblast_stats_v1";
 export const DAILY_KEY = "minero_blockblast_daily_v1";
-export const MAX_DAILY_PLAYS = 20;
+// Block Blast is unlimited play. The server still enforces a per-day
+// coin cap (see backend/src/lib/games.ts), so users can't farm beyond
+// the economic limit, but the game-count gate has been removed.
+export const MAX_DAILY_PLAYS = Number.POSITIVE_INFINITY;
 
 export function loadStats(): Stats {
   try {

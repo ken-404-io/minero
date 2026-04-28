@@ -1,9 +1,13 @@
 // Display-side mirror of backend/src/lib/config.ts. Keep in sync when plan
 // rates, intervals, or caps change.
 
+// Single plan tier — the paid "ad-free" upsell was retired. Existing
+// users with plan="paid" still exist in the DB and are mapped to the
+// same display as everyone else; only the legacy ad-suppression behavior
+// for those accounts remains.
 export const PLANS = {
-  free: { label: "Free (with ads)", ratePerClaim: 0.02, dailyCap: 5.0, price: 0  },
-  paid: { label: "Ad-Free",         ratePerClaim: 0.02, dailyCap: 5.0, price: 49 },
+  free: { label: "Member", ratePerClaim: 0.02, dailyCap: 5.0, price: 0 },
+  paid: { label: "Member", ratePerClaim: 0.02, dailyCap: 5.0, price: 0 },
 } as const;
 
 export type PlanKey = keyof typeof PLANS;

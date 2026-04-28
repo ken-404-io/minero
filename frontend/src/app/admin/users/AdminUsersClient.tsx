@@ -487,23 +487,6 @@ function UserDrawer({
                   />
                 </section>
 
-                {/* Plan override */}
-                <section>
-                  <h3 className="text-sm font-semibold mb-3">Plan</h3>
-                  <div className="flex gap-2">
-                    {(["free", "paid"] as const).map((p) => (
-                      <button
-                        key={p}
-                        disabled={saving || u.plan === p}
-                        onClick={() => handleAction({ plan: p })}
-                        className={`btn btn-sm ${u.plan === p ? "btn-primary" : "btn-secondary"}`}
-                      >
-                        {p === "free" ? "Free (with ads)" : "Paid (ad-free)"}
-                      </button>
-                    ))}
-                  </div>
-                </section>
-
                 {/* Role */}
                 <section>
                   <h3 className="text-sm font-semibold mb-3">Role</h3>

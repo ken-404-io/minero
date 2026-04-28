@@ -3,9 +3,13 @@ import { prisma } from "./db.js";
 // Hard-coded fallback defaults. Live values can override via the
 // PlatformConfig table and be adjusted from /admin/rates without redeploy.
 
+// Single plan tier — the paid "ad-free" upsell was retired. Both keys
+// resolve to the same caps + neutral display name; existing rows in
+// User.plan with value "paid" keep their pre-existing ad suppression
+// (handled by AdBanner gating on plan), but no new upgrades are sold.
 export const DEFAULT_PLANS = {
-  free: { label: "Free (with ads)", ratePerClaim: 0.02, dailyCap: 5.0, price: 0  },
-  paid: { label: "Ad-Free",         ratePerClaim: 0.02, dailyCap: 5.0, price: 49 },
+  free: { label: "Member", ratePerClaim: 0.02, dailyCap: 5.0, price: 0 },
+  paid: { label: "Member", ratePerClaim: 0.02, dailyCap: 5.0, price: 0 },
 } as const;
 
 export type PlanKey = keyof typeof DEFAULT_PLANS;
@@ -61,6 +65,13 @@ async function loadAll(): Promise<typeof DEFAULTS> {
     const plansRaw = map.get(KEYS.plans);
     if (plansRaw) parsed.plans = JSON.parse(plansRaw) as PlanConfigMap;
   } catch { /* fall back to defaults on malformed JSON */ }
+
+  // Normalize plan labels to the post-tier display ("Member"). Older
+  // deployments may still have "Free (with ads)" / "Ad-Free" persisted
+  // in PlatformConfig from before the upsell was retired.
+  for (const k of Object.keys(parsed.plans) as PlanKey[]) {
+    parsed.plans[k] = { ...parsed.plans[k], label: "Member" };
+  }
 
   const num = (k: string) => {
     const v = map.get(k);
