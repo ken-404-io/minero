@@ -31,12 +31,15 @@ export type GameRewardConfig = {
 
 export const GAME_CONFIG: Record<GameKey, GameRewardConfig> = {
   trivia: {
-    maxCoinsPerSession: 500,
+    // 2× the previous reward (coinsPerScore went 0.5 → 1.0). Per-session
+    // and per-day caps bumped proportionally so a high-streak round
+    // isn't silently clipped.
+    maxCoinsPerSession: 1_000,
     minDurationMs: 15_000,
-    dailyCoinCap: 3_000,
+    dailyCoinCap: 6_000,
     cooldownMs: 30_000,
     maxScore: 1_000,
-    coinsPerScore: 0.5,
+    coinsPerScore: 1.0,
   },
   spin: {
     // One spin per 24h. Prize is server-rolled, so score is ignored.
