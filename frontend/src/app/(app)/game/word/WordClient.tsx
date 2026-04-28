@@ -22,6 +22,7 @@ import {
   utcDayIndex,
 } from "./words";
 import {
+  creditGameSession,
   emitBalanceChange,
   finishGameSession,
   startGameSession,
@@ -35,9 +36,16 @@ import {
    here are display-only above the daily cap.
    ============================================================ */
 
-const COINS_PER_PUZZLE_WORD = 30;
-const COINS_PER_BONUS_WORD = 10;
+// Coin awards now scale with word length: 10 coins per letter for both
+// puzzle and bonus words. A 3-letter word ("cat") = 30 coins, 5-letter
+// ("plane") = 50, etc. Coins are credited to the user's balance in real
+// time (per word found) via /game/session/credit, so progress isn't lost
+// if the player quits before clearing every level.
+const COINS_PER_LETTER = 10;
 const COINS_FULL_CLEAR_BONUS = 100;
+function coinsFor(word: string): number {
+  return word.length * COINS_PER_LETTER;
+}
 
 const STATS_KEY = "minero_word_stats_v1";
 // v2: starting puzzle no longer rotates by day — old persisted "found"
@@ -934,6 +942,7 @@ export default function WordClient({ playerName }: { playerName: string }) {
   const tileRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const sessionIdRef = useRef<string | null>(null);
   const sessionStartedRef = useRef(false);
+  const sessionStartPromiseRef = useRef<Promise<string | null> | null>(null);
   const finalizedRef = useRef<boolean>(initialProgress.finalized);
 
   /** Word currently traced on the wheel (derived from selection indices). */
@@ -1038,11 +1047,21 @@ export default function WordClient({ playerName }: { playerName: string }) {
     }
 
     // Lazy-start the server session on the first valid attempt today.
-    if (!sessionStartedRef.current && !finalizedRef.current) {
+    // Use a ref-stored promise so concurrent finds wait for the same start.
+    function ensureSession(): Promise<string | null> {
+      if (sessionIdRef.current) return Promise.resolve(sessionIdRef.current);
+      if (sessionStartPromiseRef.current) return sessionStartPromiseRef.current;
+      if (finalizedRef.current) return Promise.resolve(null);
       sessionStartedRef.current = true;
-      startGameSession("word").then((r) => {
-        if (r.ok) sessionIdRef.current = r.sessionId;
+      const p = startGameSession("word").then((r) => {
+        if (r.ok) {
+          sessionIdRef.current = r.sessionId;
+          return r.sessionId;
+        }
+        return null;
       });
+      sessionStartPromiseRef.current = p;
+      return p;
     }
 
     const wordIdx = isPuzzleWord(puzzle, word);
@@ -1057,7 +1076,15 @@ export default function WordClient({ playerName }: { playerName: string }) {
         return next;
       });
       triggerFlight(wordIdx, sel);
-      flashMsg("found", word, COINS_PER_PUZZLE_WORD);
+      const award = coinsFor(word);
+      flashMsg("found", word, award);
+      // Real-time credit so the user's balance goes up as soon as the
+      // word is found, not at end-of-puzzle. If the credit is clipped by
+      // the daily cap, the server returns the actually-credited amount
+      // and emits the new balance for the navbar.
+      void ensureSession().then((sid) => {
+        if (sid) void creditGameSession(sid, award);
+      });
       return;
     }
 
@@ -1071,7 +1098,11 @@ export default function WordClient({ playerName }: { playerName: string }) {
         next.add(word);
         return next;
       });
-      flashMsg("bonus", word, COINS_PER_BONUS_WORD);
+      const award = coinsFor(word);
+      flashMsg("bonus", word, award);
+      void ensureSession().then((sid) => {
+        if (sid) void creditGameSession(sid, award);
+      });
       return;
     }
 
@@ -1107,9 +1138,13 @@ export default function WordClient({ playerName }: { playerName: string }) {
   }, [flash]);
 
   const allFound = foundWords.size === puzzle.words.length;
+  // Sum word lengths × per-letter rate. This mirrors what was credited
+  // in real time as each word was found (plus the full-clear bonus).
+  const sumLetters = (set: Set<string>) =>
+    Array.from(set).reduce((s, w) => s + w.length, 0);
   const totalScoreToday =
-    foundWords.size * COINS_PER_PUZZLE_WORD +
-    foundBonus.size * COINS_PER_BONUS_WORD +
+    sumLetters(foundWords) * COINS_PER_LETTER +
+    sumLetters(foundBonus) * COINS_PER_LETTER +
     (allFound ? COINS_FULL_CLEAR_BONUS : 0);
 
   // Server finalize fires once the player clears every grid word for the day.
@@ -1131,12 +1166,23 @@ export default function WordClient({ playerName }: { playerName: string }) {
         lastPlayedDay: today.dayIndex,
         lastResult: solved ? "solved" : "partial",
       });
-      if (sessionIdRef.current) {
-        const sid = sessionIdRef.current;
-        sessionIdRef.current = null;
-        finishGameSession(sid, score).then((r) => {
-          if (r.ok) emitBalanceChange();
-        });
+      // Credit the full-clear bonus separately (per-word coins were
+      // already credited as the user found them, so /finish would
+      // not re-credit anything for those — it just closes the session).
+      const sid = sessionIdRef.current;
+      sessionIdRef.current = null;
+      if (sid) {
+        if (solved && COINS_FULL_CLEAR_BONUS > 0) {
+          void creditGameSession(sid, COINS_FULL_CLEAR_BONUS).then(() => {
+            void finishGameSession(sid, score).then((r) => {
+              if (r.ok) emitBalanceChange();
+            });
+          });
+        } else {
+          void finishGameSession(sid, score).then((r) => {
+            if (r.ok) emitBalanceChange();
+          });
+        }
       }
     },
     [totalScoreToday, today.dayIndex],
@@ -1412,14 +1458,21 @@ export default function WordClient({ playerName }: { playerName: string }) {
       ))}
 
       <style>{`
-        /* On phones, take over the full viewport so the mobile topbar,
-           ad banner, and bottom nav don't squeeze the game vertically.
+        /* On phones, take over most of the viewport so the ad banner and
+           bottom nav don't squeeze the game vertically — but leave the
+           60px mobile topbar visible at the top so the user can see
+           their coin balance and notification bell while playing.
            On desktop (lg+) the side nav stays visible and the game uses
            normal flow inside main. */
         @media (max-width: 1023px) {
           .word-game-root {
             position: fixed !important;
-            inset: 0 !important;
+            top: 60px !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            height: auto !important;
+            max-height: none !important;
             z-index: 40;
             padding-top: env(safe-area-inset-top, 0px);
           }
@@ -1525,8 +1578,7 @@ const hudButtonStyle: React.CSSProperties = {
 export type { Phase, Flash, Flight, Progress };
 export {
   COINS_FULL_CLEAR_BONUS,
-  COINS_PER_BONUS_WORD,
-  COINS_PER_PUZZLE_WORD,
+  COINS_PER_LETTER,
   EMPTY_STATS,
   PROGRESS_KEY,
   STATS_KEY,
