@@ -111,6 +111,11 @@ app.get("/config", async (c) => {
     plans: cfg.plans,
     claimIntervalMs: cfg.claimIntervalMs,
     withdrawalMinimum: cfg.withdrawalMinimum,
+    // Toggleable feature gates — exposed so the dashboard / withdraw
+    // page can show a clear disabled state instead of letting users
+    // click a button that errors server-side.
+    claimsEnabled: cfg.claimsEnabled,
+    withdrawalsEnabled: cfg.withdrawalsEnabled,
   });
 });
 

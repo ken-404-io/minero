@@ -20,7 +20,12 @@ type WithdrawalsResp = {
   withdrawals: Withdrawal[];
 };
 
-type PublicConfig = { plans: Record<string, unknown>; claimIntervalMs: number; withdrawalMinimum: number };
+type PublicConfig = {
+  plans: Record<string, unknown>;
+  claimIntervalMs: number;
+  withdrawalMinimum: number;
+  withdrawalsEnabled?: boolean;
+};
 
 export default async function WithdrawPage() {
   const [me, data, configData] = await Promise.all([
@@ -37,6 +42,7 @@ export default async function WithdrawPage() {
       pendingBalance={me.user.pendingBalance}
       withdrawals={data?.withdrawals ?? []}
       minimum={configData?.withdrawalMinimum ?? 300}
+      withdrawalsEnabled={configData?.withdrawalsEnabled ?? true}
     />
   );
 }
