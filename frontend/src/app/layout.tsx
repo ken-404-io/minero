@@ -84,6 +84,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           data-zone="10936404"
           strategy="afterInteractive"
         />
+        <Script
+          id="monetag-ad-2"
+          src="https://5gvci.com/act/files/tag.min.js?z=10936442"
+          data-cfasync="false"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );
