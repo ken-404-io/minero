@@ -9,6 +9,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { SVGProps } from "react";
+import { useRouter } from "next/navigation";
 import {
   IconArrowRight,
   IconBrain,
@@ -41,6 +42,7 @@ import {
   startGameSession,
   finishGameSession,
   emitBalanceChange,
+  getGameBalance,
 } from "@/lib/game-session";
 
 /* ============================================================
@@ -75,6 +77,18 @@ const FLIP_BACK_MS = 900;
 const SCORE_BASE = 1000;
 const SCORE_MOVE_PENALTY = 8;
 const SCORE_TIME_PENALTY = 2;
+
+// Mirrors the backend scoreToCoins formula for memory
+const MEMORY_COINS_PER_SCORE = 0.3;
+const MEMORY_MAX_SCORE = 1_000;
+const MEMORY_MAX_COINS_SESSION = 300;
+
+function previewCoins(score: number): number {
+  return Math.min(
+    Math.floor(Math.min(score, MEMORY_MAX_SCORE) * MEMORY_COINS_PER_SCORE),
+    MEMORY_MAX_COINS_SESSION,
+  );
+}
 
 type IconComp = (p: SVGProps<SVGSVGElement> & { size?: number }) => React.ReactNode;
 
@@ -260,9 +274,12 @@ function computeScore(diff: DifficultySpec, moves: number, elapsedMs: number) {
    Main client
    ============================================================ */
 
-type Status = "idle" | "playing" | "won";
+type Status = "idle" | "playing" | "won" | "replay-reveal" | "replay-flipback" | "scatter";
+
+type CoinPopData = { id: number; amount: number };
 
 export default function MemoryClient({ playerName }: { playerName: string }) {
+  const router = useRouter();
   const stats = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
@@ -283,6 +300,12 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
 
   const sessionIdRef = useRef<string | null>(null);
   const flipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const baseBalanceRef = useRef<number>(0);
+  const previewRef = useRef<number>(0); // cumulative provisional coins emitted
+
+  const [scorePops, setScorePops] = useState<CoinPopData[]>([]);
+  const popIdRef = useRef<number>(0);
+  const [scatterMap, setScatterMap] = useState<Map<number, string>>(new Map());
 
   const clearFlipTimer = useCallback(() => {
     if (flipTimer.current) {
@@ -304,6 +327,8 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
     (targetDiff: Difficulty) => {
       clearFlipTimer();
       sessionIdRef.current = null;
+      baseBalanceRef.current = 0;
+      previewRef.current = 0;
       const next = DIFFICULTIES[targetDiff];
       setDifficulty(targetDiff);
       setCards(buildDeck(next.pairs));
@@ -316,6 +341,8 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
       setStatus("idle");
       setFinalScore(0);
       setFinalElapsedMs(0);
+      setScorePops([]);
+      setScatterMap(new Map());
     },
     [clearFlipTimer],
   );
@@ -357,14 +384,10 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
       if (sessionIdRef.current) {
         const sid = sessionIdRef.current;
         sessionIdRef.current = null;
-        // finishGameSession internally emits the server-confirmed balance on
-        // success. On failure we still force a refresh so the nav stays in sync.
         finishGameSession(sid, score).then((r) => {
           if (!r.ok) emitBalanceChange();
         });
       } else {
-        // No session was started (e.g., cooldown or network failure during
-        // session start) — refresh the nav so it shows the current real balance.
         emitBalanceChange();
       }
     },
@@ -373,7 +396,14 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
 
   const handlePick = useCallback(
     (cardId: number) => {
-      if (locked || status === "won") return;
+      if (
+        locked ||
+        status === "won" ||
+        status === "replay-reveal" ||
+        status === "replay-flipback" ||
+        status === "scatter"
+      )
+        return;
       const card = cards.find((c) => c.id === cardId);
       if (!card || card.flipped || card.matched) return;
 
@@ -382,9 +412,12 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
         setStartedAt(Date.now());
         setNow(Date.now());
         setStatus("playing");
-        startGameSession("memory").then((r) => {
-          if (r.ok) sessionIdRef.current = r.sessionId;
-        });
+        Promise.all([startGameSession("memory"), getGameBalance()]).then(
+          ([sessionResult, balResult]) => {
+            if (sessionResult.ok) sessionIdRef.current = sessionResult.sessionId;
+            baseBalanceRef.current = balResult?.balance ?? 0;
+          },
+        );
       }
 
       // Reveal the card.
@@ -419,8 +452,23 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
         setSecondPick(null);
         setLocked(false);
 
+        // Provisional live coin update for this match.
+        const elapsed = Date.now() - (startedAt ?? Date.now());
+        const newScore = computeScore(spec, nextMoves, elapsed);
+        const newPreview = previewCoins(newScore);
+        const delta = Math.max(0, newPreview - previewRef.current);
+        previewRef.current = newPreview;
+        emitBalanceChange(baseBalanceRef.current + newPreview);
+
+        if (delta > 0) {
+          const popId = ++popIdRef.current;
+          setScorePops((prev) => [...prev, { id: popId, amount: delta }]);
+          setTimeout(() => {
+            setScorePops((prev) => prev.filter((p) => p.id !== popId));
+          }, 1200);
+        }
+
         if (nextMatches >= spec.pairs) {
-          const elapsed = Date.now() - (startedAt ?? Date.now());
           finishGame(elapsed, nextMoves);
         }
         return;
@@ -443,10 +491,37 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
     [cards, firstPick, secondPick, locked, moves, matchesDone, spec, startedAt, status, finishGame],
   );
 
+  const handlePlayAgain = useCallback(() => {
+    // Phase 1: reveal all cards face-up with icons (not checkmarks).
+    setCards((prev) => prev.map((c) => ({ ...c, flipped: true, matched: false })));
+    setStatus("replay-reveal");
+    setTimeout(() => {
+      // Phase 2: flip all face-down.
+      setCards((prev) => prev.map((c) => ({ ...c, flipped: false })));
+      setStatus("replay-flipback");
+      setTimeout(() => {
+        resetBoard(difficulty);
+      }, 700);
+    }, 700);
+  }, [difficulty, resetBoard]);
+
+  const handleQuit = useCallback(() => {
+    const map = new Map<number, string>();
+    cards.forEach((card) => {
+      const dx = (Math.random() - 0.5) * 900;
+      const dy = (Math.random() - 0.5) * 700;
+      const rot = (Math.random() - 0.5) * 300;
+      map.set(card.id, `translate(${dx}px, ${dy}px) rotate(${rot}deg)`);
+    });
+    setScatterMap(map);
+    setStatus("scatter");
+    setTimeout(() => router.push("/game"), 600);
+  }, [cards, router]);
+
   const replay = () => resetBoard(difficulty);
 
   const elapsedMs =
-    status === "won"
+    status === "won" || status === "replay-reveal" || status === "replay-flipback"
       ? finalElapsedMs
       : startedAt
         ? now - startedAt
@@ -454,9 +529,26 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
 
   const currentDiffStats = stats[difficulty];
   const firstName = playerName?.split(/\s+/)[0] || "Miner";
+  const finalCoins = previewCoins(finalScore);
+
+  const boardDisabled =
+    locked ||
+    status === "won" ||
+    status === "replay-reveal" ||
+    status === "replay-flipback" ||
+    status === "scatter";
 
   return (
     <div className="mx-auto max-w-[980px] px-4 py-6 lg:px-8 lg:py-8">
+      {/* Inject keyframe for coin pop animation */}
+      <style>{`
+        @keyframes memCoinPop {
+          0%   { opacity: 1; transform: translate(-50%, 0px) scale(1); }
+          60%  { opacity: 1; transform: translate(-50%, -45px) scale(1.1); }
+          100% { opacity: 0; transform: translate(-50%, -80px) scale(0.9); }
+        }
+      `}</style>
+
       <header className="mb-5 lg:mb-7">
         <span className="section-title">Play</span>
         <h1 className="text-2xl lg:text-3xl font-bold tracking-tight mt-1">
@@ -548,25 +640,33 @@ export default function MemoryClient({ playerName }: { playerName: string }) {
         </div>
       </div>
 
-      {/* Win banner */}
+      {/* Game-over overlay */}
       {status === "won" && (
-        <WinBanner
+        <GameOverOverlay
           score={finalScore}
+          coins={finalCoins}
           moves={moves}
           elapsedMs={finalElapsedMs}
           firstName={firstName}
-          onReplay={replay}
+          onPlayAgain={handlePlayAgain}
+          onQuit={handleQuit}
         />
       )}
 
-      {/* Board */}
-      <Board
-        cards={cards}
-        cols={spec.cols}
-        rows={spec.rows}
-        disabled={locked || status === "won"}
-        onPick={handlePick}
-      />
+      {/* Board with coin pop overlay */}
+      <div className="relative">
+        {scorePops.map((pop) => (
+          <CoinPop key={pop.id} amount={pop.amount} />
+        ))}
+        <Board
+          cards={cards}
+          cols={spec.cols}
+          rows={spec.rows}
+          disabled={boardDisabled}
+          onPick={handlePick}
+          scatterMap={scatterMap}
+        />
+      </div>
 
       {/* Footer actions */}
       <div className="mt-5 flex items-center justify-between text-xs" style={{ color: "var(--text-subtle)" }}>
@@ -592,12 +692,14 @@ function Board({
   rows,
   disabled,
   onPick,
+  scatterMap,
 }: {
   cards: Card[];
   cols: number;
   rows: number;
   disabled: boolean;
   onPick: (id: number) => void;
+  scatterMap: Map<number, string>;
 }) {
   const style = useMemo(
     () => ({
@@ -618,12 +720,23 @@ function Board({
     >
       <div style={style} aria-rowcount={rows} aria-colcount={cols}>
         {cards.map((c) => (
-          <CardButton
+          <div
             key={c.id}
-            card={c}
-            disabled={disabled || c.flipped || c.matched}
-            onPick={onPick}
-          />
+            style={{
+              transform: scatterMap.get(c.id) ?? "none",
+              transition: scatterMap.size > 0
+                ? "transform 0.55s cubic-bezier(0.4, 0, 0.8, 0.5)"
+                : undefined,
+              transformOrigin: "center",
+              willChange: scatterMap.size > 0 ? "transform" : undefined,
+            }}
+          >
+            <CardButton
+              card={c}
+              disabled={disabled || c.flipped || c.matched}
+              onPick={onPick}
+            />
+          </div>
         ))}
       </div>
     </div>
@@ -729,57 +842,117 @@ function CardButton({
 }
 
 /* ============================================================
-   Win banner
+   Coin pop animation
    ============================================================ */
 
-function WinBanner({
+function CoinPop({ amount }: { amount: number }) {
+  return (
+    <div
+      aria-hidden
+      style={{
+        position: "absolute",
+        top: "20%",
+        left: "50%",
+        zIndex: 50,
+        pointerEvents: "none",
+        display: "flex",
+        alignItems: "center",
+        gap: "4px",
+        fontWeight: 700,
+        fontSize: "1.05rem",
+        color: "var(--brand)",
+        filter: "drop-shadow(0 1px 4px color-mix(in oklab, var(--brand) 60%, transparent))",
+        animation: "memCoinPop 1.2s ease-out forwards",
+        whiteSpace: "nowrap",
+      }}
+    >
+      <IconCoin size={16} />+{amount}
+    </div>
+  );
+}
+
+/* ============================================================
+   Game-over overlay
+   ============================================================ */
+
+function GameOverOverlay({
   score,
+  coins,
   moves,
   elapsedMs,
   firstName,
-  onReplay,
+  onPlayAgain,
+  onQuit,
 }: {
   score: number;
+  coins: number;
   moves: number;
   elapsedMs: number;
   firstName: string;
-  onReplay: () => void;
+  onPlayAgain: () => void;
+  onQuit: () => void;
 }) {
   return (
     <section
-      className="card mb-5 flex flex-col sm:flex-row items-start sm:items-center gap-4"
+      className="card mb-5"
       style={{
         background:
           "linear-gradient(135deg, color-mix(in oklab, var(--brand-weak) 75%, transparent), var(--surface))",
       }}
     >
-      <span
-        aria-hidden
-        className="inline-flex h-12 w-12 items-center justify-center rounded-full shrink-0"
-        style={{ background: "var(--brand-weak)", color: "var(--brand)" }}
-      >
-        <IconTrophy size={22} />
-      </span>
-      <div className="flex-1 min-w-0">
-        <h2 className="font-semibold text-lg">Nice work, {firstName}!</h2>
-        <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-          Cleared the board in <strong>{moves}</strong> moves ·{" "}
-          <strong>{formatTime(elapsedMs)}</strong>.
-        </p>
-      </div>
-      <div className="flex items-center gap-3">
-        <div className="text-right">
-          <div className="text-xs" style={{ color: "var(--text-subtle)" }}>
-            Coins earned
-          </div>
-          <div
-            className="font-mono font-bold flex items-center gap-1"
-            style={{ fontSize: "var(--fs-24)", color: "var(--brand)" }}
-          >
-            <IconCoin size={18} /> +{score}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+        <span
+          aria-hidden
+          className="inline-flex h-12 w-12 items-center justify-center rounded-full shrink-0"
+          style={{ background: "var(--brand-weak)", color: "var(--brand)" }}
+        >
+          <IconTrophy size={22} />
+        </span>
+
+        <div className="flex-1 min-w-0">
+          <h2 className="font-semibold text-lg">Nice work, {firstName}!</h2>
+          <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
+            Cleared in <strong>{moves}</strong> moves · <strong>{formatTime(elapsedMs)}</strong>
+          </p>
+        </div>
+
+        {/* Coins earned (primary) */}
+        <div
+          className="flex items-center gap-2 rounded-lg px-4 py-2.5 shrink-0"
+          style={{
+            background: "var(--brand-weak)",
+            border: "1px solid color-mix(in oklab, var(--brand) 35%, transparent)",
+          }}
+        >
+          <IconCoin size={20} style={{ color: "var(--brand)" }} />
+          <div>
+            <div className="text-xs" style={{ color: "var(--text-subtle)" }}>
+              You got
+            </div>
+            <div
+              className="font-mono font-bold leading-tight"
+              style={{ fontSize: "var(--fs-24)", color: "var(--brand)" }}
+            >
+              {coins} total coins
+            </div>
           </div>
         </div>
-        <button onClick={onReplay} className="btn btn-primary">
+      </div>
+
+      {/* Actions */}
+      <div className="mt-4 flex items-center gap-3 justify-end">
+        <button
+          type="button"
+          onClick={onQuit}
+          className="btn btn-ghost btn-sm"
+        >
+          Quit game
+        </button>
+        <button
+          type="button"
+          onClick={onPlayAgain}
+          className="btn btn-primary"
+        >
           Play again
           <IconArrowRight size={16} />
         </button>
