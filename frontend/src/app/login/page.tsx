@@ -232,6 +232,11 @@ function LoginInner() {
                 </>
               )}
             </button>
+            <div className="text-right">
+              <Link href="/forgot-password" className="text-xs link-brand">
+                Forgot password?
+              </Link>
+            </div>
           </form>
 
           <div className="mt-5">
