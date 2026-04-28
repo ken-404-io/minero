@@ -945,6 +945,13 @@ export default function WordClient({ playerName }: { playerName: string }) {
   const sessionStartPromiseRef = useRef<Promise<string | null> | null>(null);
   const finalizedRef = useRef<boolean>(initialProgress.finalized);
 
+  // Surface session-start failure (24h cooldown / network) so users
+  // understand why their finds aren't crediting coins this round.
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  // Set true once a credit response comes back capped (daily-coin budget
+  // exhausted). Subsequent finds still register but no more coins.
+  const [coinCapHit, setCoinCapHit] = useState(false);
+
   /** Word currently traced on the wheel (derived from selection indices). */
   const currentWord = useMemo(
     () => selection.map((i) => wheelLetters[i]).join(""),
@@ -1058,10 +1065,20 @@ export default function WordClient({ playerName }: { playerName: string }) {
           sessionIdRef.current = r.sessionId;
           return r.sessionId;
         }
+        // Most common cause: 24h cooldown after the previous daily
+        // puzzle. Surface this so the user knows their finds won't
+        // credit coins this round.
+        setSessionError(r.error || "Couldn't start a scoring session");
         return null;
       });
       sessionStartPromiseRef.current = p;
       return p;
+    }
+
+    function tryCredit(sid: string, amount: number) {
+      void creditGameSession(sid, amount).then((res) => {
+        if (res.ok && res.capped) setCoinCapHit(true);
+      });
     }
 
     const wordIdx = isPuzzleWord(puzzle, word);
@@ -1083,7 +1100,7 @@ export default function WordClient({ playerName }: { playerName: string }) {
       // the daily cap, the server returns the actually-credited amount
       // and emits the new balance for the navbar.
       void ensureSession().then((sid) => {
-        if (sid) void creditGameSession(sid, award);
+        if (sid) tryCredit(sid, award);
       });
       return;
     }
@@ -1101,7 +1118,7 @@ export default function WordClient({ playerName }: { playerName: string }) {
       const award = coinsFor(word);
       flashMsg("bonus", word, award);
       void ensureSession().then((sid) => {
-        if (sid) void creditGameSession(sid, award);
+        if (sid) tryCredit(sid, award);
       });
       return;
     }
@@ -1341,6 +1358,42 @@ export default function WordClient({ playerName }: { playerName: string }) {
       >
         Lvl {level + 1}
       </span>
+
+      {/* Session-state banner: shown when the daily cooldown blocks
+          coin crediting, or when today's coin budget is exhausted. */}
+      {(sessionError || coinCapHit) && (
+        <div
+          role="status"
+          style={{
+            position: "absolute",
+            top: 48,
+            left: 12,
+            right: 12,
+            zIndex: 5,
+            padding: "8px 12px",
+            borderRadius: 10,
+            background: "color-mix(in oklab, var(--warning, #b45309) 18%, var(--surface))",
+            border: "1px solid color-mix(in oklab, var(--warning, #b45309) 35%, transparent)",
+            color: "var(--text)",
+            fontSize: 12,
+            lineHeight: 1.35,
+            textAlign: "center",
+          }}
+        >
+          {sessionError ? (
+            <>
+              <strong>No coins this round.</strong> Today&apos;s puzzle is
+              already finished. Come back tomorrow to earn coins again — you
+              can keep playing for fun.
+            </>
+          ) : (
+            <>
+              <strong>Daily coin cap reached.</strong> Words still count, but
+              no more coins until the cap resets.
+            </>
+          )}
+        </div>
+      )}
 
       {/* Crossword surface ------------------------------------- */}
       <section

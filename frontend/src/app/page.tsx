@@ -13,17 +13,11 @@ import {
 } from "@/components/icons";
 
 type Me = { user: { id: string; name: string; role: string; plan: string } };
-type PublicConfig = { plans: Record<string, { price: number }>; claimIntervalMs: number; withdrawalMinimum: number };
 
 export default async function LandingPage() {
-  const [me, configData] = await Promise.all([
-    apiJson<Me>("/auth/me"),
-    apiJson<PublicConfig>("/config"),
-  ]);
-  const adFreeFeePhp = configData?.plans["paid"]?.price ?? 49;
+  const me = await apiJson<Me>("/auth/me");
   if (me) {
-    if (me.user.role !== "admin" && me.user.plan !== "paid") redirect("/activate");
-    redirect("/dashboard");
+    redirect(me.user.role === "admin" ? "/admin" : "/dashboard");
   }
 
   return (
@@ -51,7 +45,6 @@ export default async function LandingPage() {
 
           <nav className="hidden md:flex items-center gap-1" aria-label="Marketing">
             <a href="#how" className="btn btn-ghost btn-sm">How it works</a>
-            <a href="#pricing" className="btn btn-ghost btn-sm">Pricing</a>
             <a href="#referral" className="btn btn-ghost btn-sm">Referral</a>
           </nav>
 
@@ -209,82 +202,6 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ======================== Pricing ======================== */}
-      <section id="pricing" className="px-4 sm:px-6 py-16 border-t" style={{ borderColor: "var(--border)" }}>
-        <div className="mx-auto max-w-3xl">
-          <div className="mb-8 text-center">
-            <span className="section-title">Pricing</span>
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mt-2">
-              Free to mine. Pay to remove ads.
-            </h2>
-            <p className="mt-2 text-sm" style={{ color: "var(--text-muted)" }}>
-              Mining is free for everyone. Pay once to remove all ads — no subscriptions, no tiers.
-            </p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2 mx-auto max-w-2xl">
-            <div className="card flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold">Free</span>
-                <span className="badge">With ads</span>
-              </div>
-              <div>
-                <div className="text-5xl font-bold">₱0</div>
-                <div className="text-xs mt-1" style={{ color: "var(--text-subtle)" }}>Always free</div>
-              </div>
-              <ul className="space-y-2 text-sm flex-1">
-                <li className="flex items-start gap-2">
-                  <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
-                  <span>Claim every 10 minutes</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
-                  <span>10% referral commission</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
-                  <span>Withdraw once you reach ₱300</span>
-                </li>
-              </ul>
-              <Link href="/register" className="btn btn-secondary btn-lg">
-                Start for free
-              </Link>
-            </div>
-
-            <div className="card flex flex-col gap-4" style={{ borderColor: "var(--brand)" }}>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold">Ad-Free</span>
-                <span className="badge badge-approved">One-time</span>
-              </div>
-              <div>
-                <div className="text-5xl font-bold" style={{ color: "var(--brand)" }}>
-                  ₱{adFreeFeePhp}
-                </div>
-                <div className="text-xs mt-1" style={{ color: "var(--text-subtle)" }}>One-time · lifetime</div>
-              </div>
-              <ul className="space-y-2 text-sm flex-1">
-                <li className="flex items-start gap-2">
-                  <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
-                  <span>Everything in Free</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
-                  <span>No ads, ever</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <IconCheck size={16} style={{ color: "var(--success-fg)" }} className="mt-0.5 shrink-0" />
-                  <span>GCash, Maya, or card (PayMongo)</span>
-                </li>
-              </ul>
-              <Link href="/register" className="btn btn-primary btn-lg">
-                Get started
-                <IconArrowRight size={18} />
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* ======================== Referral ======================== */}
       <section id="referral" className="px-4 sm:px-6 py-16 border-t" style={{ borderColor: "var(--border)" }}>
         <div className="mx-auto max-w-6xl grid gap-10 lg:grid-cols-[1fr_1fr] items-center">
@@ -334,7 +251,7 @@ export default async function LandingPage() {
             <div>
               <div className="font-semibold mb-1">Earnings are not guaranteed</div>
               <div className="text-sm" style={{ color: "var(--warning-fg)", opacity: 0.9 }}>
-                Rewards depend on ad availability and your activity. Plans are one-time and non-refundable.
+                Rewards depend on ad availability and your activity.
                 Read our{" "}
                 <Link href="/disclaimer" className="underline underline-offset-2">earnings disclaimer</Link>{" "}
                 for full terms.

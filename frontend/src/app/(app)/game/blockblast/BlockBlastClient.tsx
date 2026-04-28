@@ -21,13 +21,11 @@ import {
   type Stats,
   type DailyData,
   EMPTY_STATS,
-  MAX_DAILY_PLAYS,
   loadStats,
   saveStats,
   loadDailyData,
   saveDailyData,
   todayStr,
-  hoursUntilReset,
 } from "./storage";
 import { useDrag, type DragState } from "./useDrag";
 
@@ -187,28 +185,20 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
     setStats(loadedStats);
     setDaily(loadedDaily);
 
-    // Auto-start the game on mount so the player lands directly on the board.
-    // Daily plays decrement now (same cost model as the old "Start Game" button).
-    if (MAX_DAILY_PLAYS - loadedDaily.plays > 0) {
-      const newDaily: DailyData = { date: todayStr(), plays: loadedDaily.plays + 1 };
-      setDaily(newDaily);
-      saveDailyData(newDaily);
-      setPieces(threeNew(0));
-      setStatus("playing");
-      sessionIdRef.current = null;
-      void initSession();
-    } else {
-      // No plays left today — go straight to the limit-reached banner.
-      setStatus("over");
-    }
+    // Auto-start the game on mount. Block Blast is unlimited play; the
+    // daily-plays counter is kept for stats but no longer gates the game.
+    const newDaily: DailyData = { date: todayStr(), plays: loadedDaily.plays + 1 };
+    setDaily(newDaily);
+    saveDailyData(newDaily);
+    setPieces(threeNew(0));
+    setStatus("playing");
+    sessionIdRef.current = null;
+    void initSession();
   }, []);
 
-  const playsLeft = MAX_DAILY_PLAYS - daily.plays;
-  const canPlay = playsLeft > 0;
+  const canPlay = true;
 
   function startGame() {
-    if (!canPlay) return;
-
     const newDaily: DailyData = { date: todayStr(), plays: daily.plays + 1 };
     setDaily(newDaily);
     saveDailyData(newDaily);
@@ -935,23 +925,7 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
             <p style={{ fontSize: 14, color: "var(--text-muted)", margin: "8px 0 0" }}>
               Coins <strong style={{ color: "var(--brand)" }}>{score}</strong> · Best <strong>{stats.bestScore}</strong>
             </p>
-            {canPlay ? (
-              <p style={{ fontSize: 12, color: "var(--text-subtle)", margin: "8px 0 0" }}>
-                {playsLeft} of {MAX_DAILY_PLAYS} plays left today
-              </p>
-            ) : (
-              <p
-                style={{
-                  fontSize: 13,
-                  color: "#ef4444",
-                  fontWeight: 600,
-                  margin: "10px 0 0",
-                  animation: "bb-limitblink 1.4s ease-in-out infinite",
-                }}
-              >
-                Daily limit reached — resets in ~{hoursUntilReset()}h
-              </p>
-            )}
+            {/* Block Blast is unlimited — no plays-left counter shown. */}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 18 }}>
               <button

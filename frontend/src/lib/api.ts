@@ -1,5 +1,4 @@
 import { cookies, headers } from "next/headers";
-import { redirect } from "next/navigation";
 
 export function publicApiUrl(): string {
   return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -32,17 +31,6 @@ export async function apiFetch(
     headers: hdrs,
     cache: "no-store",
   });
-
-  // Global paywall redirect: the backend returns 402 with { redirectTo }
-  // for users whose plan !== "paid" on gated routes.
-  if (res.status === 402) {
-    try {
-      const data = (await res.clone().json()) as { redirectTo?: string };
-      redirect(data?.redirectTo ?? "/activate");
-    } catch {
-      redirect("/activate");
-    }
-  }
 
   return res;
 }

@@ -1,5 +1,6 @@
-import SuccessClient from "./SuccessClient";
+import { redirect } from "next/navigation";
 
+// Legacy callback target from the (now retired) paid tier flow.
 export default function ActivateSuccessPage() {
-  return <SuccessClient />;
+  redirect("/dashboard");
 }

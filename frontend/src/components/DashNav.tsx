@@ -15,7 +15,6 @@ import {
   IconGame,
   IconGift,
   IconUser,
-  IconSparkles,
   IconTrophy,
   IconCoin,
 } from "@/components/icons";
@@ -185,19 +184,6 @@ export default function DashNav({ name, role, plan }: { name: string; role: stri
           )}
         </nav>
 
-        {plan !== "paid" && role !== "admin" && (
-          <div className="px-3 pb-3">
-            <Link
-              href="/activate"
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
-              style={{ background: "var(--brand-weak)", color: "var(--brand)" }}
-            >
-              <IconSparkles size={16} />
-              <span>Remove Ads</span>
-            </Link>
-          </div>
-        )}
-
         <div className="p-3 border-t flex items-center gap-3" style={{ borderColor: "var(--border)" }}>
           <div
             aria-hidden
@@ -209,7 +195,7 @@ export default function DashNav({ name, role, plan }: { name: string; role: stri
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium truncate">{name}</div>
             <div className="text-xs" style={{ color: "var(--text-subtle)" }}>
-              {role === "admin" ? "Administrator" : plan === "paid" ? "Ad-Free" : "Member"}
+              {role === "admin" ? "Administrator" : "Member"}
             </div>
           </div>
           <NotificationBell variant="desktop" />

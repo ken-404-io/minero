@@ -65,7 +65,7 @@ export default async function DashboardPage() {
     apiJson<PublicConfig>("/config"),
   ]);
 
-  const plan = configData?.plans[user.plan] ?? configData?.plans["free"] ?? { label: "Free (with ads)", ratePerClaim: 0.02, dailyCap: 5.0, price: 0 };
+  const plan = configData?.plans[user.plan] ?? configData?.plans["free"] ?? { label: "Member", ratePerClaim: 0.02, dailyCap: 5.0, price: 0 };
   const claimIntervalMs = configData?.claimIntervalMs ?? 10 * 60 * 1000;
 
   // Backend aggregates today's mining server-side so the dashboard tile is

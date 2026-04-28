@@ -26,7 +26,7 @@ export default async function MePage() {
   ]);
   if (!me) redirect("/login");
 
-  const planLabel = configData?.plans[me.user.plan]?.label ?? "Free (with ads)";
+  const planLabel = configData?.plans[me.user.plan]?.label ?? "Member";
   const claimIntervalMs = configData?.claimIntervalMs ?? 10 * 60 * 1000;
 
   return (
