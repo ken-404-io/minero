@@ -80,9 +80,9 @@ const DIFFICULTIES: Record<Difficulty, DifficultySpec> = {
 // always matches what the user actually banked. No score-based finish
 // bonus on top — finish just closes the session.
 const COINS_PER_PAIR_BY_DIFF: Record<Difficulty, number> = {
-  easy: 8,
-  medium: 12,
-  hard: 16,
+  easy: 40,
+  medium: 60,
+  hard: 80,
 };
 
 const FLIP_BACK_MS = 900;

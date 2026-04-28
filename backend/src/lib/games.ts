@@ -48,12 +48,15 @@ export const GAME_CONFIG: Record<GameKey, GameRewardConfig> = {
     coinsPerScore: 0,
   },
   memory: {
-    maxCoinsPerSession: 300,
-    minDurationMs: 10_000,
-    dailyCoinCap: 2_000,
-    cooldownMs: 15_000,
+    // Per-pair credits: 40/60/80 (easy/medium/hard). Hard at 15 pairs
+    // ⇒ 1,200 per session, so the per-session cap and daily cap need
+    // to fit at least one full hard game plus a few easies on top.
+    maxCoinsPerSession: 1_200,
+    minDurationMs: 5_000,
+    dailyCoinCap: 5_000,
+    cooldownMs: 5_000,
     maxScore: 1_000,
-    coinsPerScore: 0.3,
+    coinsPerScore: 0,
   },
   minesweeper: {
     maxCoinsPerSession: 400,
@@ -64,12 +67,15 @@ export const GAME_CONFIG: Record<GameKey, GameRewardConfig> = {
     coinsPerScore: 0.4,
   },
   word: {
-    // Daily puzzle — one reward per day.
-    maxCoinsPerSession: 500,
-    minDurationMs: 15_000,
-    dailyCoinCap: 500,
-    cooldownMs: 24 * 60 * 60 * 1000,
-    maxScore: 500,
+    // Per-word incremental crediting (10 coins per letter). The daily
+    // coin cap is the real economic gate; cooldown is short so users
+    // can replay the puzzle for fun and keep earning until they hit
+    // the cap.
+    maxCoinsPerSession: 1_000,
+    minDurationMs: 0,
+    dailyCoinCap: 1_000,
+    cooldownMs: 0,
+    maxScore: 1_000,
     coinsPerScore: 1,
   },
   blockblast: {
