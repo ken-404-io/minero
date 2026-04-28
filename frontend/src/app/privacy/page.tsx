@@ -49,7 +49,11 @@ export default function PrivacyPage() {
         </section>
         <section>
           <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text)" }}>7. Contact</h2>
-          <p>For privacy concerns, contact Halvex Inc. via the support channel in your account dashboard.</p>
+          <p>
+            For privacy concerns or data requests, contact Halvex Inc. via our{" "}
+            <Link href="/contact" className="link-brand underline underline-offset-2">support page</Link>.
+            Include &ldquo;Data Request&rdquo; in the subject line and send from your registered email address.
+          </p>
         </section>
       </div>
     </div>
