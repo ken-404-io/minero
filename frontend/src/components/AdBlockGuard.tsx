@@ -23,8 +23,9 @@ const BAIT_CLASSES = [
 
 // URLs hit by the platform's actual ad pipeline (Monetag) plus the most
 // common third-party ad endpoints. DNS-level blockers (Pi-hole, AdGuard DNS,
-// NextDNS, private DNS) refuse to resolve these hostnames, so an Image probe
-// fires onerror well within the timeout. Browser blockers cancel the request.
+// NextDNS, private DNS) refuse to resolve these hostnames, so the no-cors
+// fetch rejects well within the timeout. Browser blockers cancel the request
+// at the network layer with the same effect.
 const PROBE_URLS = [
   "https://ueuee.com/tag.min.js",
   "https://5gvci.com/act/files/tag.min.js",
@@ -41,6 +42,15 @@ const AUTO_RECHECK_INTERVAL_MS = 4000;
 
 // Fire one probe per URL. Resolves to `true` if the URL is reachable from this
 // browser (no client blocker, no DNS blackhole), `false` if blocked.
+//
+// We use `fetch` with `mode: 'no-cors'` rather than an Image probe because the
+// real ad endpoints serve JavaScript, not images — an Image element decodes a
+// JS response as garbage and fires `onerror` even when the network call
+// succeeded, which would cause every visitor to look "blocked." With no-cors
+// fetch we don't read the body; we only care whether the request made it onto
+// the wire. Ad blockers cancel the request (TypeError); DNS blackholes fail
+// to resolve (TypeError); a real reachable host resolves with an opaque
+// response.
 function probeUrl(url: string): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false;
@@ -50,17 +60,26 @@ function probeUrl(url: string): Promise<boolean> {
       resolve(ok);
     };
 
-    // Image-based probe — works regardless of CORS and across all browsers.
-    // A blocked URL fires `error`; a blackholed DNS lookup also lands here.
-    // The cache-buster guarantees we don't get a stale 200 from a previous
-    // visit before the user enabled their blocker.
-    const img = new Image();
     const bust = `?_=${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    img.onload = () => finish(true);
-    img.onerror = () => finish(false);
-    img.src = url + bust;
+    const controller =
+      typeof AbortController !== "undefined" ? new AbortController() : null;
 
-    window.setTimeout(() => finish(false), PROBE_TIMEOUT_MS);
+    fetch(url + bust, {
+      method: "GET",
+      mode: "no-cors",
+      cache: "no-store",
+      credentials: "omit",
+      redirect: "follow",
+      referrerPolicy: "no-referrer",
+      signal: controller?.signal,
+    })
+      .then(() => finish(true))
+      .catch(() => finish(false));
+
+    window.setTimeout(() => {
+      controller?.abort();
+      finish(false);
+    }, PROBE_TIMEOUT_MS);
   });
 }
 
@@ -117,14 +136,17 @@ export default function AdBlockGuard() {
 
     if (myRun !== runId.current) return; // a newer run superseded this one
 
+    const total = probeResults.length;
     const reachable = probeResults.filter(Boolean).length;
-    // If every ad-network probe failed, treat as blocked (DNS or client).
-    // We tolerate one transient failure to avoid false positives on flaky
-    // networks — but two or more failures *plus* the bait check are damning.
-    const allProbesBlocked = reachable === 0;
-    const mostProbesBlocked = reachable <= 1;
-
-    const blocked = baitBlocked || allProbesBlocked || (mostProbesBlocked && baitBlocked);
+    // Two independent signals must agree before we lock the user out, so a
+    // quirky CSS setup or a single flaky network doesn't false-positive:
+    //   - probeBlocked: every ad endpoint failed (strong DNS / network signal)
+    //   - baitBlocked + at least one failed probe (CSS-injection blocker)
+    // If even one probe came back reachable and the bait is fine, we treat
+    // the user as clear.
+    const probeBlocked = total > 0 && reachable === 0;
+    const someProbesBlocked = reachable < total;
+    const blocked = probeBlocked || (baitBlocked && someProbesBlocked);
     setState(blocked ? "blocked" : "clear");
   }, []);
 
