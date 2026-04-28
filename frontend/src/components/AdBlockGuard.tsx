@@ -34,6 +34,10 @@ const PROBE_URLS = [
 
 const PROBE_TIMEOUT_MS = 3500;
 const RECHECK_DEBOUNCE_MS = 600;
+// While the modal is up, silently re-probe on this cadence so users who
+// disable their blocker (or switch off private DNS) are let in without
+// having to tap the recheck button.
+const AUTO_RECHECK_INTERVAL_MS = 4000;
 
 // Fire one probe per URL. Resolves to `true` if the URL is reachable from this
 // browser (no client blocker, no DNS blackhole), `false` if blocked.
@@ -100,6 +104,7 @@ export default function AdBlockGuard() {
   const [state, setState] = useState<DetectionState>("checking");
   const [recheckBusy, setRecheckBusy] = useState(false);
   const runId = useRef(0);
+  const stateRef = useRef<DetectionState>("checking");
 
   const runDetection = useCallback(async () => {
     const myRun = ++runId.current;
@@ -124,6 +129,10 @@ export default function AdBlockGuard() {
   }, []);
 
   useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
     runDetection();
   }, [runDetection]);
 
@@ -137,6 +146,45 @@ export default function AdBlockGuard() {
       document.body.style.overflow = prevOverflow;
     };
   }, [state]);
+
+  // Auto-recheck while blocked: fires on tab visibility, window focus,
+  // network coming back online, bfcache restoration, and on a slow poll.
+  // The user can disable their ad blocker / private DNS / VPN and the modal
+  // dismisses itself the moment ad endpoints become reachable — no need to
+  // tap the button.
+  useEffect(() => {
+    if (state !== "blocked") return;
+
+    let cancelled = false;
+    const silentRecheck = () => {
+      if (cancelled) return;
+      if (stateRef.current !== "blocked") return;
+      runDetection();
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") silentRecheck();
+    };
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) silentRecheck();
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", silentRecheck);
+    window.addEventListener("online", silentRecheck);
+    window.addEventListener("pageshow", onPageShow);
+
+    const interval = window.setInterval(silentRecheck, AUTO_RECHECK_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", silentRecheck);
+      window.removeEventListener("online", silentRecheck);
+      window.removeEventListener("pageshow", onPageShow);
+      window.clearInterval(interval);
+    };
+  }, [state, runDetection]);
 
   const onRecheck = useCallback(async () => {
     if (recheckBusy) return;
@@ -193,9 +241,9 @@ export default function AdBlockGuard() {
               className="mt-2 text-sm leading-relaxed"
               style={{ color: "var(--text-muted)" }}
             >
-              Minero is free because advertisers pay us — and we pay you. To keep
-              earning, please disable any tools that block ads on this site and
-              reload.
+              Minero is free because advertisers pay us — and we pay you. Turn
+              off any tool blocking ads on this site and you&apos;ll be let
+              back in automatically.
             </p>
           </div>
         </div>
@@ -239,8 +287,8 @@ export default function AdBlockGuard() {
           }}
         >
           <strong className="font-semibold">Tip:</strong> Allow{" "}
-          <span className="font-mono">minero</span> in your blocker, switch off
-          private DNS, then tap recheck below.
+          <span className="font-mono">minero</span> in your blocker or switch
+          off private DNS — this screen will close on its own.
         </div>
 
         <div className="mt-6 flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
