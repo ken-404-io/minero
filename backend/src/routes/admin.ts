@@ -900,3 +900,69 @@ adminRoutes.put("/config", async (c) => {
   const cfg = await getConfig();
   return c.json({ ok: true, config: cfg });
 });
+
+// ============================================================
+//  Problem Reports
+// ============================================================
+
+const REPORTS_PAGE_SIZE = 20;
+
+adminRoutes.get("/reports", async (c) => {
+  const guard = requireAdmin(c);
+  if (guard instanceof Response) return guard;
+
+  const status = c.req.query("status") ?? "open";
+  const page = Math.max(1, parseInt(c.req.query("page") ?? "1"));
+
+  const where = status === "all" ? {} : { status };
+
+  const [reports, total] = await Promise.all([
+    prisma.problemReport.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * REPORTS_PAGE_SIZE,
+      take: REPORTS_PAGE_SIZE,
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+    }),
+    prisma.problemReport.count({ where }),
+  ]);
+
+  return c.json({
+    reports,
+    total,
+    page,
+    pages: Math.max(1, Math.ceil(total / REPORTS_PAGE_SIZE)),
+  });
+});
+
+adminRoutes.patch("/reports/:id", async (c) => {
+  const guard = requireAdmin(c);
+  if (guard instanceof Response) return guard;
+
+  const id = c.req.param("id");
+  const body = (await c.req.json().catch(() => ({}))) as { action?: unknown };
+
+  if (body.action !== "dismiss") {
+    return c.json({ error: 'action must be "dismiss"' }, 400);
+  }
+
+  const report = await prisma.problemReport.findUnique({
+    where: { id },
+    select: { status: true },
+  });
+  if (!report) return c.json({ error: "Not found" }, 404);
+  if (report.status !== "open") return c.json({ error: "Report already dismissed" }, 409);
+
+  await prisma.problemReport.update({
+    where: { id },
+    data: {
+      status: "dismissed",
+      dismissedAt: new Date(),
+      dismissedBy: guard.userId,
+    },
+  });
+
+  return c.json({ ok: true });
+});
