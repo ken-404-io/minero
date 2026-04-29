@@ -188,6 +188,19 @@ export function IconWarning(p: IconProps) {
   );
 }
 
+export function IconReport(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <rect x="3" y="2" width="18" height="8" rx="1.5" />
+      <path d="M7 5.5h10" />
+      <path d="M7 8h6" />
+      <path d="M12 14v-1.5" />
+      <path d="M9 21v-3a3 3 0 0 1 6 0v3" />
+      <path d="M9 21h6" />
+    </svg>
+  );
+}
+
 export function IconSuccess(p: IconProps) {
   return (
     <svg {...base(p)}>

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { API_URL } from "@/lib/api-url";
-import { IconWarning, IconX, IconSend, IconCheck } from "@/components/icons";
+import { IconReport, IconWarning, IconX, IconSend, IconCheck } from "@/components/icons";
 
 const STORAGE_KEY = "minero_report_date_v1";
 
@@ -82,12 +82,12 @@ export default function ReportButton() {
         title="Report a problem"
         className="fixed right-4 bottom-20 lg:bottom-6 lg:right-6 z-40 flex items-center justify-center rounded-full w-11 h-11 shadow-md transition-opacity hover:opacity-90"
         style={{
-          background: "var(--danger-weak)",
-          color: "var(--danger-fg)",
-          border: "1px solid color-mix(in oklab, var(--danger) 30%, transparent)",
+          background: "var(--brand)",
+          color: "var(--brand-fg)",
+          border: "1px solid var(--brand)",
         }}
       >
-        <IconWarning size={20} />
+        <IconReport size={20} />
       </button>
 
       {/* Modal overlay */}
@@ -115,7 +115,7 @@ export default function ReportButton() {
             </button>
 
             <div className="flex items-center gap-2 mb-1">
-              <IconWarning size={18} style={{ color: "var(--danger-fg)", flexShrink: 0 }} />
+              <IconReport size={18} style={{ color: "var(--brand)", flexShrink: 0 }} />
               <h2 className="text-lg font-semibold">Report a Problem</h2>
             </div>
             <p className="text-sm mb-4" style={{ color: "var(--text-muted)" }}>
