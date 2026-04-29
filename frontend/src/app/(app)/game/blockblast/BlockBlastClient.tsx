@@ -345,6 +345,12 @@ export default function BlockBlastClient({ playerName: _ }: { playerName: string
         sessionIdRef.current = null;
         // finishGameSession emits the server-confirmed balance internally.
         void finishGameSession(sid, newScore);
+      } else {
+        // Session start was blocked (cooldown, daily cap, or rate limit).
+        // Fetch the real balance to replace the provisional display.
+        void getGameBalance().then((bal) => {
+          if (bal) emitBalanceChange(bal.balance);
+        });
       }
     }
   }
