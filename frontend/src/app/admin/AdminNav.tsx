@@ -15,11 +15,15 @@ import {
   IconCoins,
   IconFlag,
   IconBell,
+  IconActivity,
+  IconTrophy,
 } from "@/components/icons";
 
 const LINKS = [
   { href: "/admin",             label: "Overview",    Icon: IconChart },
   { href: "/admin/users",       label: "Users",       Icon: IconUsers },
+  { href: "/admin/online",      label: "Online",      Icon: IconActivity },
+  { href: "/admin/leaderboard", label: "Leaderboard", Icon: IconTrophy },
   { href: "/admin/withdrawals", label: "Withdrawals", Icon: IconWallet },
   { href: "/admin/payments",    label: "Payments",    Icon: IconCoins },
   { href: "/admin/alerts",      label: "Fraud alerts", Icon: IconWarning },

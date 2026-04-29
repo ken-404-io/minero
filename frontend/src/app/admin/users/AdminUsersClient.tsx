@@ -19,6 +19,12 @@ import {
   IconInfo,
 } from "@/components/icons";
 
+const ONLINE_MS = 2 * 60 * 1000;
+function isOnline(lastSeenAt?: string | Date | null) {
+  if (!lastSeenAt) return false;
+  return Date.now() - new Date(lastSeenAt).getTime() < ONLINE_MS;
+}
+
 type User = {
   id: string;
   name: string;
@@ -29,6 +35,7 @@ type User = {
   plan: string;
   role: string;
   frozen: boolean;
+  lastSeenAt?: string | Date | null;
   createdAt: string | Date;
   _count: { claims: number; earnings: number; withdrawals: number; referralsGiven: number };
 };
@@ -186,7 +193,17 @@ export default function AdminUsersClient({ users, total, page, pages, search }: 
                       {users.map((u) => (
                         <tr key={u.id}>
                           <td>
-                            <div className="font-medium">{u.name}</div>
+                            <div className="flex items-center gap-2">
+                              {isOnline(u.lastSeenAt) && (
+                                <span
+                                  aria-label="Online"
+                                  title="Online now"
+                                  className="inline-block h-2 w-2 rounded-full flex-shrink-0 animate-pulse"
+                                  style={{ background: "var(--success-fg)" }}
+                                />
+                              )}
+                              <div className="font-medium">{u.name}</div>
+                            </div>
                             <div className="text-xs" style={{ color: "var(--text-muted)" }}>
                               {u.email}
                             </div>
@@ -243,7 +260,17 @@ export default function AdminUsersClient({ users, total, page, pages, search }: 
                   <article key={u.id} className="card">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="font-medium truncate">{u.name}</div>
+                        <div className="flex items-center gap-1.5">
+                          {isOnline(u.lastSeenAt) && (
+                            <span
+                              aria-label="Online"
+                              title="Online now"
+                              className="inline-block h-2 w-2 rounded-full flex-shrink-0 animate-pulse"
+                              style={{ background: "var(--success-fg)" }}
+                            />
+                          )}
+                          <div className="font-medium truncate">{u.name}</div>
+                        </div>
                         <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
                           {u.email}
                         </div>
