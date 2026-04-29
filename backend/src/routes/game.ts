@@ -69,12 +69,6 @@ gameRoutes.post("/session/start", async (c) => {
   const gameKey: GameKey = body.gameKey;
   const cfg = GAME_CONFIG[gameKey];
 
-  // Per-user per-game start rate limit — guards against bulk session allocation.
-  const rl = rateLimit(`game:start:${session.userId}:${gameKey}`, 20, 60_000);
-  if (!rl.ok) {
-    return c.json({ error: "Too many requests", retryAfterMs: rl.retryAfterMs }, 429);
-  }
-
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
     select: { frozen: true },
@@ -114,6 +108,13 @@ gameRoutes.post("/session/start", async (c) => {
   });
   if ((todayAgg._sum.coinsEarned ?? 0) >= cfg.dailyCoinCap) {
     return c.json({ error: "Daily cap reached for this game" }, 403);
+  }
+
+  // Rate limit checked last — only real session-creation attempts count, so
+  // cooldown/cap rejections above don't burn slots and cause plays 21+ to fail.
+  const rl = rateLimit(`game:start:${session.userId}:${gameKey}`, 20, 60_000);
+  if (!rl.ok) {
+    return c.json({ error: "Too many requests", retryAfterMs: rl.retryAfterMs }, 429);
   }
 
   const created = await prisma.gameSession.create({

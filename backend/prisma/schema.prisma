@@ -55,6 +55,7 @@ model User {
   adImpressions    AdImpression[]
   gameSessions     GameSession[]
   notifications    Notification[]
+  problemReports   ProblemReport[]
 }
 
 model Earning {
@@ -269,4 +270,20 @@ model Notification {
 
   @@index([userId, readAt])
   @@index([userId, createdAt])
+}
+
+/// User-submitted problem reports. One per UTC day per user.
+/// Admins review in the admin panel and dismiss once resolved.
+model ProblemReport {
+  id          String    @id @default(cuid())
+  userId      String
+  message     String
+  status      String    @default("open") // open | dismissed
+  createdAt   DateTime  @default(now())
+  dismissedAt DateTime?
+  dismissedBy String?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([status, createdAt])
 }
