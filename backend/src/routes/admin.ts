@@ -773,7 +773,7 @@ adminRoutes.get("/config", async (c) => {
 
 const planSchema = z.object({
   label: z.string().min(1).max(50),
-  ratePerClaim: z.number().min(0).max(1),
+  ratePerClaim: z.number().min(0).max(10_000),
   dailyCap: z.number().min(0).max(10_000),
   price: z.number().min(0).max(100_000),
 });
