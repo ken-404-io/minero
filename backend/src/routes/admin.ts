@@ -76,11 +76,15 @@ adminRoutes.get("/stats", async (c) => {
     prisma.user.aggregate({ _sum: { legacyImportedCoins: true } }),
   ]);
 
-  const activeTodayGroups = await prisma.claim.groupBy({
-    by: ["userId"],
-    where: { claimedAt: { gte: startOfDay } },
-    orderBy: { userId: "asc" },
-  });
+  const onlineSince = new Date(Date.now() - 2 * 60 * 1000);
+  const [activeTodayGroups, onlineUsers] = await Promise.all([
+    prisma.claim.groupBy({
+      by: ["userId"],
+      where: { claimedAt: { gte: startOfDay } },
+      orderBy: { userId: "asc" },
+    }),
+    prisma.user.count({ where: { lastSeenAt: { gte: onlineSince } } }),
+  ]);
 
   const planDistribution = await prisma.user.groupBy({
     by: ["plan"],
@@ -96,6 +100,7 @@ adminRoutes.get("/stats", async (c) => {
   return c.json({
     totalUsers,
     frozenUsers,
+    onlineUsers,
     activeToday: activeTodayGroups.length,
     totalPaidOut: totalPaidOut._sum.amount ?? 0,
     pendingWithdrawals,
@@ -145,6 +150,7 @@ adminRoutes.get("/users", async (c) => {
         plan: true,
         role: true,
         frozen: true,
+        lastSeenAt: true,
         createdAt: true,
         _count: { select: { claims: true, earnings: true, withdrawals: true } },
       },
@@ -791,6 +797,66 @@ const configUpdateSchema = z.object({
   registrationEnabled: z.boolean().optional(),
   claimsEnabled: z.boolean().optional(),
   withdrawalsEnabled: z.boolean().optional(),
+});
+
+// ============================================================
+//  Online users
+// ============================================================
+
+adminRoutes.get("/online", async (c) => {
+  const guard = requireAdmin(c);
+  if (guard instanceof Response) return guard;
+
+  const since = new Date(Date.now() - 2 * 60 * 1000); // 2-minute window
+
+  const users = await prisma.user.findMany({
+    where: { lastSeenAt: { gte: since } },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      plan: true,
+      balance: true,
+      lastSeenAt: true,
+    },
+    orderBy: { lastSeenAt: "desc" },
+  });
+
+  return c.json({ users, total: users.length });
+});
+
+// ============================================================
+//  Leaderboard — top users by wallet balance
+// ============================================================
+
+adminRoutes.get("/leaderboard", async (c) => {
+  const guard = requireAdmin(c);
+  if (guard instanceof Response) return guard;
+
+  const page = Math.max(1, parseInt(c.req.query("page") ?? "1"));
+  const limit = 50;
+
+  const [users, total] = await Promise.all([
+    prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        plan: true,
+        balance: true,
+        pendingBalance: true,
+        frozen: true,
+        lastSeenAt: true,
+        createdAt: true,
+      },
+      orderBy: { balance: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.user.count(),
+  ]);
+
+  return c.json({ users, total, page, pages: Math.ceil(total / limit) });
 });
 
 adminRoutes.put("/config", async (c) => {

@@ -609,3 +609,19 @@ authRoutes.delete("/account", async (c) => {
   clearRefreshCookie(c);
   return c.json({ ok: true });
 });
+
+// ============================================================
+//  Heartbeat — keeps lastSeenAt fresh for online tracking
+// ============================================================
+
+authRoutes.post("/heartbeat", async (c) => {
+  const guard = requireAuth(c);
+  if (guard instanceof Response) return guard;
+
+  await prisma.user.update({
+    where: { id: guard.userId },
+    data: { lastSeenAt: new Date() },
+  });
+
+  return c.json({ ok: true });
+});

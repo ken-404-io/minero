@@ -10,6 +10,7 @@ import {
   IconTrend,
   IconArrowRight,
   IconWallet,
+  IconActivity,
 } from "@/components/icons";
 
 type Me = { user: { role: string } };
@@ -19,6 +20,7 @@ type PlanDist = { plan: string; _count: { id: number } };
 type Stats = {
   totalUsers: number;
   frozenUsers: number;
+  onlineUsers: number;
   activeToday: number;
   totalPaidOut: number;
   pendingWithdrawals: number;
@@ -81,6 +83,7 @@ export default async function AdminDashboard() {
 
   const tiles = [
     { label: "Total users", value: (stats?.totalUsers ?? 0).toLocaleString(), Icon: IconUsers },
+    { label: "Online now", value: (stats?.onlineUsers ?? 0).toLocaleString(), Icon: IconActivity, highlight: true },
     { label: "Active today", value: (stats?.activeToday ?? 0).toLocaleString(), Icon: IconTrend },
     { label: "Frozen accounts", value: frozenUsers.toLocaleString(), Icon: IconLock },
     { label: "Open fraud alerts", value: openAlerts.toLocaleString(), Icon: IconClock },
@@ -103,17 +106,28 @@ export default async function AdminDashboard() {
 
         {/* KPI grid — 2 cols mobile, 4 desktop */}
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-6">
-          {tiles.map(({ label, value, Icon }) => (
+          {tiles.map(({ label, value, Icon, highlight }) => (
             <div key={label} className="kpi">
               <div className="flex items-center gap-2">
                 <span
                   aria-hidden
                   className="inline-flex h-7 w-7 items-center justify-center rounded-md"
-                  style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}
+                  style={highlight
+                    ? { background: "var(--success-weak)", color: "var(--success-fg)" }
+                    : { background: "var(--surface-2)", color: "var(--text-muted)" }}
                 >
                   <Icon size={14} />
                 </span>
-                <span className="kpi-label">{label}</span>
+                <span className="kpi-label flex items-center gap-1.5">
+                  {highlight && (
+                    <span
+                      aria-hidden
+                      className="inline-block h-2 w-2 rounded-full animate-pulse"
+                      style={{ background: "var(--success-fg)" }}
+                    />
+                  )}
+                  {label}
+                </span>
               </div>
               <span className="kpi-value" style={{ fontSize: "var(--fs-20)" }}>
                 {value}
