@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { apiJson } from "@/lib/api";
+import ReleaseCommissionsButton from "./ReleaseCommissionsButton";
 import {
   IconUsers,
   IconLock,
@@ -134,6 +135,19 @@ export default async function AdminDashboard() {
               </span>
             </div>
           ))}
+        </section>
+
+        {/* Referral commissions */}
+        <section className="card mb-6">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h2 className="font-semibold">Referral commissions</h2>
+              <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+                Auto-releases every hour. Force-release all pending commissions immediately.
+              </p>
+            </div>
+            <ReleaseCommissionsButton />
+          </div>
         </section>
 
         {/* Legacy localStorage → server migration audit. Read-only summary
