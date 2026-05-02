@@ -37,6 +37,7 @@ model User {
   // included in gameCoinsBalance — this column is for reporting only.
   legacyImportedCoins Int    @default(0)
   lastSeenAt     DateTime?
+  withdrawGateUnlockedAt DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

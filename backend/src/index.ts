@@ -22,6 +22,7 @@ import { reportRoutes } from "./routes/report.js";
 import { startQueue, stopQueue } from "./lib/queue.js";
 import { prisma } from "./lib/db.js";
 import { DEFAULT_PLANS, getConfig, invalidateConfigCache } from "./lib/config.js";
+import { createNotification } from "./lib/notifications.js";
 
 /**
  * One-time backfill: when gameCoinsBalance was added via prisma db push, existing
@@ -192,12 +193,64 @@ function warnMisconfigs() {
   }
 }
 
+async function runReferralApproval() {
+  try {
+    const cfg = await getConfig();
+    const cutoff = new Date(Date.now() - cfg.referralApprovalWindowMs);
+    const pending = await prisma.earning.findMany({
+      where: { type: "referral", status: "pending", createdAt: { lte: cutoff } },
+    });
+    if (pending.length === 0) return;
+
+    // Group by user so we send one notification per user with the total credited.
+    const byUser = new Map<string, number>();
+    for (const e of pending) {
+      byUser.set(e.userId, (byUser.get(e.userId) ?? 0) + e.amount);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      for (const e of pending) {
+        await tx.earning.update({ where: { id: e.id }, data: { status: "approved" } });
+        await tx.user.update({
+          where: { id: e.userId },
+          data: {
+            balance: { increment: e.amount },
+            pendingBalance: { decrement: e.amount },
+          },
+        });
+      }
+    });
+
+    // Fire one referral_credited notification per affected user.
+    for (const [userId, total] of byUser) {
+      await createNotification({
+        userId,
+        type: "referral_credited",
+        title: "Invite credits received!",
+        body: `₱${total.toFixed(2)} from your referral commissions has been credited to your balance.`,
+        link: "/earnings",
+      });
+    }
+
+    console.log(`[referral-approval] Auto-approved ${pending.length} commission(s)`);
+  } catch (err) {
+    console.warn("[referral-approval] Error:", err);
+  }
+}
+
+function autoApproveReferralCommissions() {
+  runReferralApproval();
+  // Re-run every hour so commissions clear without admin intervention.
+  setInterval(runReferralApproval, 60 * 60 * 1000);
+}
+
 const port = Number(process.env.PORT ?? 4000);
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`minero-backend listening on http://localhost:${info.port}`);
   warnMisconfigs();
   migratePlanConfig();
   backfillGameCoinsBalance();
+  autoApproveReferralCommissions();
   // Fire-and-forget; enqueue() lazy-starts on first use if this hasn't
   // finished yet, and falls back to sync if it never does.
   startQueue().catch((err) => console.warn("[queue] initial start failed:", err));

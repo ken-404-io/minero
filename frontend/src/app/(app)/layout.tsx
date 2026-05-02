@@ -3,6 +3,7 @@ import { apiJson, serverApiUrl } from "@/lib/api";
 import DashNav from "@/components/DashNav";
 import AdBanner from "@/components/AdBanner";
 import Heartbeat from "@/components/Heartbeat";
+import ReferralCreditToast from "@/components/ReferralCreditToast";
 import ReportButton from "@/components/ReportButton";
 
 type Me = { user: { id: string; name: string; role: string; plan: string } };
@@ -31,6 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen lg:flex">
       <Heartbeat />
+      <ReferralCreditToast />
       <DashNav name={me.user.name} role={me.user.role} plan={me.user.plan} />
       <main
         id="main"

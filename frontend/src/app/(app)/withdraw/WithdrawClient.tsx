@@ -10,7 +10,10 @@ import {
   IconError,
   IconArrowRight,
   IconInfo,
+  IconUsers,
+  IconLock,
 } from "@/components/icons";
+import type { GateStatus } from "./page";
 
 type Withdrawal = {
   id: string;
@@ -28,6 +31,7 @@ type Props = {
   withdrawals: Withdrawal[];
   minimum: number;
   withdrawalsEnabled: boolean;
+  gate: GateStatus;
 };
 
 function fmtDate(d: string | Date) {
@@ -52,6 +56,7 @@ export default function WithdrawClient({
   withdrawals,
   minimum,
   withdrawalsEnabled,
+  gate,
 }: Props) {
   const router = useRouter();
   const [form, setForm] = useState({ amount: "", method: "gcash", accountNumber: "", otp: "" });
@@ -68,7 +73,6 @@ export default function WithdrawClient({
   const hasPending = withdrawals.some((w) => w.status === "pending");
 
   async function requestOtp() {
-    // Validate form basics before sending OTP
     const amount = parseFloat(form.amount);
     if (isNaN(amount) || amount < minimum) {
       setError(`Minimum withdrawal is ₱${minimum}`);
@@ -143,7 +147,7 @@ export default function WithdrawClient({
   return (
     <div className="w-full">
       {/* ================================================================
-         DESKTOP (≥1024) — split view: form + history side by side
+         DESKTOP (≥1024) — split view
          ================================================================ */}
       <div className="hidden lg:block">
         <div className="mx-auto max-w-[1280px] px-8 py-8">
@@ -173,8 +177,12 @@ export default function WithdrawClient({
             </div>
           </div>
 
+          {/* Invite gate banner — only visible after ₱300 is reached */}
+          {gate.balanceQualifies && !gate.gateComplete && (
+            <InviteGateBanner gate={gate} />
+          )}
+
           <div className="grid grid-cols-[minmax(0,1fr)_380px] gap-6">
-            {/* Left: form */}
             <section className="card">
               <h2 className="font-semibold text-lg mb-4">Request withdrawal</h2>
               <FormBody
@@ -182,6 +190,7 @@ export default function WithdrawClient({
                 canWithdraw={canWithdraw}
                 hasPending={hasPending}
                 withdrawalsEnabled={withdrawalsEnabled}
+                gate={gate}
                 success={success}
                 form={form}
                 setForm={setForm}
@@ -197,54 +206,18 @@ export default function WithdrawClient({
               />
             </section>
 
-            {/* Right: history */}
             <aside className="card" style={{ padding: 0, overflow: "hidden" }}>
-              <div
-                className="px-5 py-4 border-b"
-                style={{ borderColor: "var(--border)" }}
-              >
+              <div className="px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
                 <h2 className="font-semibold">History</h2>
               </div>
-              {withdrawals.length === 0 ? (
-                <div className="py-8 text-center">
-                  <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-                    No withdrawals yet
-                  </p>
-                </div>
-              ) : (
-                <ul>
-                  {withdrawals.map((w) => (
-                    <li
-                      key={w.id}
-                      className="px-5 py-3 flex items-start justify-between gap-3 border-b last:border-b-0"
-                      style={{ borderColor: "var(--border)" }}
-                    >
-                      <div>
-                        <div className="font-mono font-semibold tabular-nums">
-                          ₱{w.amount.toFixed(2)}
-                        </div>
-                        <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                          {w.method === "gcash" ? "GCash" : "Maya"} · {w.accountNumber}
-                        </div>
-                        <div className="text-xs" style={{ color: "var(--text-subtle)" }}>
-                          {fmtDate(w.requestedAt)}
-                        </div>
-                      </div>
-                      <span className={`badge badge-${w.status}`}>
-                        {statusIcon(w.status)}
-                        {w.status}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <WithdrawalHistory withdrawals={withdrawals} />
             </aside>
           </div>
         </div>
       </div>
 
       {/* ================================================================
-         MOBILE (<1024) — stacked, form first (thumb-first)
+         MOBILE (<1024) — stacked
          ================================================================ */}
       <div className="lg:hidden">
         <div className="px-4 pt-4 pb-6">
@@ -253,12 +226,9 @@ export default function WithdrawClient({
             3–7 business days to GCash or Maya
           </p>
 
-          {/* Balance hero */}
           <section className="card mb-4" style={{ background: "var(--bg-elevated)" }}>
             <div className="flex items-baseline justify-between">
-              <span className="text-sm" style={{ color: "var(--text-muted)" }}>
-                Available
-              </span>
+              <span className="text-sm" style={{ color: "var(--text-muted)" }}>Available</span>
               <span className="text-xs" style={{ color: "var(--text-subtle)" }}>
                 Pending ₱{pendingBalance.toFixed(2)}
               </span>
@@ -284,6 +254,10 @@ export default function WithdrawClient({
             )}
           </section>
 
+          {gate.balanceQualifies && !gate.gateComplete && (
+            <InviteGateBanner gate={gate} className="mb-4" />
+          )}
+
           <section className="card mb-4">
             <h2 className="font-semibold mb-3">Request withdrawal</h2>
             <FormBody
@@ -291,6 +265,7 @@ export default function WithdrawClient({
               canWithdraw={canWithdraw}
               hasPending={hasPending}
               withdrawalsEnabled={withdrawalsEnabled}
+              gate={gate}
               success={success}
               form={form}
               setForm={setForm}
@@ -309,10 +284,7 @@ export default function WithdrawClient({
           <section>
             <h2 className="font-semibold mb-2 px-1">History</h2>
             {withdrawals.length === 0 ? (
-              <div
-                className="card text-center"
-                style={{ color: "var(--text-muted)" }}
-              >
+              <div className="card text-center" style={{ color: "var(--text-muted)" }}>
                 <p className="text-sm">No withdrawals yet</p>
               </div>
             ) : (
@@ -332,9 +304,7 @@ export default function WithdrawClient({
                         <IconWallet size={18} />
                       </span>
                       <div>
-                        <div className="font-mono font-semibold tabular-nums">
-                          ₱{w.amount.toFixed(2)}
-                        </div>
+                        <div className="font-mono font-semibold tabular-nums">₱{w.amount.toFixed(2)}</div>
                         <div className="text-xs" style={{ color: "var(--text-muted)" }}>
                           {w.method === "gcash" ? "GCash" : "Maya"} · {fmtDate(w.requestedAt)}
                         </div>
@@ -355,6 +325,96 @@ export default function WithdrawClient({
   );
 }
 
+/* ---------- Invite gate banner ---------- */
+
+function InviteGateBanner({ gate, className = "" }: { gate: GateStatus; className?: string }) {
+  const { referralsMade, referralsRequired } = gate;
+  const pct = Math.min(100, (referralsMade / referralsRequired) * 100);
+  const remaining = referralsRequired - referralsMade;
+
+  return (
+    <div
+      className={`rounded-xl p-4 mb-6 ${className}`}
+      style={{
+        background: "color-mix(in oklab, var(--brand) 10%, transparent)",
+        border: "1px solid color-mix(in oklab, var(--brand) 22%, transparent)",
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <span
+          aria-hidden
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg mt-0.5"
+          style={{ background: "var(--brand-weak)", color: "var(--brand)" }}
+        >
+          <IconUsers size={18} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 mb-1.5">
+            <p className="font-semibold text-sm">
+              Invite {remaining} more {remaining === 1 ? "person" : "people"} to unlock withdrawal
+            </p>
+            <span
+              className="font-mono font-bold text-sm tabular-nums shrink-0"
+              style={{ color: "var(--brand)" }}
+            >
+              {referralsMade}/{referralsRequired}
+            </span>
+          </div>
+          <div
+            className="progress"
+            role="progressbar"
+            aria-valuenow={referralsMade}
+            aria-valuemin={0}
+            aria-valuemax={referralsRequired}
+            aria-label={`Invite progress: ${referralsMade} of ${referralsRequired}`}
+          >
+            <div className="progress-bar" style={{ width: `${pct}%` }} />
+          </div>
+          <p className="text-xs mt-1.5" style={{ color: "var(--text-muted)" }}>
+            Great — you&apos;ve reached ₱300! Invite {referralsRequired} friends to complete
+            verification and unlock cash-out. Only invites made after reaching ₱300 count.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Withdrawal history (desktop aside) ---------- */
+
+function WithdrawalHistory({ withdrawals }: { withdrawals: Withdrawal[] }) {
+  if (withdrawals.length === 0) {
+    return (
+      <div className="py-8 text-center">
+        <p className="text-sm" style={{ color: "var(--text-muted)" }}>No withdrawals yet</p>
+      </div>
+    );
+  }
+  return (
+    <ul>
+      {withdrawals.map((w) => (
+        <li
+          key={w.id}
+          className="px-5 py-3 flex items-start justify-between gap-3 border-b last:border-b-0"
+          style={{ borderColor: "var(--border)" }}
+        >
+          <div>
+            <div className="font-mono font-semibold tabular-nums">₱{w.amount.toFixed(2)}</div>
+            <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+              {w.method === "gcash" ? "GCash" : "Maya"} · {w.accountNumber}
+            </div>
+            <div className="text-xs" style={{ color: "var(--text-subtle)" }}>{fmtDate(w.requestedAt)}</div>
+          </div>
+          <span className={`badge badge-${w.status}`}>
+            {statusIcon(w.status)}
+            {w.status}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /* ---------- Shared form body ---------- */
 type WithdrawForm = { amount: string; method: string; accountNumber: string; otp: string };
 
@@ -363,6 +423,7 @@ function FormBody({
   canWithdraw,
   hasPending,
   withdrawalsEnabled,
+  gate,
   success,
   form,
   setForm,
@@ -380,6 +441,7 @@ function FormBody({
   canWithdraw: boolean;
   hasPending: boolean;
   withdrawalsEnabled: boolean;
+  gate: GateStatus;
   success: boolean;
   form: WithdrawForm;
   setForm: React.Dispatch<React.SetStateAction<WithdrawForm>>;
@@ -407,6 +469,7 @@ function FormBody({
       </div>
     );
   }
+
   if (!canWithdraw) {
     return (
       <div>
@@ -417,7 +480,13 @@ function FormBody({
             <div className="text-sm">Keep mining until you reach ₱{minimum}.</div>
           </div>
         </div>
-        <div className="progress mb-1.5" role="progressbar" aria-valuenow={Math.round(progressPct)} aria-valuemin={0} aria-valuemax={100}>
+        <div
+          className="progress mb-1.5"
+          role="progressbar"
+          aria-valuenow={Math.round(progressPct)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
           <div className="progress-bar" style={{ width: `${progressPct}%` }} />
         </div>
         <div className="text-xs" style={{ color: "var(--text-muted)" }}>
@@ -426,6 +495,29 @@ function FormBody({
       </div>
     );
   }
+
+  // Balance OK but invite gate incomplete — show locked state in form area too
+  if (!gate.gateComplete) {
+    const remaining = gate.referralsRequired - gate.referralsMade;
+    return (
+      <div className="alert alert-warning">
+        <IconLock size={16} />
+        <div>
+          <div className="font-semibold">
+            Invite {remaining} more {remaining === 1 ? "person" : "people"} to unlock
+          </div>
+          <div className="text-sm">
+            Complete the invite requirement to enable cash-out.{" "}
+            Progress:{" "}
+            <span className="font-mono font-semibold">
+              {gate.referralsMade}/{gate.referralsRequired}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (hasPending) {
     return (
       <div className="alert alert-warning">
@@ -437,6 +529,7 @@ function FormBody({
       </div>
     );
   }
+
   if (success) {
     return (
       <div className="alert alert-success">
@@ -505,14 +598,8 @@ function FormBody({
                 className="surface-2 flex items-center justify-center py-3 font-semibold text-sm"
                 style={
                   active
-                    ? {
-                        background: "var(--brand-weak)",
-                        color: "var(--brand-weak-fg)",
-                        borderColor: "var(--brand)",
-                      }
-                    : {
-                        color: "var(--text-muted)",
-                      }
+                    ? { background: "var(--brand-weak)", color: "var(--brand-weak-fg)", borderColor: "var(--brand)" }
+                    : { color: "var(--text-muted)" }
                 }
               >
                 {m === "gcash" ? "GCash" : "Maya"}
