@@ -190,12 +190,45 @@ function warnMisconfigs() {
   }
 }
 
+async function runReferralApproval() {
+  try {
+    const cfg = await getConfig();
+    const cutoff = new Date(Date.now() - cfg.referralApprovalWindowMs);
+    const pending = await prisma.earning.findMany({
+      where: { type: "referral", status: "pending", createdAt: { lte: cutoff } },
+    });
+    if (pending.length === 0) return;
+    await prisma.$transaction(async (tx) => {
+      for (const e of pending) {
+        await tx.earning.update({ where: { id: e.id }, data: { status: "approved" } });
+        await tx.user.update({
+          where: { id: e.userId },
+          data: {
+            balance: { increment: e.amount },
+            pendingBalance: { decrement: e.amount },
+          },
+        });
+      }
+    });
+    console.log(`[referral-approval] Auto-approved ${pending.length} commission(s)`);
+  } catch (err) {
+    console.warn("[referral-approval] Error:", err);
+  }
+}
+
+function autoApproveReferralCommissions() {
+  runReferralApproval();
+  // Re-run every hour so commissions clear without admin intervention.
+  setInterval(runReferralApproval, 60 * 60 * 1000);
+}
+
 const port = Number(process.env.PORT ?? 4000);
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`minero-backend listening on http://localhost:${info.port}`);
   warnMisconfigs();
   migratePlanConfig();
   backfillGameCoinsBalance();
+  autoApproveReferralCommissions();
   // Fire-and-forget; enqueue() lazy-starts on first use if this hasn't
   // finished yet, and falls back to sync if it never does.
   startQueue().catch((err) => console.warn("[queue] initial start failed:", err));
