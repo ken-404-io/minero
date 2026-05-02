@@ -459,12 +459,15 @@ adminRoutes.post("/referrals/approve", async (c) => {
   const guard = requireAdmin(c);
   if (guard instanceof Response) return guard;
 
-  const cfg = await getConfig();
-  const cutoff = new Date(Date.now() - cfg.referralApprovalWindowMs);
+  // ?force=true approves ALL pending referral earnings regardless of age.
+  const force = c.req.query("force") === "true";
 
-  const pendingCommissions = await prisma.earning.findMany({
-    where: { type: "referral", status: "pending", createdAt: { lte: cutoff } },
-  });
+  const cfg = await getConfig();
+  const where = force
+    ? { type: "referral", status: "pending" }
+    : { type: "referral", status: "pending", createdAt: { lte: new Date(Date.now() - cfg.referralApprovalWindowMs) } };
+
+  const pendingCommissions = await prisma.earning.findMany({ where });
 
   if (pendingCommissions.length === 0) return c.json({ approved: 0 });
 
