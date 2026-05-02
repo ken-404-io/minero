@@ -4,6 +4,7 @@ import DashNav from "@/components/DashNav";
 import AdBanner from "@/components/AdBanner";
 import Heartbeat from "@/components/Heartbeat";
 import ReferralCreditToast from "@/components/ReferralCreditToast";
+import ReportButton from "@/components/ReportButton";
 
 type Me = { user: { id: string; name: string; role: string; plan: string } };
 
@@ -41,6 +42,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {!adFree && <AdBanner />}
         {children}
       </main>
+      <ReportButton />
     </div>
   );
 }

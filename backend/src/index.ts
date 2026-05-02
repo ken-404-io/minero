@@ -18,6 +18,7 @@ import { oauthRoutes } from "./routes/oauth.js";
 import { achievementRoutes } from "./routes/achievements.js";
 import { gameRoutes } from "./routes/game.js";
 import { notificationRoutes } from "./routes/notifications.js";
+import { reportRoutes } from "./routes/report.js";
 import { startQueue, stopQueue } from "./lib/queue.js";
 import { prisma } from "./lib/db.js";
 import { DEFAULT_PLANS, getConfig, invalidateConfigCache } from "./lib/config.js";
@@ -151,6 +152,7 @@ app.route("/withdraw", withdrawRoutes);
 app.route("/achievements", achievementRoutes);
 app.route("/game", gameRoutes);
 app.route("/notifications", notificationRoutes);
+app.route("/report", reportRoutes);
 
 app.onError((err, c) => {
   console.error(err);
