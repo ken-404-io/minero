@@ -1,45 +1,45 @@
 "use client";
 
-import { useState } from "react";
-import { API_URL } from "@/lib/api-url";
+import { useState, useTransition } from "react";
+import { approveReferralCommissions } from "./actions";
 
-export default function ReleaseCommissionsButton() {
-  const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
-  const [approved, setApproved] = useState(0);
+export default function ReleaseCommissionsButton({ pendingCount }: { pendingCount: number }) {
+  const [isPending, startTransition] = useTransition();
+  const [result, setResult] = useState<{ approved: number } | { error: string } | null>(null);
 
-  async function release() {
-    setState("loading");
-    try {
-      const res = await fetch(`${API_URL}/admin/referrals/approve?force=true`, {
-        method: "POST",
-        credentials: "include",
-      });
-      const data = await res.json() as { approved?: number; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Failed");
-      setApproved(data.approved ?? 0);
-      setState("done");
-    } catch {
-      setState("error");
-    }
+  function release() {
+    startTransition(async () => {
+      const r = await approveReferralCommissions();
+      setResult(r);
+    });
   }
 
-  if (state === "done") {
+  if (result && "approved" in result) {
     return (
       <span className="text-sm" style={{ color: "var(--success-fg)" }}>
-        ✓ Released {approved} commission{approved !== 1 ? "s" : ""}
+        ✓ Released {result.approved} commission{result.approved !== 1 ? "s" : ""}
       </span>
     );
   }
 
   return (
-    <button
-      type="button"
-      onClick={release}
-      disabled={state === "loading"}
-      className="btn btn-secondary btn-sm"
-      style={{ fontSize: "12px" }}
-    >
-      {state === "loading" ? "Releasing…" : state === "error" ? "Retry" : "Release pending commissions"}
-    </button>
+    <div className="flex items-center gap-3">
+      {result && "error" in result && (
+        <span className="text-xs" style={{ color: "var(--danger-fg)" }}>{result.error}</span>
+      )}
+      <button
+        type="button"
+        onClick={release}
+        disabled={isPending || pendingCount === 0}
+        className="btn btn-secondary btn-sm"
+        style={{ fontSize: "12px" }}
+      >
+        {isPending
+          ? "Releasing…"
+          : result && "error" in result
+          ? "Retry"
+          : `Release ${pendingCount} pending commission${pendingCount !== 1 ? "s" : ""}`}
+      </button>
+    </div>
   );
 }
