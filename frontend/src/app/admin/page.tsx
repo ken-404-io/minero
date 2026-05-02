@@ -37,6 +37,7 @@ type Stats = {
   todayMargin: number;
   todayRevenueToPayoutRatio: number | null;
   planDistribution: PlanDist[];
+  pendingReferralCommissions: number;
   legacyImportedUsers: number;
   legacyImportedCoinsTotal: number;
 };
@@ -143,10 +144,17 @@ export default async function AdminDashboard() {
             <div>
               <h2 className="font-semibold">Referral commissions</h2>
               <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-                Auto-releases every hour. Force-release all pending commissions immediately.
+                Auto-releases every hour.
+                {(stats?.pendingReferralCommissions ?? 0) > 0 ? (
+                  <span style={{ color: "var(--warning-fg)" }}>
+                    {" "}{stats!.pendingReferralCommissions} pending.
+                  </span>
+                ) : (
+                  <span style={{ color: "var(--success-fg)" }}> All clear.</span>
+                )}
               </p>
             </div>
-            <ReleaseCommissionsButton />
+            <ReleaseCommissionsButton pendingCount={stats?.pendingReferralCommissions ?? 0} />
           </div>
         </section>
 

@@ -77,13 +77,14 @@ adminRoutes.get("/stats", async (c) => {
   ]);
 
   const onlineSince = new Date(Date.now() - 2 * 60 * 1000);
-  const [activeTodayGroups, onlineUsers] = await Promise.all([
+  const [activeTodayGroups, onlineUsers, pendingReferralCommissions] = await Promise.all([
     prisma.claim.groupBy({
       by: ["userId"],
       where: { claimedAt: { gte: startOfDay } },
       orderBy: { userId: "asc" },
     }),
     prisma.user.count({ where: { lastSeenAt: { gte: onlineSince } } }),
+    prisma.earning.count({ where: { type: "referral", status: "pending" } }),
   ]);
 
   const planDistribution = await prisma.user.groupBy({
@@ -117,6 +118,7 @@ adminRoutes.get("/stats", async (c) => {
     todayRevenueToPayoutRatio:
       todayPayoutTotal > 0 ? todayRevenueTotal / todayPayoutTotal : null,
     planDistribution,
+    pendingReferralCommissions,
     legacyImportedUsers,
     legacyImportedCoinsTotal: legacyImportedCoinsAgg._sum.legacyImportedCoins ?? 0,
   });
