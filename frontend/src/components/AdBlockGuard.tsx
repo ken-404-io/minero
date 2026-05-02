@@ -21,14 +21,18 @@ const BAIT_CLASSES = [
   "sponsored",
 ].join(" ");
 
-// URLs hit by the platform's actual ad pipeline (Monetag) plus the most
-// common third-party ad endpoints. DNS-level blockers (Pi-hole, AdGuard DNS,
-// NextDNS, private DNS) refuse to resolve these hostnames, so the no-cors
-// fetch rejects well within the timeout. Browser blockers cancel the request
-// at the network layer with the same effect.
-const PROBE_URLS = [
+// URLs served by the actual Monetag ad pipeline loaded on this platform.
+// DNS-level blockers (Pi-hole, AdGuard DNS, NextDNS, Android Private DNS)
+// refuse to resolve these hostnames, so the no-cors fetch rejects immediately.
+// If ALL of these fail the user is definitively blocking our ad network.
+const MONETAG_PROBE_URLS = [
   "https://ueuee.com/tag.min.js",
   "https://5gvci.com/act/files/tag.min.js",
+];
+
+// Supplementary probes — broad ad-network endpoints. Used together with the
+// bait check to catch browser extensions that may not block Monetag by name.
+const EXTRA_PROBE_URLS = [
   "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js",
   "https://www.googletagservices.com/tag/js/gpt.js",
 ];
@@ -128,25 +132,38 @@ export default function AdBlockGuard() {
   const runDetection = useCallback(async () => {
     const myRun = ++runId.current;
 
-    // Start the bait check and probes in parallel — they're independent.
-    const [baitBlocked, probeResults] = await Promise.all([
+    // Run bait check and both probe groups in parallel.
+    const [baitBlocked, monetagResults, extraResults] = await Promise.all([
       detectByBait(),
-      Promise.all(PROBE_URLS.map(probeUrl)),
+      Promise.all(MONETAG_PROBE_URLS.map(probeUrl)),
+      Promise.all(EXTRA_PROBE_URLS.map(probeUrl)),
     ]);
 
     if (myRun !== runId.current) return; // a newer run superseded this one
 
-    const total = probeResults.length;
-    const reachable = probeResults.filter(Boolean).length;
-    // Two independent signals must agree before we lock the user out, so a
-    // quirky CSS setup or a single flaky network doesn't false-positive:
-    //   - probeBlocked: every ad endpoint failed (strong DNS / network signal)
-    //   - baitBlocked + at least one failed probe (CSS-injection blocker)
-    // If even one probe came back reachable and the bait is fine, we treat
-    // the user as clear.
-    const probeBlocked = total > 0 && reachable === 0;
-    const someProbesBlocked = reachable < total;
-    const blocked = probeBlocked || (baitBlocked && someProbesBlocked);
+    const monetagReachable = monetagResults.filter(Boolean).length;
+    const totalReachable = monetagReachable + extraResults.filter(Boolean).length;
+    const totalProbes = MONETAG_PROBE_URLS.length + EXTRA_PROBE_URLS.length;
+
+    // Three independent blocking signals:
+    //
+    // 1. monetagAllBlocked — every Monetag URL failed while other probes may
+    //    still pass. This is the fingerprint of a DNS-level blocker (Pi-hole,
+    //    AdGuard DNS, NextDNS, Android Private DNS) targeting our ad network
+    //    by hostname. The old logic missed this because it required ALL probes
+    //    to fail; Google's ad domains often still resolve through the same DNS.
+    //
+    // 2. allBlocked — every probe failed. Catches comprehensive blockers and
+    //    broad private-DNS profiles that block all ad networks.
+    //
+    // 3. baitBlocked + someBlocked — the DOM bait was hidden by an injected
+    //    stylesheet AND at least one network probe also failed, confirming a
+    //    browser extension is active (not just a quirky CSS theme).
+    const monetagAllBlocked = monetagReachable === 0;
+    const allBlocked = totalReachable === 0;
+    const someBlocked = totalReachable < totalProbes;
+
+    const blocked = monetagAllBlocked || allBlocked || (baitBlocked && someBlocked);
     setState(blocked ? "blocked" : "clear");
   }, []);
 
