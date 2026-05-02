@@ -6,6 +6,7 @@ export type NotificationType =
   | "withdrawal_submitted"
   | "withdrawal_approved"
   | "withdrawal_rejected"
+  | "referral_credited"
   | "admin";
 
 export type CreateNotificationInput = {

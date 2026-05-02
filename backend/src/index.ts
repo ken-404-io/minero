@@ -21,6 +21,7 @@ import { notificationRoutes } from "./routes/notifications.js";
 import { startQueue, stopQueue } from "./lib/queue.js";
 import { prisma } from "./lib/db.js";
 import { DEFAULT_PLANS, getConfig, invalidateConfigCache } from "./lib/config.js";
+import { createNotification } from "./lib/notifications.js";
 
 /**
  * One-time backfill: when gameCoinsBalance was added via prisma db push, existing
@@ -198,6 +199,13 @@ async function runReferralApproval() {
       where: { type: "referral", status: "pending", createdAt: { lte: cutoff } },
     });
     if (pending.length === 0) return;
+
+    // Group by user so we send one notification per user with the total credited.
+    const byUser = new Map<string, number>();
+    for (const e of pending) {
+      byUser.set(e.userId, (byUser.get(e.userId) ?? 0) + e.amount);
+    }
+
     await prisma.$transaction(async (tx) => {
       for (const e of pending) {
         await tx.earning.update({ where: { id: e.id }, data: { status: "approved" } });
@@ -210,6 +218,18 @@ async function runReferralApproval() {
         });
       }
     });
+
+    // Fire one referral_credited notification per affected user.
+    for (const [userId, total] of byUser) {
+      await createNotification({
+        userId,
+        type: "referral_credited",
+        title: "Invite credits received!",
+        body: `₱${total.toFixed(2)} from your referral commissions has been credited to your balance.`,
+        link: "/earnings",
+      });
+    }
+
     console.log(`[referral-approval] Auto-approved ${pending.length} commission(s)`);
   } catch (err) {
     console.warn("[referral-approval] Error:", err);

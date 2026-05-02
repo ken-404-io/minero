@@ -9,6 +9,7 @@ import {
   IconPickaxe,
   IconWallet,
   IconShield,
+  IconUsers,
   IconX,
 } from "@/components/icons";
 
@@ -17,6 +18,7 @@ type NotificationType =
   | "withdrawal_submitted"
   | "withdrawal_approved"
   | "withdrawal_rejected"
+  | "referral_credited"
   | "admin";
 
 type Notification = {
@@ -55,6 +57,8 @@ function iconFor(type: NotificationType) {
     case "withdrawal_approved":
     case "withdrawal_rejected":
       return { Icon: IconWallet, color: "var(--success-fg, var(--brand))" };
+    case "referral_credited":
+      return { Icon: IconUsers, color: "#4ade80" };
     case "admin":
     default:
       return { Icon: IconShield, color: "var(--text-muted)" };
