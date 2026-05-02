@@ -193,46 +193,65 @@ function warnMisconfigs() {
   }
 }
 
+const APPROVAL_BATCH = 200;
+
+async function approveEarningsBatch(
+  earnings: { id: string; userId: string; amount: number }[],
+  force = false,
+): Promise<void> {
+  const byUser = new Map<string, number>();
+  for (const e of earnings) {
+    byUser.set(e.userId, (byUser.get(e.userId) ?? 0) + e.amount);
+  }
+
+  const ids = earnings.map((e) => e.id);
+
+  // Single bulk UPDATE for earnings + one UPDATE per affected user.
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.earning.updateMany({ where: { id: { in: ids } }, data: { status: "approved" } });
+      for (const [userId, amount] of byUser) {
+        await tx.user.update({
+          where: { id: userId },
+          data: { balance: { increment: amount }, pendingBalance: { decrement: amount } },
+        });
+      }
+    },
+    { timeout: 30_000 },
+  );
+
+  // Notify each affected user once per batch.
+  for (const [userId, total] of byUser) {
+    await createNotification({
+      userId,
+      type: "referral_credited",
+      title: "Invite credits received!",
+      body: `₱${total.toFixed(2)} from your referral commissions has been credited to your balance.`,
+      link: "/earnings",
+    }).catch(() => {});
+  }
+  if (force) {
+    console.log(`[referral-approval] Force-released batch of ${earnings.length}`);
+  }
+}
+
 async function runReferralApproval() {
   try {
     const cfg = await getConfig();
     const cutoff = new Date(Date.now() - cfg.referralApprovalWindowMs);
     const pending = await prisma.earning.findMany({
       where: { type: "referral", status: "pending", createdAt: { lte: cutoff } },
+      select: { id: true, userId: true, amount: true },
     });
     if (pending.length === 0) return;
 
-    // Group by user so we send one notification per user with the total credited.
-    const byUser = new Map<string, number>();
-    for (const e of pending) {
-      byUser.set(e.userId, (byUser.get(e.userId) ?? 0) + e.amount);
+    let total = 0;
+    for (let i = 0; i < pending.length; i += APPROVAL_BATCH) {
+      await approveEarningsBatch(pending.slice(i, i + APPROVAL_BATCH));
+      total += Math.min(APPROVAL_BATCH, pending.length - i);
     }
 
-    await prisma.$transaction(async (tx) => {
-      for (const e of pending) {
-        await tx.earning.update({ where: { id: e.id }, data: { status: "approved" } });
-        await tx.user.update({
-          where: { id: e.userId },
-          data: {
-            balance: { increment: e.amount },
-            pendingBalance: { decrement: e.amount },
-          },
-        });
-      }
-    });
-
-    // Fire one referral_credited notification per affected user.
-    for (const [userId, total] of byUser) {
-      await createNotification({
-        userId,
-        type: "referral_credited",
-        title: "Invite credits received!",
-        body: `₱${total.toFixed(2)} from your referral commissions has been credited to your balance.`,
-        link: "/earnings",
-      });
-    }
-
-    console.log(`[referral-approval] Auto-approved ${pending.length} commission(s)`);
+    console.log(`[referral-approval] Auto-approved ${total} commission(s)`);
   } catch (err) {
     console.warn("[referral-approval] Error:", err);
   }

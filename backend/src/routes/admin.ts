@@ -469,22 +469,37 @@ adminRoutes.post("/referrals/approve", async (c) => {
     ? { type: "referral", status: "pending" }
     : { type: "referral", status: "pending", createdAt: { lte: new Date(Date.now() - cfg.referralApprovalWindowMs) } };
 
-  const pendingCommissions = await prisma.earning.findMany({ where });
+  const pendingCommissions = await prisma.earning.findMany({
+    where,
+    select: { id: true, userId: true, amount: true },
+  });
 
   if (pendingCommissions.length === 0) return c.json({ approved: 0 });
 
-  await prisma.$transaction(async (tx) => {
-    for (const e of pendingCommissions) {
-      await tx.earning.update({ where: { id: e.id }, data: { status: "approved" } });
-      await tx.user.update({
-        where: { id: e.userId },
-        data: {
-          balance: { increment: e.amount },
-          pendingBalance: { decrement: e.amount },
-        },
-      });
+  // Process in batches of 200 to avoid transaction timeouts on large datasets.
+  const BATCH = 200;
+  for (let i = 0; i < pendingCommissions.length; i += BATCH) {
+    const batch = pendingCommissions.slice(i, i + BATCH);
+    const byUser = new Map<string, number>();
+    for (const e of batch) {
+      byUser.set(e.userId, (byUser.get(e.userId) ?? 0) + e.amount);
     }
-  });
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.earning.updateMany({
+          where: { id: { in: batch.map((e) => e.id) } },
+          data: { status: "approved" },
+        });
+        for (const [userId, amount] of byUser) {
+          await tx.user.update({
+            where: { id: userId },
+            data: { balance: { increment: amount }, pendingBalance: { decrement: amount } },
+          });
+        }
+      },
+      { timeout: 30_000 },
+    );
+  }
 
   return c.json({ approved: pendingCommissions.length });
 });
