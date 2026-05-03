@@ -279,6 +279,7 @@ model ProblemReport {
   id          String    @id @default(cuid())
   userId      String
   message     String
+  mediaUrl    String?
   status      String    @default("open") // open | dismissed
   createdAt   DateTime  @default(now())
   dismissedAt DateTime?

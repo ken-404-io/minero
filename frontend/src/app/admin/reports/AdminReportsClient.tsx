@@ -15,6 +15,7 @@ type Report = {
   id: string;
   userId: string;
   message: string;
+  mediaUrl: string | null;
   status: string;
   createdAt: string;
   dismissedAt: string | null;
@@ -171,6 +172,28 @@ export default function AdminReportsClient({
                     >
                       {r.message}
                     </p>
+
+                    {/* Attached media */}
+                    {r.mediaUrl && (
+                      r.mediaUrl.match(/\.(mp4|mov|webm|ogg)(\?|$)/i)
+                        ? (
+                          <video
+                            src={r.mediaUrl}
+                            controls
+                            className="mt-3 rounded-lg max-w-sm w-full"
+                            style={{ maxHeight: 300 }}
+                          />
+                        ) : (
+                          <a href={r.mediaUrl} target="_blank" rel="noopener noreferrer">
+                            <img
+                              src={r.mediaUrl}
+                              alt="Attached screenshot"
+                              className="mt-3 rounded-lg max-w-sm w-full object-cover cursor-pointer"
+                              style={{ maxHeight: 300 }}
+                            />
+                          </a>
+                        )
+                    )}
 
                     {/* Dismissed info */}
                     {r.dismissedAt && (
