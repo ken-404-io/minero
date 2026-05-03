@@ -185,12 +185,20 @@ adminRoutes.get("/users/:id", async (c) => {
       role: true,
       frozen: true,
       createdAt: true,
+      withdrawGateUnlockedAt: true,
       legacyImported: true,
       legacyImportedCoins: true,
       _count: { select: { claims: true, earnings: true, withdrawals: true, referralsGiven: true } },
     },
   });
   if (!user) return c.json({ error: "Not found" }, 404);
+
+  // Count referrals made after the gate was unlocked (same logic as withdraw route).
+  const withdrawGateReferrals = user.withdrawGateUnlockedAt
+    ? await prisma.referral.count({
+        where: { referrerId: id, createdAt: { gte: user.withdrawGateUnlockedAt } },
+      })
+    : 0;
 
   const [recentClaims, recentWithdrawals] = await Promise.all([
     prisma.claim.findMany({
@@ -216,7 +224,7 @@ adminRoutes.get("/users/:id", async (c) => {
     }),
   ]);
 
-  return c.json({ user, recentClaims, recentWithdrawals });
+  return c.json({ user: { ...user, withdrawGateReferrals }, recentClaims, recentWithdrawals });
 });
 
 const userPatchSchema = z.object({
@@ -227,6 +235,10 @@ const userPatchSchema = z.object({
   balanceReason: z.string().max(200).optional(),
   gameCoinsAdjustment: z.number().int().optional(),
   gameCoinsReason: z.string().max(200).optional(),
+  // Withdrawal gate overrides
+  resetWithdrawGate: z.boolean().optional(),      // set withdrawGateUnlockedAt = null
+  unlockWithdrawGate: z.boolean().optional(),     // set to now (starts counting from today)
+  forceCompleteGate: z.boolean().optional(),      // set to epoch so all referrals count
 });
 
 adminRoutes.patch("/users/:id", async (c) => {
@@ -255,6 +267,9 @@ adminRoutes.patch("/users/:id", async (c) => {
     balanceReason,
     gameCoinsAdjustment,
     gameCoinsReason,
+    resetWithdrawGate,
+    unlockWithdrawGate,
+    forceCompleteGate,
   } = parsed.data;
 
   const target = await prisma.user.findUnique({ where: { id } });
@@ -265,6 +280,9 @@ adminRoutes.patch("/users/:id", async (c) => {
     if (frozen !== undefined) updateData.frozen = frozen;
     if (role !== undefined) updateData.role = role;
     if (plan !== undefined) updateData.plan = plan;
+    if (resetWithdrawGate) updateData.withdrawGateUnlockedAt = null;
+    else if (forceCompleteGate) updateData.withdrawGateUnlockedAt = new Date(0); // epoch — all referrals count
+    else if (unlockWithdrawGate) updateData.withdrawGateUnlockedAt = new Date();
 
     if (balanceAdjustment !== undefined && balanceAdjustment !== 0) {
       updateData.balance = { increment: balanceAdjustment };
@@ -331,6 +349,7 @@ adminRoutes.patch("/users/:id", async (c) => {
       plan: true,
       balance: true,
       gameCoinsBalance: true,
+      withdrawGateUnlockedAt: true,
     },
   });
 
