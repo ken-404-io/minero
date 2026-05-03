@@ -355,7 +355,14 @@ adminRoutes.patch("/users/:id", async (c) => {
     },
   });
 
-  return c.json({ user });
+  // Recalculate gate referral count using the freshly updated unlock timestamp.
+  const withdrawGateReferrals = user?.withdrawGateUnlockedAt
+    ? await prisma.referral.count({
+        where: { referrerId: id, createdAt: { gte: user.withdrawGateUnlockedAt } },
+      })
+    : 0;
+
+  return c.json({ user: { ...user, withdrawGateReferrals } });
 });
 
 // ============================================================
