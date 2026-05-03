@@ -8,6 +8,7 @@ type Report = {
   id: string;
   userId: string;
   message: string;
+  mediaUrl: string | null;
   status: string;
   createdAt: string;
   dismissedAt: string | null;
