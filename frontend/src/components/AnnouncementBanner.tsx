@@ -18,9 +18,9 @@ export default function AnnouncementBanner({ message }: { message: string }) {
         color: "var(--brand)",
       }}
     >
-      <div className="flex items-center gap-2 flex-1 min-w-0">
-        <IconInfo size={15} style={{ flexShrink: 0 }} />
-        <span className="truncate">{message}</span>
+      <div className="flex items-start gap-2 flex-1 min-w-0">
+        <IconInfo size={15} style={{ flexShrink: 0, marginTop: 2 }} />
+        <span className="whitespace-pre-line">{message}</span>
       </div>
       <button
         onClick={() => setDismissed(true)}
