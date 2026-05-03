@@ -15,6 +15,7 @@ type ConfigResp = {
     referralApprovalWindowMs: number;
     maxReferralsPerDay: number;
     withdrawalMinimum: number;
+    withdrawGateReferralsRequired: number;
     estimatedAdRevenuePerClaim: number;
   };
   defaults: ConfigResp["config"];

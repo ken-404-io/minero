@@ -25,6 +25,7 @@ export const DEFAULTS = {
   referralApprovalWindowMs: 24 * 60 * 60 * 1000,
   maxReferralsPerDay: 10,
   withdrawalMinimum: 300,
+  withdrawGateReferralsRequired: 50,
   adTokenTtlMs: 5 * 60 * 1000,
   adViewDurationMs: 5 * 1000,
   otpTtlMs: 10 * 60 * 1000,
@@ -45,6 +46,7 @@ const KEYS = {
   referralApprovalWindowMs: "referral_approval_window_ms",
   maxReferralsPerDay: "max_referrals_per_day",
   withdrawalMinimum: "withdrawal_minimum",
+  withdrawGateReferralsRequired: "withdraw_gate_referrals_required",
   estimatedAdRevenuePerClaim: "est_ad_revenue_per_claim",
   maintenanceMode: "maintenance_mode",
   announcementBanner: "announcement_banner",
@@ -84,8 +86,9 @@ async function loadAll(): Promise<typeof DEFAULTS> {
   parsed.referralCommissionRate   = num(KEYS.referralCommissionRate)  ?? parsed.referralCommissionRate;
   parsed.referralApprovalWindowMs = num(KEYS.referralApprovalWindowMs)?? parsed.referralApprovalWindowMs;
   parsed.maxReferralsPerDay       = num(KEYS.maxReferralsPerDay)      ?? parsed.maxReferralsPerDay;
-  parsed.withdrawalMinimum        = num(KEYS.withdrawalMinimum)       ?? parsed.withdrawalMinimum;
-  parsed.estimatedAdRevenuePerClaim = num(KEYS.estimatedAdRevenuePerClaim) ?? parsed.estimatedAdRevenuePerClaim;
+  parsed.withdrawalMinimum             = num(KEYS.withdrawalMinimum)             ?? parsed.withdrawalMinimum;
+  parsed.withdrawGateReferralsRequired = num(KEYS.withdrawGateReferralsRequired) ?? parsed.withdrawGateReferralsRequired;
+  parsed.estimatedAdRevenuePerClaim    = num(KEYS.estimatedAdRevenuePerClaim)    ?? parsed.estimatedAdRevenuePerClaim;
 
   const bool = (k: string) => {
     const v = map.get(k);

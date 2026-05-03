@@ -194,11 +194,13 @@ adminRoutes.get("/users/:id", async (c) => {
   if (!user) return c.json({ error: "Not found" }, 404);
 
   // Count referrals made after the gate was unlocked (same logic as withdraw route).
-  const withdrawGateReferrals = user.withdrawGateUnlockedAt
-    ? await prisma.referral.count({
-        where: { referrerId: id, createdAt: { gte: user.withdrawGateUnlockedAt } },
-      })
-    : 0;
+  const [withdrawGateReferrals, cfg] = await Promise.all([
+    user.withdrawGateUnlockedAt
+      ? prisma.referral.count({ where: { referrerId: id, createdAt: { gte: user.withdrawGateUnlockedAt } } })
+      : Promise.resolve(0),
+    getConfig(),
+  ]);
+  const withdrawGateReferralsRequired = cfg.withdrawGateReferralsRequired;
 
   const [recentClaims, recentWithdrawals] = await Promise.all([
     prisma.claim.findMany({
@@ -224,7 +226,7 @@ adminRoutes.get("/users/:id", async (c) => {
     }),
   ]);
 
-  return c.json({ user: { ...user, withdrawGateReferrals }, recentClaims, recentWithdrawals });
+  return c.json({ user: { ...user, withdrawGateReferrals, withdrawGateReferralsRequired }, recentClaims, recentWithdrawals });
 });
 
 const userPatchSchema = z.object({
@@ -353,7 +355,14 @@ adminRoutes.patch("/users/:id", async (c) => {
     },
   });
 
-  return c.json({ user });
+  // Recalculate gate referral count using the freshly updated unlock timestamp.
+  const withdrawGateReferrals = user?.withdrawGateUnlockedAt
+    ? await prisma.referral.count({
+        where: { referrerId: id, createdAt: { gte: user.withdrawGateUnlockedAt } },
+      })
+    : 0;
+
+  return c.json({ user: { ...user, withdrawGateReferrals } });
 });
 
 // ============================================================
@@ -829,6 +838,7 @@ const configUpdateSchema = z.object({
   referralApprovalWindowMs: z.number().int().min(0).max(14 * 24 * 60 * 60 * 1000).optional(),
   maxReferralsPerDay: z.number().int().min(1).max(1000).optional(),
   withdrawalMinimum: z.number().min(0).max(100_000).optional(),
+  withdrawGateReferralsRequired: z.number().int().min(0).max(10_000).optional(),
   estimatedAdRevenuePerClaim: z.number().min(0).max(10).optional(),
   // Site-wide controls
   maintenanceMode: z.boolean().optional(),
@@ -923,6 +933,8 @@ adminRoutes.put("/config", async (c) => {
     await setConfigValue("maxReferralsPerDay", updates.maxReferralsPerDay, guard.userId);
   if (updates.withdrawalMinimum !== undefined)
     await setConfigValue("withdrawalMinimum", updates.withdrawalMinimum, guard.userId);
+  if (updates.withdrawGateReferralsRequired !== undefined)
+    await setConfigValue("withdrawGateReferralsRequired", updates.withdrawGateReferralsRequired, guard.userId);
   if (updates.estimatedAdRevenuePerClaim !== undefined)
     await setConfigValue("estimatedAdRevenuePerClaim", updates.estimatedAdRevenuePerClaim, guard.userId);
   if (updates.maintenanceMode !== undefined)

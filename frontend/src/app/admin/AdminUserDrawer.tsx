@@ -8,8 +8,6 @@ import {
   IconWallet, IconPickaxe, IconInfo, IconUsers,
 } from "@/components/icons";
 
-const REFERRAL_REQUIRED = 50;
-
 function fmtDate(d: string | Date) {
   return new Date(d).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
 }
@@ -29,6 +27,7 @@ type UserDetail = {
     gameCoinsBalance?: number; plan: string; role: string; frozen: boolean;
     createdAt: string | Date; withdrawGateUnlockedAt: string | Date | null;
     withdrawGateReferrals?: number;
+    withdrawGateReferralsRequired?: number;
     legacyImported: boolean; legacyImportedCoins: number;
     _count: { claims: number; earnings: number; withdrawals: number; referralsGiven: number };
   };
@@ -114,8 +113,9 @@ export default function AdminUserDrawer({ userId, onClose }: Props) {
 
   const u = detail?.user;
   const gateReferrals = u?.withdrawGateReferrals ?? 0;
-  const gateComplete = gateReferrals >= REFERRAL_REQUIRED;
-  const gatePct = Math.min(100, (gateReferrals / REFERRAL_REQUIRED) * 100);
+  const referralsRequired = u?.withdrawGateReferralsRequired ?? 50;
+  const gateComplete = gateReferrals >= referralsRequired;
+  const gatePct = Math.min(100, (gateReferrals / (referralsRequired || 1)) * 100);
 
   return (
     <>
@@ -224,7 +224,7 @@ export default function AdminUserDrawer({ userId, onClose }: Props) {
                   <div className="rounded-lg p-3 mb-3 text-xs" style={{ background: "var(--surface-2)" }}>
                     <div className="flex justify-between mb-1.5">
                       <span style={{ color: "var(--text-muted)" }}>Post-unlock referrals</span>
-                      <span className="font-mono font-semibold">{gateReferrals}/{REFERRAL_REQUIRED}</span>
+                      <span className="font-mono font-semibold">{gateReferrals}/{referralsRequired}</span>
                     </div>
                     <div className="progress mb-2">
                       <div className="progress-bar" style={{ width: `${gatePct}%` }} />
