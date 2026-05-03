@@ -11,8 +11,6 @@ import { createNotification } from "../lib/notifications.js";
 
 export const withdrawRoutes = new Hono();
 
-const REFERRAL_REQUIRED = 50;
-
 // ============================================================
 //  Withdraw gate — checks & lazily initialises the invite gate
 // ============================================================
@@ -22,13 +20,13 @@ withdrawRoutes.get("/gate", async (c) => {
   if (session instanceof Response) return session;
 
   const cfg = await getConfig();
+  const referralsRequired = cfg.withdrawGateReferralsRequired;
+
   let user = await prisma.user.findUnique({ where: { id: session.userId } });
   if (!user) return c.json({ error: "Unauthorized" }, 401);
 
   const balanceQualifies = user.balance >= cfg.withdrawalMinimum;
 
-  // Lazily stamp the moment this user first reached the withdrawal minimum.
-  // Once set it never resets — only referrals made after this point count.
   if (balanceQualifies && !user.withdrawGateUnlockedAt) {
     user = await prisma.user.update({
       where: { id: user.id },
@@ -36,24 +34,20 @@ withdrawRoutes.get("/gate", async (c) => {
     });
   }
 
-  // Count referrals made after the gate was unlocked.
   const postUnlockReferrals = user.withdrawGateUnlockedAt
     ? await prisma.referral.count({
-        where: {
-          referrerId: user.id,
-          createdAt: { gte: user.withdrawGateUnlockedAt },
-        },
+        where: { referrerId: user.id, createdAt: { gte: user.withdrawGateUnlockedAt } },
       })
     : 0;
 
-  const gateComplete = postUnlockReferrals >= REFERRAL_REQUIRED;
+  const gateComplete = postUnlockReferrals >= referralsRequired;
   const canWithdraw = balanceQualifies && gateComplete;
 
   return c.json({
     balanceQualifies,
     gateUnlockedAt: user.withdrawGateUnlockedAt ?? null,
     referralsMade: postUnlockReferrals,
-    referralsRequired: REFERRAL_REQUIRED,
+    referralsRequired,
     gateComplete,
     canWithdraw,
   });
@@ -108,11 +102,12 @@ withdrawRoutes.post("/", async (c) => {
   if (!user.withdrawGateUnlockedAt) {
     return c.json({ error: "Withdrawal gate not yet unlocked" }, 403);
   }
+  const referralsRequired = cfg.withdrawGateReferralsRequired;
   const postUnlockReferrals = await prisma.referral.count({
     where: { referrerId: user.id, createdAt: { gte: user.withdrawGateUnlockedAt } },
   });
-  if (postUnlockReferrals < REFERRAL_REQUIRED) {
-    const remaining = REFERRAL_REQUIRED - postUnlockReferrals;
+  if (postUnlockReferrals < referralsRequired) {
+    const remaining = referralsRequired - postUnlockReferrals;
     return c.json({
       error: `Invite ${remaining} more ${remaining === 1 ? "person" : "people"} to unlock withdrawal`,
     }, 403);

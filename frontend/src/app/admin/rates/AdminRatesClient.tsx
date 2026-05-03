@@ -21,6 +21,7 @@ type Config = {
   referralApprovalWindowMs: number;
   maxReferralsPerDay: number;
   withdrawalMinimum: number;
+  withdrawGateReferralsRequired: number;
   estimatedAdRevenuePerClaim: number;
 };
 
@@ -201,6 +202,13 @@ export default function AdminRatesClient({ config, defaults }: Props) {
                 value={form.withdrawalMinimum}
                 onChange={(v) => setForm((f) => ({ ...f, withdrawalMinimum: v }))}
                 min={0}
+              />
+              <NumberField
+                label="Withdrawal gate invite requirement"
+                value={form.withdrawGateReferralsRequired}
+                onChange={(v) => setForm((f) => ({ ...f, withdrawGateReferralsRequired: v }))}
+                min={0}
+                max={10000}
               />
               <NumberField
                 label="Est. ad revenue per claim ₱"
