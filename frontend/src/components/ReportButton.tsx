@@ -49,7 +49,7 @@ async function uploadToCloudinary(file: File, sig: UploadSig): Promise<string> {
   return data.secure_url;
 }
 
-export default function ReportButton() {
+export default function ReportButton({ isAdmin = false }: { isAdmin?: boolean }) {
   const [open, setOpen]           = useState(false);
   const [message, setMessage]     = useState("");
   const [file, setFile]           = useState<File | null>(null);
@@ -91,7 +91,7 @@ export default function ReportButton() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (alreadyReportedToday()) {
+    if (!isAdmin && alreadyReportedToday()) {
       setError("You have already submitted a report today. Try again tomorrow.");
       return;
     }
@@ -125,7 +125,7 @@ export default function ReportButton() {
       if (!res.ok) {
         setError(data.error ?? "Failed to submit. Please try again.");
       } else {
-        markReportedToday();
+        if (!isAdmin) markReportedToday();
         setSuccess(true);
         setMessage("");
         setFile(null);
@@ -140,7 +140,7 @@ export default function ReportButton() {
     }
   }
 
-  const alreadyReported = alreadyReportedToday();
+  const alreadyReported = !isAdmin && alreadyReportedToday();
   const isVideo = file?.type.startsWith("video/");
 
   return (
@@ -243,6 +243,7 @@ export default function ReportButton() {
                           style={{ maxHeight: 200 }}
                         />
                       ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={preview}
                           alt="Preview"

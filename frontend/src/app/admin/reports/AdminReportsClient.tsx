@@ -185,6 +185,7 @@ export default function AdminReportsClient({
                           />
                         ) : (
                           <a href={r.mediaUrl} target="_blank" rel="noopener noreferrer">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={r.mediaUrl}
                               alt="Attached screenshot"

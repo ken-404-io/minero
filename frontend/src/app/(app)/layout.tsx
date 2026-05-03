@@ -42,7 +42,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {!adFree && <AdBanner />}
         {children}
       </main>
-      <ReportButton />
+      <ReportButton isAdmin={me.user.role === "admin"} />
     </div>
   );
 }
