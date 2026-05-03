@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { createHmac } from "crypto";
+import { createHash } from "crypto";
 import { prisma } from "../lib/db.js";
 import { requireAuth } from "../lib/session.js";
 import { rateLimit } from "../lib/rateLimit.js";
@@ -26,11 +26,9 @@ reportRoutes.get("/upload-signature", async (c) => {
   }
 
   const timestamp = Math.floor(Date.now() / 1000);
-  // Sign: alphabetical param string + secret
+  // Cloudinary signature: SHA1(sorted_params + api_secret) — NOT HMAC
   const toSign = `folder=${FOLDER}&timestamp=${timestamp}${API_SECRET}`;
-  const signature = createHmac("sha1", API_SECRET)
-    .update(toSign)
-    .digest("hex");
+  const signature = createHash("sha1").update(toSign).digest("hex");
 
   return c.json({ signature, timestamp, apiKey: API_KEY, cloudName: CLOUD_NAME, folder: FOLDER });
 });
