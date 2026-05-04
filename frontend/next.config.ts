@@ -35,7 +35,7 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://ueuee.com https://5gvci.com",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://ueuee.com https://5gvci.com https://quge5.com",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https:",
               "font-src 'self' data:",
