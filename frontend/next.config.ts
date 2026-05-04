@@ -35,12 +35,14 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://ueuee.com https://5gvci.com",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://ueuee.com https://5gvci.com https://quge5.com https://auoot.com https://lmo11.com https://894kk.com https://tzeello.com https:",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https:",
               "font-src 'self' data:",
               // Allow XHR/fetch to the API — uses the configured API URL.
               `connect-src 'self' ${apiUrl} https:`,
+              // Allow service workers to importScripts from Monetag's CDN.
+              "worker-src 'self' blob: https://5gvci.com",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
