@@ -13,13 +13,16 @@ import {
 
 export const gameRoutes = new Hono();
 
+function startOfUtcDay(): Date {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+}
+
 /** Server-authoritative game-coin balance + today's earnings by game. */
 gameRoutes.get("/balance", async (c) => {
   const session = requireAuth(c);
   if (session instanceof Response) return session;
-
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
 
   const [user, todayByGame] = await Promise.all([
     prisma.user.findUnique({
@@ -30,7 +33,7 @@ gameRoutes.get("/balance", async (c) => {
       by: ["gameKey"],
       where: {
         userId: session.userId,
-        finishedAt: { gte: startOfDay },
+        finishedAt: { gte: startOfUtcDay() },
       },
       _sum: { coinsEarned: true },
     }),
@@ -95,23 +98,7 @@ gameRoutes.post("/session/start", async (c) => {
     }
   }
 
-  // Daily cap: refuse if already at the per-game daily coin cap.
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  const todayAgg = await prisma.gameSession.aggregate({
-    where: {
-      userId: session.userId,
-      gameKey,
-      finishedAt: { gte: startOfDay },
-    },
-    _sum: { coinsEarned: true },
-  });
-  if ((todayAgg._sum.coinsEarned ?? 0) >= cfg.dailyCoinCap) {
-    return c.json({ error: "Daily cap reached for this game" }, 403);
-  }
-
-  // Rate limit checked last — only real session-creation attempts count, so
-  // cooldown/cap rejections above don't burn slots and cause plays 21+ to fail.
+  // Rate limit checked last — only real session-creation attempts count.
   const rl = rateLimit(`game:start:${session.userId}:${gameKey}`, 20, 60_000);
   if (!rl.ok) {
     return c.json({ error: "Too many requests", retryAfterMs: rl.retryAfterMs }, 429);
@@ -135,9 +122,6 @@ gameRoutes.post("/session/start", async (c) => {
  * session flow had their stats only in localStorage. This endpoint accepts
  * those per-game-key totals, caps them, and credits gameCoinsBalance. It
  * flips User.legacyImported so the import can't be replayed.
- *
- * Caps: each game's contribution is clamped to dailyCoinCap × 2 (≈ "a couple
- * days of play"), and the grand total is clamped to LEGACY_TOTAL_CAP.
  */
 const LEGACY_PER_GAME_CAP_MULT = 2;
 const LEGACY_TOTAL_CAP = 10_000;
@@ -146,10 +130,6 @@ gameRoutes.post("/import-legacy", async (c) => {
   const session = requireAuth(c);
   if (session instanceof Response) return session;
 
-  // 5 attempts per user per hour. The endpoint is idempotent via
-  // legacyImported, so legitimate clients only need one successful call —
-  // this just blunts brute-force attempts at finding values that slip past
-  // the per-game / total caps.
   const rl = rateLimit(`legacy-import:${session.userId}`, 5, 60 * 60 * 1000);
   if (!rl.ok) {
     c.header("Retry-After", String(Math.ceil(rl.retryAfterMs / 1000)));
@@ -188,9 +168,6 @@ gameRoutes.post("/import-legacy", async (c) => {
   }
   credited = Math.min(credited, LEGACY_TOTAL_CAP);
 
-  // Race-safe: only update when legacyImported is still false. If two
-  // requests arrive concurrently, the second sees count: 0 and treats it
-  // as already-imported.
   const updated = await prisma.user.updateMany({
     where: { id: session.userId, legacyImported: false },
     data: {
@@ -227,13 +204,8 @@ gameRoutes.post("/import-legacy", async (c) => {
 
 /**
  * Incremental in-session credit. Used by progressive games (word, memory)
- * to credit coins as the player earns them — found a word, matched a pair —
- * instead of holding the credit until /finish. Quitting mid-game still
- * keeps everything credited so far.
- *
- * The server clamps the delta against (maxCoinsPerSession - sessionSoFar)
- * and (dailyCoinCap - todaySoFar). Returns the actually-credited amount;
- * the client should treat that as authoritative (not the requested delta).
+ * to credit coins per action. Only clamped against per-session cap —
+ * daily cap is not enforced so users always receive their earned coins.
  */
 gameRoutes.post("/session/credit", async (c) => {
   const session = requireAuth(c);
@@ -248,8 +220,6 @@ gameRoutes.post("/session/credit", async (c) => {
   if (!sessionId) return c.json({ error: "Missing sessionId" }, 400);
   if (requested === 0) return c.json({ error: "deltaCoins must be > 0" }, 400);
 
-  // Per-user credit rate limit: each in-flight session can fire many
-  // credits, so we allow more than /finish but still bound it.
   const rl = rateLimit(`game:credit:${session.userId}`, 120, 60_000);
   if (!rl.ok) {
     return c.json({ error: "Too many requests", retryAfterMs: rl.retryAfterMs }, 429);
@@ -265,41 +235,11 @@ gameRoutes.post("/session/credit", async (c) => {
 
   const cfg = GAME_CONFIG[row.gameKey as GameKey];
 
-  // Clamp against this session's remaining budget.
+  // Only enforce per-session cap — no daily cap.
   const sessionRemaining = Math.max(0, cfg.maxCoinsPerSession - row.coinsEarned);
+  const credited = Math.min(requested, sessionRemaining);
 
-  // Clamp against today's remaining budget for this game.
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  const todayAgg = await prisma.gameSession.aggregate({
-    where: {
-      userId: session.userId,
-      gameKey: row.gameKey,
-      finishedAt: { gte: startOfDay },
-    },
-    _sum: { coinsEarned: true },
-  });
-  // Include in-flight sessions' coinsEarned so unfinished progressive
-  // games still count against today's cap.
-  const inflightAgg = await prisma.gameSession.aggregate({
-    where: {
-      userId: session.userId,
-      gameKey: row.gameKey,
-      finishedAt: null,
-      startedAt: { gte: startOfDay },
-      id: { not: sessionId },
-    },
-    _sum: { coinsEarned: true },
-  });
-  const todaySoFar =
-    (todayAgg._sum.coinsEarned ?? 0) +
-    (inflightAgg._sum.coinsEarned ?? 0) +
-    row.coinsEarned;
-  const dailyRemaining = Math.max(0, cfg.dailyCoinCap - todaySoFar);
-
-  const credited = Math.min(requested, sessionRemaining, dailyRemaining);
   if (credited === 0) {
-    // Already at one of the caps; nothing to do but report state.
     const fresh = await prisma.user.findUnique({
       where: { id: session.userId },
       select: { gameCoinsBalance: true },
@@ -309,8 +249,7 @@ gameRoutes.post("/session/credit", async (c) => {
       sessionTotal: row.coinsEarned,
       balance: fresh?.gameCoinsBalance ?? 0,
       capped: true,
-      reason:
-        sessionRemaining === 0 ? "session_cap" : "daily_cap",
+      reason: "session_cap",
     });
   }
 
@@ -372,47 +311,14 @@ gameRoutes.post("/session/finish", async (c) => {
     );
   }
 
-  // Progressive games (memory, word) credit coins per action via
-  // /session/credit, so by /finish row.coinsEarned > 0. One-shot games
-  // (trivia, spin, minesweeper, blockblast) arrive with row.coinsEarned == 0.
-  // In both cases, the final coinsEarned = max(per-action credits, score-
-  // based reward), with the score-based portion clamped against today's
-  // remaining budget.
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  const [todayAgg, inflightAgg] = await Promise.all([
-    prisma.gameSession.aggregate({
-      where: {
-        userId: session.userId,
-        gameKey: row.gameKey,
-        finishedAt: { gte: startOfDay },
-      },
-      _sum: { coinsEarned: true },
-    }),
-    prisma.gameSession.aggregate({
-      where: {
-        userId: session.userId,
-        gameKey: row.gameKey,
-        finishedAt: null,
-        startedAt: { gte: startOfDay },
-        id: { not: sessionId },
-      },
-      _sum: { coinsEarned: true },
-    }),
-  ]);
-  // Today's already-credited total INCLUDES this session's incremental
-  // credits (in row.coinsEarned). remainingToday is what we can still
-  // award beyond that without breaching the per-day cap.
-  const todayCredited =
-    (todayAgg._sum.coinsEarned ?? 0) +
-    (inflightAgg._sum.coinsEarned ?? 0) +
-    row.coinsEarned;
-  const remainingToday = Math.max(0, cfg.dailyCoinCap - todayCredited);
-
+  // Compute final coins. Progressive games (word, memory) already have
+  // row.coinsEarned > 0 from /credit calls. For one-shot games it's 0.
+  // Award the larger of already-credited and score-based total, both
+  // clamped by per-session cap only — no daily cap.
   const rawCoins = scoreToCoins(row.gameKey as GameKey, score);
-  // Award the larger of "already credited" and "score-based total",
-  // capped by remaining-today on the bonus portion only.
-  const bonus = Math.max(0, Math.min(rawCoins - row.coinsEarned, remainingToday));
+  const sessionCap = cfg.maxCoinsPerSession;
+  const scoreBased = Math.min(rawCoins, sessionCap);
+  const bonus = Math.max(0, scoreBased - row.coinsEarned);
   const coinsEarned = row.coinsEarned + bonus;
   const creditDelta = bonus;
 
@@ -442,6 +348,6 @@ gameRoutes.post("/session/finish", async (c) => {
     sessionId: updatedSession.id,
     coinsEarned,
     balance: updatedUser.gameCoinsBalance,
-    capped: rawCoins > 0 && rawCoins > coinsEarned,
+    capped: false,
   });
 });
