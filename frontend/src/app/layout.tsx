@@ -92,6 +92,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           data-cfasync="false"
           strategy="afterInteractive"
         />
+        <Script
+          id="monetag-ad-3"
+          src="https://quge5.com/88/tag.min.js"
+          data-zone="236058"
+          data-cfasync="false"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );
