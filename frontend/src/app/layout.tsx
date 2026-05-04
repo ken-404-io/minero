@@ -81,22 +81,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <CookieConsent />
         <AdBlockGuard />
         <Script
-          id="block-quge5"
-          strategy="afterInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `(function(){var o=new MutationObserver(function(ms){ms.forEach(function(m){m.addedNodes.forEach(function(n){if(n.tagName==='SCRIPT'&&n.src&&n.src.includes('quge5.com')){n.remove();}});});});o.observe(document.documentElement,{childList:true,subtree:true});})();`,
-          }}
-        />
-        <Script
           id="monetag-ad"
           src="https://ueuee.com/tag.min.js"
           data-zone="10936404"
-          strategy="afterInteractive"
-        />
-        <Script
-          id="monetag-ad-2"
-          src="https://5gvci.com/act/files/tag.min.js?z=10936442"
-          data-cfasync="false"
           strategy="afterInteractive"
         />
       </body>
