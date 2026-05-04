@@ -826,15 +826,6 @@ function DoneView({
             </div>
           </div>
         )}
-        {coinsCapped && !sessionError && (
-          <div className="alert alert-info mb-4 text-left" role="status">
-            <IconCheck size={14} />
-            <div className="text-xs">
-              You hit today&apos;s trivia coin cap — only the remaining
-              budget was credited. Come back tomorrow for more!
-            </div>
-          </div>
-        )}
 
         <div className="grid grid-cols-3 gap-2 mb-5">
           <div className="kpi" style={{ padding: "0.75rem" }}>

@@ -948,10 +948,6 @@ export default function WordClient({ playerName }: { playerName: string }) {
   // Surface session-start failure (24h cooldown / network) so users
   // understand why their finds aren't crediting coins this round.
   const [sessionError, setSessionError] = useState<string | null>(null);
-  // Set true once a credit response comes back capped (daily-coin budget
-  // exhausted). Subsequent finds still register but no more coins.
-  const [coinCapHit, setCoinCapHit] = useState(false);
-
   /** Word currently traced on the wheel (derived from selection indices). */
   const currentWord = useMemo(
     () => selection.map((i) => wheelLetters[i]).join(""),
@@ -1079,9 +1075,7 @@ export default function WordClient({ playerName }: { playerName: string }) {
     }
 
     function tryCredit(sid: string, amount: number) {
-      void creditGameSession(sid, amount).then((res) => {
-        if (res.ok && res.capped) setCoinCapHit(true);
-      });
+      void creditGameSession(sid, amount);
     }
 
     const wordIdx = isPuzzleWord(puzzle, word);
@@ -1367,9 +1361,8 @@ export default function WordClient({ playerName }: { playerName: string }) {
         Lvl {level + 1}
       </span>
 
-      {/* Session-state banner: shown when the daily cooldown blocks
-          coin crediting, or when today's coin budget is exhausted. */}
-      {(sessionError || coinCapHit) && (
+      {/* Session-state banner: shown when a session can't be started (e.g. network error). */}
+      {sessionError && (
         <div
           role="status"
           style={{
@@ -1388,18 +1381,8 @@ export default function WordClient({ playerName }: { playerName: string }) {
             textAlign: "center",
           }}
         >
-          {sessionError ? (
-            <>
-              <strong>No coins this round.</strong> Today&apos;s puzzle is
-              already finished. Come back tomorrow to earn coins again — you
-              can keep playing for fun.
-            </>
-          ) : (
-            <>
-              <strong>Daily coin cap reached.</strong> Words still count, but
-              no more coins until the cap resets.
-            </>
-          )}
+          <strong>No coins this round.</strong> Couldn&apos;t connect to the
+          server — keep playing and try again.
         </div>
       )}
 
