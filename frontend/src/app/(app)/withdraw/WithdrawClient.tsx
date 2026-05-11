@@ -59,60 +59,16 @@ export default function WithdrawClient({
   gate,
 }: Props) {
   const router = useRouter();
-  const [form, setForm] = useState({ amount: "", method: "gcash", accountNumber: "", otp: "" });
+  const [form, setForm] = useState({ amount: "", method: "gcash", accountNumber: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [otpState, setOtpState] = useState<{ sent: boolean; maskedTo: string | null; sending: boolean }>({
-    sent: false,
-    maskedTo: null,
-    sending: false,
-  });
 
   const canWithdraw = balance >= minimum;
   const hasPending = withdrawals.some((w) => w.status === "pending");
 
-  async function requestOtp() {
-    const amount = parseFloat(form.amount);
-    if (isNaN(amount) || amount < minimum) {
-      setError(`Minimum withdrawal is ₱${minimum}`);
-      return;
-    }
-    if (amount > balance) {
-      setError("Insufficient balance");
-      return;
-    }
-    if (!/^\d{10,11}$/.test(form.accountNumber)) {
-      setError("Enter a valid GCash/Maya number");
-      return;
-    }
-    setOtpState((s) => ({ ...s, sending: true }));
-    setError("");
-    try {
-      const res = await fetch(`${API_URL}/otp/send`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ purpose: "withdraw", destination: form.accountNumber }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(typeof data.error === "string" ? data.error : "Could not send code");
-        return;
-      }
-      setOtpState({ sent: true, maskedTo: data.destinationMasked ?? null, sending: false });
-    } catch {
-      setError("Network error");
-      setOtpState((s) => ({ ...s, sending: false }));
-    }
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!otpState.sent) {
-      await requestOtp();
-      return;
-    }
     const amount = parseFloat(form.amount);
     setLoading(true);
     setError("");
@@ -125,7 +81,6 @@ export default function WithdrawClient({
           amount,
           method: form.method,
           accountNumber: form.accountNumber,
-          otp: form.otp,
         }),
       });
       const data = await res.json();
@@ -199,10 +154,6 @@ export default function WithdrawClient({
                 minimum={minimum}
                 progressPct={progressPct}
                 onSubmit={handleSubmit}
-                otpSent={otpState.sent}
-                otpMaskedTo={otpState.maskedTo}
-                otpSending={otpState.sending}
-                onResetOtp={() => setOtpState({ sent: false, maskedTo: null, sending: false })}
               />
             </section>
 
@@ -274,10 +225,6 @@ export default function WithdrawClient({
               minimum={minimum}
               progressPct={progressPct}
               onSubmit={handleSubmit}
-              otpSent={otpState.sent}
-              otpMaskedTo={otpState.maskedTo}
-              otpSending={otpState.sending}
-              onResetOtp={() => setOtpState({ sent: false, maskedTo: null, sending: false })}
             />
           </section>
 
@@ -416,7 +363,7 @@ function WithdrawalHistory({ withdrawals }: { withdrawals: Withdrawal[] }) {
 }
 
 /* ---------- Shared form body ---------- */
-type WithdrawForm = { amount: string; method: string; accountNumber: string; otp: string };
+type WithdrawForm = { amount: string; method: string; accountNumber: string };
 
 function FormBody({
   balance,
@@ -432,10 +379,6 @@ function FormBody({
   minimum,
   progressPct,
   onSubmit,
-  otpSent,
-  otpMaskedTo,
-  otpSending,
-  onResetOtp,
 }: {
   balance: number;
   canWithdraw: boolean;
@@ -450,10 +393,6 @@ function FormBody({
   minimum: number;
   progressPct: number;
   onSubmit: (e: React.FormEvent) => void;
-  otpSent: boolean;
-  otpMaskedTo: string | null;
-  otpSending: boolean;
-  onResetOtp: () => void;
 }) {
   if (!withdrawalsEnabled) {
     return (
@@ -622,54 +561,10 @@ function FormBody({
           required
           pattern="[0-9]{10,11}"
           value={form.accountNumber}
-          onChange={(e) => {
-            setForm((f) => ({ ...f, accountNumber: e.target.value, otp: "" }));
-            if (otpSent) onResetOtp();
-          }}
+          onChange={(e) => setForm((f) => ({ ...f, accountNumber: e.target.value }))}
           placeholder="09XXXXXXXXX"
-          disabled={otpSent}
         />
       </div>
-
-      {otpSent && (
-        <div>
-          <label htmlFor="otp" className="input-label">
-            Verification code
-            {otpMaskedTo && (
-              <span className="font-normal ml-1" style={{ color: "var(--text-subtle)" }}>
-                sent to {otpMaskedTo}
-              </span>
-            )}
-          </label>
-          <div className="flex gap-2">
-            <input
-              id="otp"
-              className="input font-mono tracking-widest text-center"
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              pattern="\d{4,8}"
-              required
-              value={form.otp}
-              onChange={(e) => setForm((f) => ({ ...f, otp: e.target.value.replace(/\D/g, "") }))}
-              placeholder="123456"
-              maxLength={8}
-              autoFocus
-            />
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={onResetOtp}
-              aria-label="Edit account number"
-            >
-              Edit
-            </button>
-          </div>
-          <p className="input-help">
-            Enter the 6-digit code. Didn&apos;t receive it? Edit the number and try again.
-          </p>
-        </div>
-      )}
 
       {error && (
         <div className="alert alert-danger" role="alert">
@@ -681,17 +576,9 @@ function FormBody({
       <button
         className="btn btn-primary w-full btn-lg"
         type="submit"
-        disabled={loading || otpSending}
+        disabled={loading}
       >
-        {loading
-          ? "Submitting…"
-          : otpSending
-          ? "Sending code…"
-          : otpSent ? (
-            <>Confirm withdrawal <IconArrowRight size={16} /></>
-          ) : (
-            <>Send verification code <IconArrowRight size={16} /></>
-          )}
+        {loading ? "Submitting…" : <>Request withdrawal <IconArrowRight size={16} /></>}
       </button>
       <p className="text-xs" style={{ color: "var(--text-subtle)" }}>
         Pending earnings are not included. Fraud detected during review will cancel the request.

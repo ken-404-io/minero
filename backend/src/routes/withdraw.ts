@@ -3,7 +3,6 @@ import { z } from "zod";
 import { prisma } from "../lib/db.js";
 import { requireAuth } from "../lib/session.js";
 import { getConfig } from "../lib/config.js";
-import { verifyOtp } from "../lib/otp.js";
 import { rateLimit } from "../lib/rateLimit.js";
 import { withdrawalSubmittedHtml } from "../lib/email.js";
 import { enqueue, QUEUE_EMAIL } from "../lib/queue.js";
@@ -57,11 +56,12 @@ withdrawRoutes.get("/gate", async (c) => {
 //  POST /withdraw
 // ============================================================
 
+const DAILY_WITHDRAWAL_LIMIT = 300;
+
 const schema = z.object({
   amount: z.number().positive(),
   method: z.enum(["gcash", "maya"]),
   accountNumber: z.string().min(10).max(20).regex(/^\d+$/),
-  otp: z.string().regex(/^\d{4,8}$/, "Enter the verification code"),
 });
 
 withdrawRoutes.post("/", async (c) => {
@@ -92,11 +92,34 @@ withdrawRoutes.post("/", async (c) => {
     return c.json({ error: parsed.error.flatten().fieldErrors }, 400);
   }
 
-  const { amount, method, accountNumber, otp } = parsed.data;
+  const { amount, method, accountNumber } = parsed.data;
   if (amount < cfg.withdrawalMinimum) {
     return c.json({ error: `Minimum withdrawal is ₱${cfg.withdrawalMinimum}` }, 400);
   }
+  if (amount > DAILY_WITHDRAWAL_LIMIT) {
+    return c.json({ error: `Maximum withdrawal is ₱${DAILY_WITHDRAWAL_LIMIT} per request` }, 400);
+  }
   if (user.balance < amount) return c.json({ error: "Insufficient balance" }, 400);
+
+  // 24-hour rolling withdrawal limit
+  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const recentWithdrawals = await prisma.withdrawal.findMany({
+    where: {
+      userId: user.id,
+      requestedAt: { gte: since24h },
+      status: { not: "rejected" },
+    },
+    select: { amount: true },
+  });
+  const withdrawn24h = recentWithdrawals.reduce((sum, w) => sum + w.amount, 0);
+  if (withdrawn24h + amount > DAILY_WITHDRAWAL_LIMIT) {
+    const remaining = Math.max(0, DAILY_WITHDRAWAL_LIMIT - withdrawn24h);
+    return c.json({
+      error: remaining > 0
+        ? `Daily limit reached. You can withdraw up to ₱${remaining.toFixed(2)} more in the next 24 hours.`
+        : "Daily withdrawal limit of ₱300 reached. Try again after 24 hours.",
+    }, 429);
+  }
 
   // Enforce the invite gate server-side so it cannot be bypassed via the API.
   if (!user.withdrawGateUnlockedAt) {
@@ -117,16 +140,6 @@ withdrawRoutes.post("/", async (c) => {
     where: { userId: user.id, status: "pending" },
   });
   if (pending) return c.json({ error: "You already have a pending withdrawal" }, 409);
-
-  // Verify OTP before debiting. One-time use — consumed on success.
-  const otpResult = await verifyOtp({
-    userId: user.id,
-    purpose: "withdraw",
-    code: otp,
-  });
-  if (!otpResult.ok) {
-    return c.json({ error: `Verification code ${otpResult.reason}` }, 400);
-  }
 
   await prisma.$transaction([
     prisma.withdrawal.create({
