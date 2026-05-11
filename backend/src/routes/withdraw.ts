@@ -57,6 +57,7 @@ withdrawRoutes.get("/gate", async (c) => {
 // ============================================================
 
 const DAILY_WITHDRAWAL_LIMIT = 300;
+const MONTHLY_WITHDRAWAL_LIMIT = 900;
 
 const schema = z.object({
   amount: z.number().positive(),
@@ -101,23 +102,36 @@ withdrawRoutes.post("/", async (c) => {
   }
   if (user.balance < amount) return c.json({ error: "Insufficient balance" }, 400);
 
-  // 24-hour rolling withdrawal limit
+  // Rolling 24-hour and 30-day withdrawal limits
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const recentWithdrawals = await prisma.withdrawal.findMany({
-    where: {
-      userId: user.id,
-      requestedAt: { gte: since24h },
-      status: { not: "rejected" },
-    },
-    select: { amount: true },
-  });
-  const withdrawn24h = recentWithdrawals.reduce((sum, w) => sum + w.amount, 0);
+  const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const [recent24h, recent30d] = await Promise.all([
+    prisma.withdrawal.findMany({
+      where: { userId: user.id, requestedAt: { gte: since24h }, status: { not: "rejected" } },
+      select: { amount: true },
+    }),
+    prisma.withdrawal.findMany({
+      where: { userId: user.id, requestedAt: { gte: since30d }, status: { not: "rejected" } },
+      select: { amount: true },
+    }),
+  ]);
+  const withdrawn24h = recent24h.reduce((sum, w) => sum + w.amount, 0);
+  const withdrawn30d = recent30d.reduce((sum, w) => sum + w.amount, 0);
+
   if (withdrawn24h + amount > DAILY_WITHDRAWAL_LIMIT) {
     const remaining = Math.max(0, DAILY_WITHDRAWAL_LIMIT - withdrawn24h);
     return c.json({
       error: remaining > 0
         ? `Daily limit reached. You can withdraw up to ₱${remaining.toFixed(2)} more in the next 24 hours.`
         : "Daily withdrawal limit of ₱300 reached. Try again after 24 hours.",
+    }, 429);
+  }
+  if (withdrawn30d + amount > MONTHLY_WITHDRAWAL_LIMIT) {
+    const remaining = Math.max(0, MONTHLY_WITHDRAWAL_LIMIT - withdrawn30d);
+    return c.json({
+      error: remaining > 0
+        ? `Monthly limit reached. You can withdraw up to ₱${remaining.toFixed(2)} more in the next 30 days.`
+        : "Monthly withdrawal limit of ₱900 reached. Try again after 30 days.",
     }, 429);
   }
 
